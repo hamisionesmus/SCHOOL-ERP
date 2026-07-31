@@ -30,6 +30,7 @@ every field — treat Swagger as authoritative for request/response shapes.
 | POST | `/platform/tenants` | Creates a school: provisions Postgres schema, runs migrations, seeds roles + first School Administrator |
 | GET | `/platform/tenants` | List all schools, paginated, with status/usage summary |
 | GET | `/platform/tenants/:id` | Tenant detail |
+| GET | `/platform/tenants/:id/usage` | Real storage usage — sums `pg_total_relation_size` across the tenant's Postgres schema plus the uploads-folder byte size (Phase 8) |
 | PATCH | `/platform/tenants/:id/suspend` | Sets status = SUSPENDED (blocks tenant-scoped logins) |
 | PATCH | `/platform/tenants/:id/activate` | Sets status = ACTIVE |
 | GET | `/platform/subscription-plans` | List plans |
@@ -60,11 +61,26 @@ every field — treat Swagger as authoritative for request/response shapes.
 | GET | `/students` | List/search (requires appropriate permission; Parent role auto-scoped to own children) |
 | POST | `/students` | Create student + admission number generation |
 | GET | `/students/:id` | Full profile |
-| PATCH | `/students/:id` | Update (audited) |
+| PATCH | `/students/:id` | Update (audited) — as of Phase 8 covers name/DOB/gender/grade/address/landmark/latitude/longitude, not just photo/UPI/NEMIS/class |
+
+### Tenant-scoped: Biometric log (Phase 8)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/biometric-events` | Scoped by permission: `BIOMETRIC:MANAGE` sees all, a guardian sees their children's, a staff member sees their own |
+| POST | `/biometric-events` | Logs a scan — `BIOMETRIC:MANAGE`. Stands in for a real device webhook; a STUDENT `OUT` event fires the departure SMS |
+| PATCH | `/biometric-events/:id/archive` | Soft-archives an event — `BIOMETRIC:MANAGE`. No DELETE route exists anywhere in this module |
+
+### Tenant-scoped: HR — Payslips & Work Log (Phase 8)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/hr/payslips` | `HR:EDIT` sees all, a staff member sees only their own |
+| POST | `/hr/payslips` | Issues/updates a payslip for a (staff, month, year) — `HR:EDIT`. `netPay` computed server-side |
+| GET | `/hr/payslips/:id/pdf` | Downloadable payslip PDF — the owning staff member or `HR:EDIT` |
+| GET/POST | `/hr/work-logs` | Self-service daily work log; POST upserts on (staff, date) |
 
 ## Endpoint groups landed since (by phase — see `docs/ARCHITECTURE.md`)
 
-Phases 2–7 are done; the endpoints below are all live, not planned. Full request/response shapes live
+Phases 2–8 are done; the endpoints below are all live, not planned. Full request/response shapes live
 in Swagger (`/api/docs`), not repeated here.
 
 - `/admissions/*`, `/attendance/*`, `/homework/*` — Phase 2
@@ -73,10 +89,13 @@ in Swagger (`/api/docs`), not repeated here.
 - `/transport/*`, `/library/*`, `/inventory/*`, `/hr/*`, `/health/*`, `/discipline/*` — Phase 5
 - `/uploads`, `/settings`, `/trips/*`, `/platform/tenants/:id/payment-config` — Phase 6
 - `/dashboard`, `/classes/:id` (PATCH) — Phase 7
+- `/biometric-events/*`, `/hr/payslips/*`, `/hr/work-logs`, `/inventory/items?category=` (Kitchen
+  filter), `/platform/tenants/:id/usage` — Phase 8
 
 ## Planned endpoint groups (by phase — see `docs/ARCHITECTURE.md`)
 
-- `/attendance/biometric-events` (device webhook), `/ai/*` — Phase 8
+- `/ai/*`, real biometric device/ML integration (Phase 8 shipped the event-log data model + a manual
+  logging endpoint, not real hardware) — Phase 9
 
 ## OpenAPI/Swagger
 

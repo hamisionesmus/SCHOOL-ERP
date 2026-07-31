@@ -23,6 +23,29 @@ interface Tenant {
   address: string | null;
   createdAt: string;
 }
+interface TenantUsage {
+  totalMb: number;
+  limitMb: number | null;
+  usagePct: number | null;
+}
+
+function UsageCell({ tenantId }: { tenantId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['tenant-usage', tenantId],
+    queryFn: () => apiFetch<TenantUsage>(`/platform/tenants/${tenantId}/usage`),
+    staleTime: 60 * 1000,
+  });
+
+  if (isLoading || !data) return <span className="text-slate-300">…</span>;
+
+  const overLimit = data.usagePct !== null && data.usagePct >= 90;
+  return (
+    <span className={overLimit ? 'font-medium text-rose-600' : 'text-slate-600'}>
+      {data.totalMb} MB
+      {data.limitMb && ` / ${data.limitMb} MB (${data.usagePct}%)`}
+    </span>
+  );
+}
 
 const STATUS_COLORS: Record<string, string> = { ACTIVE: '#10b981', TRIAL: '#f59e0b', SUSPENDED: '#f43f5e' };
 
@@ -119,7 +142,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <SkeletonTable rows={3} cols={5} />
+            <SkeletonTable rows={3} cols={6} />
           ) : tenants.length === 0 ? (
             <p className="text-sm text-slate-500">No schools yet. Create the first one.</p>
           ) : (
@@ -129,6 +152,7 @@ export default function DashboardPage() {
                   <th className="py-2 font-medium">Name</th>
                   <th className="py-2 font-medium">Slug</th>
                   <th className="py-2 font-medium">Status</th>
+                  <th className="py-2 font-medium">Storage</th>
                   <th className="py-2 font-medium">Created</th>
                   <th className="py-2" />
                 </tr>
@@ -140,6 +164,9 @@ export default function DashboardPage() {
                     <td className="py-2 text-slate-500">{t.slug}</td>
                     <td className="py-2">
                       <Badge status={t.status} />
+                    </td>
+                    <td className="py-2">
+                      <UsageCell tenantId={t.id} />
                     </td>
                     <td className="py-2 text-slate-500">
                       {new Date(t.createdAt).toLocaleDateString()}

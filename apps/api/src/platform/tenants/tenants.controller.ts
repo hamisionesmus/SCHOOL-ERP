@@ -25,6 +25,11 @@ export class TenantsController {
     return this.tenantsService.findOne(id);
   }
 
+  @Get(':id/usage')
+  getUsage(@Param('id') id: string) {
+    return this.tenantsService.getUsage(id);
+  }
+
   @Post()
   create(@Body() dto: CreateTenantDto) {
     return this.tenantsService.create(dto);

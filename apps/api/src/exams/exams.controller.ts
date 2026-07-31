@@ -54,8 +54,8 @@ export class ExamsController {
     @Param('examId') examId: string,
     @Param('studentId') studentId: string,
   ) {
-    const buffer = await this.examsService.reportCardPdf(user, examId, studentId);
-    return new StreamableFile(buffer, { disposition: 'attachment; filename="report-card.pdf"' });
+    const { buffer, filename } = await this.examsService.reportCardPdf(user, examId, studentId);
+    return new StreamableFile(buffer, { disposition: `attachment; filename="${filename}"` });
   }
 
   @Get('exam-subjects')

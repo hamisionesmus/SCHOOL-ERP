@@ -121,6 +121,24 @@ enum TripRegistrationStatus {
   PAID
 }
 
+enum BiometricSubjectType {
+  STUDENT
+  STAFF
+}
+
+// FACE is used for learners, FINGERPRINT for staff — see docs/SRS.md §4.9 for why this is an honest
+// event-log stub (no real on-device face/fingerprint matching happens in this codebase) rather than
+// a claim of working biometric hardware integration.
+enum BiometricMethod {
+  FACE
+  FINGERPRINT
+}
+
+enum BiometricDirection {
+  IN
+  OUT
+}
+
 model User {
   id               String    @id @default(uuid())
   email            String    @unique
@@ -155,6 +173,11 @@ model User {
   tripsProposed       Trip[]             @relation("TripProposedBy")
   tripsApproved        Trip[]             @relation("TripApprovedBy")
   tripPaymentsReceived TripPayment[]      @relation("TripPaymentReceivedBy")
+  payslips             Payslip[]          @relation("PayslipStaff")
+  payslipsIssued       Payslip[]          @relation("PayslipIssuedBy")
+  workLogs             WorkLog[]          @relation("WorkLogStaff")
+  biometricStaffEvents BiometricEvent[]   @relation("BiometricStaffSubject")
+  biometricEventsLogged BiometricEvent[]  @relation("BiometricLoggedBy")
 }
 
 model Role {
@@ -266,6 +289,13 @@ model Student {
   upiNumber       String?
   nemisNumber     String?
   photoUrl        String?
+  // Home location, captured at admission (or later edit) so a Transport driver knows where to drop
+  // a student off. addressLine/landmark are free text (apartment/estate/plot); latitude/longitude
+  // come from a Leaflet/OpenStreetMap pin-drop — no paid geocoding API is used anywhere in this repo.
+  addressLine     String?
+  landmark        String?
+  latitude        Float?
+  longitude       Float?
   status          StudentStatus @default(ACTIVE)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -283,6 +313,7 @@ model Student {
   clinicVisits      ClinicVisit[]
   disciplineCases   DisciplineCase[]
   tripRegistrations TripRegistration[]
+  biometricEvents   BiometricEvent[]
 
   @@index([currentClassId])
 }
@@ -591,6 +622,9 @@ model Route {
   description String?
   vehicleId   String?
   vehicle     Vehicle? @relation(fields: [vehicleId], references: [id])
+  // A static, admin-configured travel-time estimate (no live GPS in this environment) used to give
+  // guardians a rough ETA on the departure-notification SMS — see BiometricEvent/TransportService.
+  estimatedMinutes Int?
   createdAt   DateTime @default(now())
 
   assignments TransportAssignment[]
@@ -737,4 +771,67 @@ model TripPayment {
   receivedByUserId   String
   receivedBy         User          @relation("TripPaymentReceivedBy", fields: [receivedByUserId], references: [id])
   createdAt          DateTime      @default(now())
+}
+
+// ---- Non-teaching staff portal (Phase 8) ----
+// Payslip is HR-issued (manually entered gross/deductions/net by HR:EDIT), not computed from an
+// automatic payroll/hours engine — that full payroll pipeline remains PLANNED (docs/SRS.md §4.19).
+// This gives every staff member (teaching or not) a real "my payslips" download experience today.
+model Payslip {
+  id             String   @id @default(uuid())
+  staffUserId    String
+  staff          User     @relation("PayslipStaff", fields: [staffUserId], references: [id])
+  periodMonth    Int // 1-12
+  periodYear     Int
+  grossPay       Int
+  deductions     Int      @default(0)
+  netPay         Int
+  notes          String?
+  issuedByUserId String
+  issuedBy       User     @relation("PayslipIssuedBy", fields: [issuedByUserId], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@unique([staffUserId, periodMonth, periodYear])
+}
+
+// Daily self-reported work log — any staff member (teaching or not) logs what they did; HR:EDIT sees
+// everyone's, a staff member sees only their own. Deliberately simple free-text, not task-tracking
+// software; see docs/SRS.md §4.33.
+model WorkLog {
+  id           String   @id @default(uuid())
+  staffUserId  String
+  staff        User     @relation("WorkLogStaff", fields: [staffUserId], references: [id])
+  date         DateTime
+  tasksDone    String
+  tasksPending String?
+  createdAt    DateTime @default(now())
+
+  @@unique([staffUserId, date])
+}
+
+// ---- Biometric attendance log (Phase 8) ----
+// An honest event-log stub: no on-device face/fingerprint matching happens in this codebase (that
+// requires real hardware + an ML pipeline, out of scope here — see docs/SRS.md §4.9). Staff with the
+// right permission log an event through a simple form standing in for a real device webhook; the
+// data model, retention policy (archived, never hard-deleted — no DELETE route exists at all), and
+// guardian/self-scoped visibility are all real. A STUDENT OUT event triggers the departure SMS (see
+// CommunicationsService / TransportService's estimatedMinutes).
+model BiometricEvent {
+  id             String               @id @default(uuid())
+  subjectType    BiometricSubjectType
+  studentId      String?
+  student        Student?             @relation(fields: [studentId], references: [id])
+  staffUserId    String?
+  staff          User?                @relation("BiometricStaffSubject", fields: [staffUserId], references: [id])
+  method         BiometricMethod
+  direction      BiometricDirection
+  occurredAt     DateTime             @default(now())
+  loggedByUserId String
+  loggedBy       User                 @relation("BiometricLoggedBy", fields: [loggedByUserId], references: [id])
+  note           String?
+  archived       Boolean              @default(false)
+  createdAt      DateTime             @default(now())
+
+  @@index([studentId])
+  @@index([staffUserId])
 }

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonTable } from '@/components/ui/skeleton';
+import { MapPicker } from '@/components/ui/map-picker';
 
 interface GradeLevel {
   id: string;
@@ -20,8 +21,15 @@ interface Student {
   admissionNumber: string;
   firstName: string;
   lastName: string;
+  dateOfBirth: string;
+  gender: string;
   photoUrl: string | null;
   gradeLevel: GradeLevel;
+  gradeLevelId: string;
+  addressLine: string | null;
+  landmark: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 function StudentPhotoCell({ student, canEdit }: { student: Student; canEdit: boolean }) {
@@ -88,11 +96,116 @@ function StudentPhotoCell({ student, canEdit }: { student: Student; canEdit: boo
   );
 }
 
+function EditStudentDialog({
+  student,
+  gradeLevels,
+  onClose,
+}: {
+  student: Student;
+  gradeLevels: GradeLevel[] | undefined;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const [lat, setLat] = useState<number | null>(student.latitude);
+  const [lng, setLng] = useState<number | null>(student.longitude);
+
+  const updateStudent = useMutation({
+    mutationFn: (fd: FormData) =>
+      apiFetch(`/students/${student.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          firstName: fd.get('firstName'),
+          lastName: fd.get('lastName'),
+          dateOfBirth: fd.get('dateOfBirth'),
+          gender: fd.get('gender'),
+          gradeLevelId: fd.get('gradeLevelId'),
+          addressLine: fd.get('addressLine') || undefined,
+          landmark: fd.get('landmark') || undefined,
+          latitude: lat ?? undefined,
+          longitude: lng ?? undefined,
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      notifySuccess('Student updated');
+      onClose();
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to update student');
+      notifyError(err, 'Failed to update student');
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 z-[90] flex animate-fade-in items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm overflow-y-auto">
+      <div className="my-8 w-full max-w-lg animate-scale-in rounded-xl bg-white p-6 shadow-2xl">
+        <h2 className="mb-4 text-lg font-semibold text-slate-900">
+          Edit {student.firstName} {student.lastName}
+        </h2>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            updateStudent.mutate(new FormData(e.currentTarget));
+          }}
+          className="flex flex-col gap-3"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <Input name="firstName" defaultValue={student.firstName} placeholder="First name" required />
+            <Input name="lastName" defaultValue={student.lastName} placeholder="Last name" required />
+            <Input name="dateOfBirth" type="date" defaultValue={student.dateOfBirth?.slice(0, 10)} required />
+            <select
+              name="gender"
+              defaultValue={student.gender}
+              required
+              className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+            >
+              <option value="MALE">Male</option>
+              <option value="FEMALE">Female</option>
+            </select>
+            <select
+              name="gradeLevelId"
+              defaultValue={student.gradeLevelId}
+              required
+              className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm"
+            >
+              {gradeLevels?.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <hr className="my-1 border-slate-200" />
+          <p className="text-xs font-medium uppercase text-slate-400">Home location (for transport)</p>
+          <Input name="addressLine" defaultValue={student.addressLine ?? ''} placeholder="Address — apartment, estate, plot, etc." />
+          <Input name="landmark" defaultValue={student.landmark ?? ''} placeholder="Nearby landmark (optional)" />
+          <MapPicker latitude={lat} longitude={lng} onChange={(la, lo) => { setLat(la); setLng(lo); }} />
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="mt-2 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updateStudent.isPending}>
+              {updateStudent.isPending ? 'Saving...' : 'Save changes'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function StudentsPage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createLat, setCreateLat] = useState<number | null>(null);
+  const [createLng, setCreateLng] = useState<number | null>(null);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
   const { data: gradeLevels } = useQuery({
     queryKey: ['grade-levels'],
@@ -116,6 +229,10 @@ export default function StudentsPage() {
           dateOfBirth: formData.get('dateOfBirth'),
           gender: formData.get('gender'),
           gradeLevelId: formData.get('gradeLevelId'),
+          addressLine: formData.get('addressLine') || undefined,
+          landmark: formData.get('landmark') || undefined,
+          latitude: createLat ?? undefined,
+          longitude: createLng ?? undefined,
         }),
       }),
     onSuccess: (s) => {
@@ -123,6 +240,8 @@ export default function StudentsPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setShowForm(false);
       setError(null);
+      setCreateLat(null);
+      setCreateLng(null);
       notifySuccess(`${s.firstName} ${s.lastName} added`);
     },
     onError: (err) => {
@@ -154,30 +273,43 @@ export default function StudentsPage() {
                 e.preventDefault();
                 createStudent.mutate(new FormData(e.currentTarget));
               }}
-              className="mb-6 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4 animate-float-up"
+              className="mb-6 flex flex-col gap-3 rounded-lg border border-slate-200 p-4 animate-float-up"
             >
-              <Input name="firstName" placeholder="First name" required />
-              <Input name="lastName" placeholder="Last name" required />
-              <Input name="dateOfBirth" type="date" required />
-              <select name="gender" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
-                <option value="">Gender</option>
-                <option value="MALE">Male</option>
-                <option value="FEMALE">Female</option>
-              </select>
-              <select
-                name="gradeLevelId"
-                required
-                className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm"
-              >
-                <option value="">Grade level</option>
-                {gradeLevels?.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-              {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
-              <div className="col-span-2">
+              <div className="grid grid-cols-2 gap-3">
+                <Input name="firstName" placeholder="First name" required />
+                <Input name="lastName" placeholder="Last name" required />
+                <Input name="dateOfBirth" type="date" required />
+                <select name="gender" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+                  <option value="">Gender</option>
+                  <option value="MALE">Male</option>
+                  <option value="FEMALE">Female</option>
+                </select>
+                <select
+                  name="gradeLevelId"
+                  required
+                  className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm"
+                >
+                  <option value="">Grade level</option>
+                  {gradeLevels?.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <hr className="border-slate-200" />
+              <p className="text-xs font-medium uppercase text-slate-400">Home location (for transport)</p>
+              <Input name="addressLine" placeholder="Address — apartment, estate, plot, etc." />
+              <Input name="landmark" placeholder="Nearby landmark (optional)" />
+              <MapPicker
+                latitude={createLat}
+                longitude={createLng}
+                onChange={(la, lo) => { setCreateLat(la); setCreateLng(lo); }}
+              />
+
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <div>
                 <Button type="submit" disabled={createStudent.isPending}>
                   {createStudent.isPending ? 'Saving...' : 'Save student'}
                 </Button>
@@ -197,6 +329,8 @@ export default function StudentsPage() {
                   <th className="py-2 font-medium">Admission #</th>
                   <th className="py-2 font-medium">Name</th>
                   <th className="py-2 font-medium">Grade</th>
+                  <th className="py-2 font-medium">Address</th>
+                  {canEdit && <th className="py-2" />}
                 </tr>
               </thead>
               <tbody>
@@ -210,6 +344,16 @@ export default function StudentsPage() {
                       {s.firstName} {s.lastName}
                     </td>
                     <td className="py-2 text-slate-500">{s.gradeLevel?.name}</td>
+                    <td className="py-2 text-slate-500">
+                      {s.addressLine ?? <span className="text-slate-300">Not set</span>}
+                    </td>
+                    {canEdit && (
+                      <td className="py-2 text-right">
+                        <Button size="sm" variant="outline" onClick={() => setEditingStudent(s)}>
+                          Edit
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -217,6 +361,14 @@ export default function StudentsPage() {
           )}
         </CardContent>
       </Card>
+
+      {editingStudent && (
+        <EditStudentDialog
+          student={editingStudent}
+          gradeLevels={gradeLevels}
+          onClose={() => setEditingStudent(null)}
+        />
+      )}
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class UpdateSettingsDto {
   @ApiPropertyOptional()
@@ -49,4 +49,14 @@ export class UpdateSettingsDto {
   @IsString()
   @MaxLength(120)
   motto?: string;
+
+  @ApiPropertyOptional({
+    description: 'Numeric score % at/above which a report-card score renders green instead of red',
+    example: 50,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  passMarkPercent?: number;
 }

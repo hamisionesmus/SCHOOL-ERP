@@ -46,6 +46,9 @@ model Tenant {
   mission                String?
   vision                 String?
   motto                  String?
+  // Report-card pass/fail coloring threshold (numeric scores only — CBC rubric levels use a fixed
+  // EE/ME=green, AE=amber, BE=red mapping instead). Same trust boundary as mission/vision/motto.
+  passMarkPercent        Int               @default(50)
   // Editable by the Super Admin only (platform/tenants endpoints) — payment credentials are a
   // platform-level concern, same trust boundary as subscriptionPlan/status/storage limits.
   mpesaPaybill           String?

@@ -13,9 +13,9 @@ export class InventoryService {
     return db.inventoryItem.create({ data: { ...dto, reorderLevel: dto.reorderLevel ?? 0 } });
   }
 
-  async listItems(user: JwtUserPayload) {
+  async listItems(user: JwtUserPayload, category?: string) {
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
-    return db.inventoryItem.findMany({ orderBy: { name: 'asc' } });
+    return db.inventoryItem.findMany({ where: category ? { category } : undefined, orderBy: { name: 'asc' } });
   }
 
   async recordMovement(user: JwtUserPayload, itemId: string, dto: RecordMovementDto) {

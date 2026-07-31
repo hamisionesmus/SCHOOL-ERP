@@ -40,8 +40,11 @@ per line here to keep this scannable.
 Create/suspend/activate schools, assign subscription plans & storage limits, usage monitoring,
 billing, system analytics, impersonate school admin, push updates, platform-wide announcements.
 `[BUILT: create/list/suspend/activate tenant, per-tenant payment/banking config
-(PATCH /platform/tenants/:id/payment-config — API only, no Super Admin UI page yet);
-PLANNED: billing, analytics, impersonation, updates, payment-config UI]`
+(PATCH /platform/tenants/:id/payment-config — API only, no Super Admin UI page yet), real per-school
+storage usage (GET /platform/tenants/:id/usage — sums pg_total_relation_size across every table in
+the tenant's Postgres schema plus the tenant's uploads-folder byte size, not an estimate; shown as a
+column on the Super Admin dashboard, flagged red past 90% of storageLimitMbOverride when set);
+PLANNED: billing, usage analytics beyond storage, impersonation, updates, payment-config UI]`
 
 ### 4.2 Multi-Tenancy
 Each school: own isolated data (schema-per-tenant), logo/colors/branding, name/address/website, SMS
@@ -81,8 +84,13 @@ Full learner profile: photo, biometric refs, birth certificate, NEMIS/UPI number
 (religion, nationality, county/sub-county/ward), medical info, guardians/emergency contacts, academic
 & behavior history, transport/library/fee/exam history, CBC assessments, document store.
 `[BUILT: core Student entity, guardian linking (STUDENT:EDIT-gated), photo upload (via UploadsModule,
-shown as a profile thumbnail on the Students list and printed on the branded PDF report card);
-PLANNED: full profile fields (biometric, medical, NEMIS/UPI as first-class UI), documents]`
+shown as a profile thumbnail on the Students list and printed on the branded PDF report card), a full
+edit form (name/DOB/gender/grade — previously only photoUrl/upiNumber/nemisNumber/currentClassId were
+patchable via PATCH /students/:id, everything else was create-only), home
+address/landmark/latitude/longitude captured at creation or edit via a Leaflet/OpenStreetMap pin-drop
+map (no paid geocoding/maps API key anywhere in this repo — see §4.11 for how it feeds transport);
+PLANNED: remaining profile fields (medical as first-class UI — MedicalAlert already exists per-module,
+see §4.23), documents]`
 
 ### 4.7 Teacher Management
 Profile, TSC number, employment history, qualifications, contracts, leave, payroll link, subject/class
@@ -91,14 +99,30 @@ assignment, lesson plans, schemes of work, attendance, CPD/training, documents. 
 ### 4.8 Non-Teaching Staff
 Kitchen, drivers, security, cleaners, reception, ICT, stores, grounds, library, support staff —
 attendance, salary, department, leave, performance, documents, statutory numbers (NSSF/NHIF/SHA),
-bank details, biometric. `[PLANNED — Phase 5]`
+bank details, biometric.
+`[BUILT: every staff member (teaching or not — RBAC already treats "any non-Parent/Student role" as
+staff uniformly, so no separate non-teaching-staff role/module was needed) gets a Payslips tab
+(HR-issued, downloadable PDF — see §4.19) and a daily Work Log (self-reported tasks-done/pending,
+one entry per staff per day) on the existing HR & Staff Portal page; biometric time-in/out is the
+event-log stub in §4.9; PLANNED: department/performance tracking, statutory numbers (NSSF/NHIF/SHA)
+as first-class fields, automatic payroll computation]`
 
 ### 4.9 Biometric Attendance & Security
 Facial recognition attendance for students (gate scan → auto attendance + SMS to parent on arrival
 and departure), staff biometric time-in/out (feeds payroll), visitor registration & badge printing,
 security dashboard (live gate feed, who's on site, missing-student/emergency evacuation list).
-Architecture: device/edge integration posts events to a webhook (`POST /attendance/biometric-events`);
-the platform does not perform on-device face matching itself. `[PLANNED — Phase 8, integration layer]`
+Architecture: device/edge integration posts events to a webhook; the platform does not perform
+on-device face matching itself.
+`[BUILT: an honest event-log stub — `BiometricEvent` (subjectType STUDENT|STAFF, method
+FACE for learners / FINGERPRINT for staff, enforced server-side, direction IN|OUT), logged via
+POST /biometric-events (BIOMETRIC:MANAGE-gated) through a simple form standing in for what a real
+device webhook would post automatically in production — no on-device face/fingerprint matching or
+physical hardware exists in this codebase; a STUDENT OUT event automatically fires the guardian
+departure SMS (see §4.10/§4.11); events are retained forever (`archived` boolean for a soft-archive
+toggle, but no DELETE route exists anywhere in the module); visibility is scoped like everywhere
+else — BIOMETRIC:MANAGE sees all, a guardian sees their own children's STUDENT events, a staff member
+sees their own STAFF events; PLANNED: real device/ML integration, visitor registration, live security
+dashboard]`
 
 ### 4.10 SMS / Communications
 Automatic SMS for arrival/departure, fee reminders, results, absentee/discipline alerts, transport
@@ -109,22 +133,25 @@ board.
 credentials configured for this environment), SmsMessage delivery log, manual announcement send
 (ANNOUNCEMENT:SEND_TO_PARENTS, recipients picked by class → guardians), automatic payment-receipt SMS
 triggered from FinanceService, automatic trip-approval broadcast SMS (to every guardian, on approval)
-and trip-payment-confirmation SMS from the Phase 6 Trips module (see §4.31); PLANNED: real Africa's
-Talking/Twilio/Safaricom implementation (swap-in, no call-site changes needed), email/push/WhatsApp
-channels, message templates, automatic arrival/departure/absentee triggers (tied to Phase 8 biometric
-attendance)]`
+and trip-payment-confirmation SMS from the Phase 6 Trips module (see §4.31), automatic
+departure-notification SMS (see §4.9/§4.11) fired on a STUDENT OUT biometric event; PLANNED: real
+Africa's Talking/Twilio/Safaricom implementation (swap-in, no call-site changes needed), email/push/
+WhatsApp channels, message templates, automatic arrival/absentee triggers]`
 
 ### 4.11 Transport
 Vehicles, drivers, routes, pickup points, bus attendants, trip logs, fuel/maintenance/insurance;
 parent visibility of pickup/drop time and (where hardware available) live bus location; boarding/
 drop notifications; driver attendance.
-`[BUILT: Vehicle (with driver, a User with any role), Route (with assigned vehicle), one-route-per-
-student TransportAssignment, Parent/Student-scoped visibility of their own child's route/vehicle/
-driver, one-off school Trips (see §4.31 — a distinct workflow from daily route transport: teacher
-proposes, admin approves/rejects, parent registers a child and pays a per-trip fee); PLANNED: pickup
-points, daily trip logs (route/vehicle side, not the Trips module), fuel/maintenance/insurance
-records, live GPS location, boarding/drop SMS notifications (architecture supports it — same
-CommunicationsService pattern as Finance/Discipline — just not wired to a trigger yet), driver
+`[BUILT: Vehicle (with driver, a User with any role), Route (with assigned vehicle, and an
+admin-set `estimatedMinutes` static travel-time estimate — no live GPS in this environment),
+one-route-per-student TransportAssignment, Parent/Student-scoped visibility of their own child's
+route/vehicle/driver, one-off school Trips (see §4.31 — a distinct workflow from daily route
+transport: teacher proposes, admin approves/rejects, parent registers a child and pays a per-trip
+fee), automatic departure-notification SMS — a STUDENT OUT biometric event (§4.9) fires
+"[Name] has left school at [time]. Expected home in about N minutes" to every guardian, using the
+student's route.estimatedMinutes (falls back to "arrange pickup" copy if no route/estimate is set);
+PLANNED: pickup points, daily trip logs (route/vehicle side, not the Trips module),
+fuel/maintenance/insurance records, live GPS location (would replace the static ETA), driver
 attendance]`
 
 ### 4.12 Academic / Timetable
@@ -154,8 +181,13 @@ the class-teacher-of-record check on attendance), EXAM:APPROVE-gated approve/rej
 reopen, per-student report card scoped to APPROVED marks only, audit log entries, downloadable
 branded PDF report card (`GET /exams/:examId/report-card/:studentId/pdf`, rendered server-side with
 `pdfkit`, pulling the tenant's logo/mission/vision/motto from Settings and the student's photo/
-admission number/grade — see §4.29); PLANNED: rankings, grade-distribution/trend analysis,
-teacher/class-level analytics]`
+admission number/grade — see §4.29) with a real per-student filename
+(`Lastname_Firstname_ExamName_TermN_ReportCard.pdf`, sanitized — previously always the generic
+`report-card.pdf`) and admin-configurable pass-mark coloring (`Tenant.passMarkPercent`, set on the
+Settings page): each numeric score renders green at/above the pass mark and red below it, CBC rubric
+levels use a fixed EE/ME=green, AE=amber, BE=red mapping, applied identically in the PDF and the
+on-screen report-card table so they never disagree; PLANNED: rankings, grade-distribution/trend
+analysis, teacher/class-level analytics]`
 
 ### 4.15 CBC Module
 Learning areas, competencies, values, rubrics, performance levels, projects, teacher/parent comments,
@@ -199,10 +231,17 @@ Recruitment, interviews, contracts, leave, payroll, appraisal, training, promoti
 actions, exit management, staff attendance (biometric-fed).
 `[BUILT: LeaveRequest self-service workflow (any staff member requests, HR:EDIT approves/rejects,
 PENDING→APPROVED/REJECTED, requester sees only their own, HR:EDIT sees all — reuses the existing
-HR:EDIT permission from Phase 1, no new code needed); PLANNED: everything else in this section —
-recruitment, contracts, appraisal, training, promotion, disciplinary actions (staff-facing, distinct
-from the student Discipline module), exit management, biometric-fed staff attendance, and payroll
-(payroll itself, GL, and financial statements are also called out as PLANNED under Finance §4.18)]`
+HR:EDIT permission from Phase 1, no new code needed); a Payslips tab (`Payslip` model — HR:EDIT issues
+one per staff member per calendar month with gross/deductions, netPay computed server-side rather
+than trusted from the client; the staff member downloads their own as a PDF via
+`GET /hr/payslips/:id/pdf`, HR:EDIT can download anyone's; explicitly not an automatic payroll engine
+— amounts are entered manually by HR, nothing is computed from hours/attendance); a daily Work Log
+(`WorkLog`, one row per staff member per date — upsert on resubmission rather than duplicate rows —
+self-reported tasksDone/tasksPending, HR:EDIT sees everyone's, a staff member sees only their own);
+staff biometric time-in/out is the event-log stub in §4.9; PLANNED: recruitment, contracts, appraisal,
+training, promotion, disciplinary actions (staff-facing, distinct from the student Discipline
+module), exit management, and automatic payroll computation from hours/attendance (GL and financial
+statements are also called out as PLANNED under Finance §4.18)]`
 
 ### 4.20 Library
 Catalogue, borrowing/returns/reservations, barcodes, fines, digital library, per-student borrowing
@@ -215,13 +254,21 @@ barcodes/scanning, digital library, a dedicated Librarian role]`
 Store, assets, consumables, kitchen/lab/ICT/uniform/stationery inventories, stock movements, purchase
 requests & approvals.
 `[BUILT: InventoryItem with reorder-level flagging, IN/OUT StockMovement with running quantity,
-staff-only (no student/parent visibility — inventory isn't their concern); PLANNED: purchase
-requests/approvals workflow, category-specific views (kitchen/lab/ICT/uniform), a dedicated Store
-Keeper role]`
+staff-only (no student/parent visibility — inventory isn't their concern), `GET /inventory/items`
+accepts an optional `?category=` filter (used by the Kitchen page, see §4.22 — deliberately not a
+separate stock system); PLANNED: purchase requests/approvals workflow, dedicated views for the other
+categories (lab/ICT/uniform), a dedicated Store Keeper role]`
 
 ### 4.22 Kitchen
 Meal planning, daily menu, student meal attendance, food stock, suppliers, gas usage, cooking
-schedule, nutrition reports. `[PLANNED — Phase 5]`
+schedule, nutrition reports.
+`[BUILT: daily stock intake/usage recording and remaining-quantity tracking — reuses the Inventory
+module's InventoryItem/StockMovement engine (§4.21) filtered to category="Kitchen" rather than a
+parallel stock system, so "record 50kg of maize flour delivered" / "record 8kg used for lunch" and
+the running-quantity math (and low-stock flagging against reorderLevel) are the exact same code path
+already proven in Phase 5; a dedicated /school/kitchen page with unit-aware intake/usage recording
+(kg/litres/bags/pcs/crates) and a reason/source note per movement; PLANNED: meal planning, daily
+menu, student meal attendance, supplier records, gas usage, nutrition reports]`
 
 ### 4.23 Health
 Clinic visits, medication, allergies, vaccinations, medical reports, emergency treatment, medical
@@ -322,6 +369,12 @@ consolidated reporting engine planned for Phase 9, see §4.26)]`
   count grows. `[ARCHITECTURE SUPPORTS; load-tested — Phase 9]`
 - **Availability**: containerized services behind a load balancer, health checks, graceful restarts;
   Kubernetes manifests for production. `[PLANNED — Phase 9]`
+- **Backups**: `apps/api/prisma/backup-database.ts` wraps `pg_dump` (the entire Postgres database in
+  one dump — schema-per-tenant means every school's data lives in one database, so this covers all of
+  them) plus a tar of the local-disk uploads folder into timestamped files under `backups/`, run via
+  `npm run backup` or on a schedule (cron / Windows Task Scheduler — the script itself has no
+  scheduling logic). `[BUILT: local backup script; PLANNED: automated off-box/cloud upload — this
+  environment has no cloud storage credentials to wire it to — retention policy, restore runbook]`
 - **Auditability**: see 4.27.
 - **Accessibility**: WCAG-conscious component choices (shadcn/ui + Radix primitives), keyboard
   navigation, dark/light mode. `[PLANNED — progressive, from Phase 2 UI work onward]`

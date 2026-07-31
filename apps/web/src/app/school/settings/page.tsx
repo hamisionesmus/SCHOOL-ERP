@@ -24,6 +24,7 @@ interface SchoolSettings {
   bankName: string | null;
   bankAccountName: string | null;
   bankAccountNumber: string | null;
+  passMarkPercent: number;
 }
 
 export default function SettingsPage() {
@@ -54,6 +55,7 @@ export default function SettingsPage() {
           mission: fd.get('mission') || undefined,
           vision: fd.get('vision') || undefined,
           motto: fd.get('motto') || undefined,
+          passMarkPercent: fd.get('passMarkPercent') ? Number(fd.get('passMarkPercent')) : undefined,
         }),
       }),
     onSuccess: () => {
@@ -213,8 +215,19 @@ export default function SettingsPage() {
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-slate-700">Report card pass mark (%)</label>
+              <Input
+                name="passMarkPercent"
+                type="number"
+                min={1}
+                max={100}
+                defaultValue={settings.passMarkPercent}
+              />
+            </div>
             <p className="col-span-2 text-xs text-slate-500">
-              Mission, vision, motto, and logo appear on downloadable student report cards.
+              Mission, vision, motto, and logo appear on downloadable student report cards. Scores at
+              or above the pass mark render green on the report card; below it renders red.
             </p>
             {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
             <div className="col-span-2">

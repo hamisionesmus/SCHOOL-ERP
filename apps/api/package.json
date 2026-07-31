@@ -14,7 +14,8 @@
     "prisma:tenant:migrate:dev": "prisma migrate dev --schema=prisma/tenant/schema.prisma",
     "prisma:tenant:migrate:all": "ts-node -r tsconfig-paths/register prisma/migrate-all-tenants.ts",
     "prisma:tenant:reseed:all": "ts-node -r tsconfig-paths/register prisma/reseed-all-tenants.ts",
-    "prisma:seed": "ts-node -r tsconfig-paths/register prisma/seed.ts"
+    "prisma:seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
+    "backup": "ts-node -r tsconfig-paths/register prisma/backup-database.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

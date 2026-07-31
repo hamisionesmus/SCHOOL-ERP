@@ -27,6 +27,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { SettingsModule } from './settings/settings.module';
 import { TripsModule } from './trips/trips.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { BiometricModule } from './biometric/biometric.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     SettingsModule,
     TripsModule,
     DashboardModule,
+    BiometricModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

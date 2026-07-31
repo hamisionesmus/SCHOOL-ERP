@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class CreateStudentDto {
   @ApiProperty()
@@ -36,4 +36,24 @@ export class CreateStudentDto {
   @IsOptional()
   @IsString()
   nemisNumber?: string;
+
+  @ApiPropertyOptional({ description: 'Free-text home address — apartment/estate/plot, etc.' })
+  @IsOptional()
+  @IsString()
+  addressLine?: string;
+
+  @ApiPropertyOptional({ description: 'Nearby landmark to help the driver find the drop-off point' })
+  @IsOptional()
+  @IsString()
+  landmark?: string;
+
+  @ApiPropertyOptional({ description: 'From the map pin-drop picker' })
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @ApiPropertyOptional({ description: 'From the map pin-drop picker' })
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
 }

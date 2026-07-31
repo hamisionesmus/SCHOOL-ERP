@@ -96,6 +96,7 @@ needing schema changes (the model already supports arbitrary roles/permissions).
 | TENANT:MANAGE_USERS | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | SETTINGS:MANAGE (branding, mission/vision/motto) | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | TRANSPORT:PROPOSE (propose a trip) | ✅ | ❌ | ❌ | ✅ (also holds TRANSPORT:MANAGE) | ❌ | ❌ |
+| BIOMETRIC:MANAGE (log a face/fingerprint scan) | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 
 This table directly encodes the "can / cannot" examples from the source requirements (teachers
 cannot edit finance/delete exam results/edit another teacher's marks/approve payroll; finance
@@ -133,7 +134,23 @@ caller — the same "server decides what's included" pattern as `StudentsService
 to five independent sections instead of one dataset. `PATCH /classes/:id` (class teacher assignment)
 reuses `TENANT:MANAGE_USERS`, matching the existing `POST /classes` gate.
 
-## 6. Seed data (Phase 1)
+## 6. Phase 8 additions
+
+One new permission code: `BIOMETRIC:MANAGE` (School Administrator and Class Teacher — log a
+face/fingerprint scan event; see docs/SRS.md §4.9 for why this is an honest event-log stub, not real
+hardware). Viewing biometric events reuses the existing scoping pattern with no new codes: a holder of
+`BIOMETRIC:MANAGE` sees every event, a guardian (`STUDENT:VIEW_OWN_CHILD`) sees their own children's
+STUDENT events, a student (`STUDENT:VIEW_OWN_RECORD`) sees their own, and any authenticated staff
+member sees their own STAFF (clock-in/out) events regardless of role. Everything else in Phase 8 —
+student address/geo edit, Payslips, Work Log, the Kitchen page, the Super Admin usage endpoint —
+reused existing codes: `STUDENT:EDIT` for the student edit form (already covered every other student
+field), `HR:EDIT` for issuing payslips (a staff member always sees their own regardless of
+permission), `INVENTORY:MANAGE` for the Kitchen page (same engine as Inventory, see docs/SRS.md
+§4.22), and the Super Admin's existing `@RequirePlatformRole()` gate for the usage endpoint. Work Log
+needs no permission code at all beyond authentication — any signed-in staff member logs their own day,
+the same pattern as `LeaveRequest` creation.
+
+## 7. Seed data (Phase 1)
 
 `apps/api/prisma/seed.ts` creates, per new tenant: the six `[BUILT]` roles above, their permission
 rows per the matrix, and the tenant's first `School Administrator` user (credentials emailed/shown to

@@ -10,11 +10,11 @@ real, working codebase rather than a mockup. See `docs/` for the full design:
 - [`docs/API.md`](docs/API.md) — endpoint index (live spec at `/api/docs` once running)
 
 This repo is built phase by phase (tracked in `ARCHITECTURE.md` §6), with each phase landing a
-working, browser-verified increment rather than stubs. **Phases 1–7 are done** — see "What's built"
-below. Mobile apps, biometric attendance, AI features, and the full test/CI/CD/hardening pass remain
-planned (Phases 8–9).
+working, browser-verified increment rather than stubs. **Phases 1–8 are done** — see "What's built"
+below. Mobile apps, AI features, real biometric hardware/ML integration, and the full
+test/CI/CD/hardening pass remain planned (Phase 9).
 
-## What's built (Phases 1–7)
+## What's built (Phases 1–8)
 
 - **Platform**: Super Admin creates/suspends/activates schools; each school gets its own isolated
   Postgres schema, provisioned automatically via `prisma migrate deploy`.
@@ -51,6 +51,29 @@ planned (Phases 8–9).
 - **UI polish**: toast notifications (`sonner`) and confirm-dialog modals in place of raw inline
   errors and native `confirm()` popups, shimmer skeleton loaders while data is fetched, animated
   count-up stat cards, and a redesigned gradient/glassmorphism login page.
+- **Student location + full edit**: a real edit form (previously only photo/UPI/NEMIS/class were
+  editable) plus home address/landmark captured via a free Leaflet/OpenStreetMap pin-drop map (no
+  paid maps API key anywhere in this repo) — used for transport drop-off, not just record-keeping.
+- **Biometric attendance log**: an honest event-log stub — no real face/fingerprint hardware or ML
+  matching runs anywhere in this codebase. Staff log a scan (face for learners, fingerprint for
+  staff) through a form standing in for what a real device webhook would post in production. Events
+  are retained forever (no DELETE route exists in the module); a guardian sees their own children's
+  log, a staff member sees their own. A student `OUT` event automatically fires a guardian SMS with a
+  static ETA from the route's configured travel time (no live GPS).
+- **Colored, filenamed report cards**: the PDF (and the on-screen table) now colors each score green
+  or red against an admin-configurable pass mark, and downloads with a real filename
+  (`Lastname_Firstname_ExamName_TermN_ReportCard.pdf`) instead of the old generic `report-card.pdf`.
+- **Non-teaching staff portal**: every staff member — teaching or not — gets a Payslips tab
+  (HR-issued, downloadable PDF; not an automatic payroll engine) and a daily Work Log, both on the
+  existing HR page.
+- **Kitchen module**: daily stock intake/usage recording with automatic remaining-quantity math —
+  deliberately reuses the Inventory module's engine (`category="Kitchen"`) instead of a parallel
+  system.
+- **Super Admin storage visibility**: a real per-school storage figure (Postgres table sizes + the
+  uploads-folder byte size, not an estimate) on the Super Admin dashboard.
+- **Backups**: `npm run backup` (in `apps/api`) wraps `pg_dump` + an uploads-folder archive into
+  timestamped local files — see `docs/SRS.md` §5 for what's still manual (off-box/cloud upload,
+  retention, restore runbook).
 
 ## Monorepo layout
 

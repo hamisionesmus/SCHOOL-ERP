@@ -50,6 +50,19 @@ interface ReportCardLine {
   comment: string | null;
 }
 
+// Mirrors the coloring logic in apps/api/src/exams/report-card-pdf.util.ts's scoreColor() so the
+// on-screen table and the downloaded PDF always agree.
+function scoreColorClass(line: ReportCardLine, passMarkPercent: number): string {
+  if (line.rubricLevel) {
+    if (line.rubricLevel === 'EE' || line.rubricLevel === 'ME') return 'text-emerald-600';
+    if (line.rubricLevel === 'AE') return 'text-amber-600';
+    return 'text-rose-600';
+  }
+  if (line.score == null || line.maxScore === 0) return 'text-slate-500';
+  const pct = (line.score / line.maxScore) * 100;
+  return pct >= passMarkPercent ? 'text-emerald-600' : 'text-rose-600';
+}
+
 const RUBRIC_LEVELS = ['EE', 'ME', 'AE', 'BE'] as const;
 
 export default function ExamsPage() {
@@ -70,11 +83,13 @@ export default function ExamsPage() {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       if (!res.ok) throw new Error('Failed to generate PDF');
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'report-card.pdf';
+      a.download = filenameMatch?.[1] ?? 'report-card.pdf';
       a.click();
       URL.revokeObjectURL(url);
       notifySuccess('Report card downloaded');
@@ -195,6 +210,16 @@ export default function ExamsPage() {
     queryFn: () => apiFetch<ReportCardLine[]>(`/exams/${selectedExamId}/report-card/${reportCardStudentId}`),
     enabled: !!user && !!selectedExamId && !!reportCardStudentId,
   });
+
+  // Same query key as the branding fetch in school/layout.tsx and school/settings/page.tsx — React
+  // Query dedupes it, so this doesn't add a network round trip.
+  const { data: branding } = useQuery({
+    queryKey: ['branding'],
+    queryFn: () => apiFetch<{ passMarkPercent: number }>('/settings'),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+  const passMark = branding?.passMarkPercent ?? 50;
 
   const myStudents = useMemo(() => students ?? [], [students]);
 
@@ -505,7 +530,7 @@ export default function ExamsPage() {
                   {reportCard.map((line, i) => (
                     <tr key={i} className="border-b border-slate-100">
                       <td className="py-2 font-medium text-slate-900">{line.subject}</td>
-                      <td className="py-2 text-slate-500">
+                      <td className={`py-2 font-semibold ${scoreColorClass(line, passMark)}`}>
                         {line.rubricLevel ?? `${line.score ?? '-'} / ${line.maxScore}`}
                       </td>
                       <td className="py-2 text-slate-500">{line.comment ?? '-'}</td>

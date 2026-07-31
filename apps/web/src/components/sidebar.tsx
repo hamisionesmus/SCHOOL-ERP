@@ -7,6 +7,7 @@ import {
   GraduationCap,
   School,
   CalendarCheck,
+  ScanFace,
   BookOpen,
   ClipboardList,
   UserPlus,
@@ -17,6 +18,7 @@ import {
   HeartPulse,
   ShieldAlert,
   Boxes,
+  ChefHat,
   Briefcase,
   Settings as SettingsIcon,
   LogOut,
@@ -54,6 +56,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Academics',
     items: [
       { href: '/school/attendance', label: 'Attendance', icon: CalendarCheck, anyOf: ['ATTENDANCE:MARK', 'ATTENDANCE:VIEW', ...OWN_RECORD_PERMS] },
+      { href: '/school/biometric', label: 'Biometric Log', icon: ScanFace },
       { href: '/school/homework', label: 'Homework', icon: BookOpen, anyOf: ['HOMEWORK:ASSIGN', 'HOMEWORK:VIEW', ...OWN_RECORD_PERMS] },
       { href: '/school/exams', label: 'Exams', icon: ClipboardList, anyOf: ['EXAM:MANAGE', 'EXAM:ENTER_MARKS', 'EXAM:APPROVE', ...OWN_RECORD_PERMS] },
       { href: '/school/admissions', label: 'Admissions', icon: UserPlus, anyOf: ['ADMISSION:MANAGE'] },
@@ -80,11 +83,12 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/school/transport', label: 'Transport', icon: Bus, anyOf: ['TRANSPORT:MANAGE', ...OWN_RECORD_PERMS] },
       { href: '/school/inventory', label: 'Inventory', icon: Boxes, anyOf: ['INVENTORY:MANAGE'] },
+      { href: '/school/kitchen', label: 'Kitchen', icon: ChefHat, anyOf: ['INVENTORY:MANAGE'] },
     ],
   },
   {
     label: 'People',
-    items: [{ href: '/school/hr', label: 'HR & Leave', icon: Briefcase, noneOf: OWN_RECORD_PERMS }],
+    items: [{ href: '/school/hr', label: 'HR & Staff Portal', icon: Briefcase, noneOf: OWN_RECORD_PERMS }],
   },
   {
     label: 'Administration',

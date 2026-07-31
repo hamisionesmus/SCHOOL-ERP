@@ -171,10 +171,34 @@ sequenceDiagram
    component system rather than adopting the MUI component library, since swapping component systems
    mid-project across 15+ existing pages would be a much larger, riskier rewrite for the same visual
    outcome.
-8. **Phase 8** — Mobile apps, biometric device integration layer, AI features (originally scoped as
-   Phase 6 in the source requirements; renumbered twice as Phase 6 and Phase 7 were each redirected
-   toward UX work at the user's request).
-9. **Phase 9** — Test suites, CI/CD, Kubernetes, manuals, security hardening pass.
+8. **Phase 8 (done)** — SIS depth, biometric attendance (as an honest event-log stub — no real
+   face/fingerprint hardware or ML matching runs in this codebase, see docs/SRS.md §4.9), and three
+   modules the source requirements always listed but that hadn't landed yet. Student records gained
+   `addressLine`/`landmark`/`latitude`/`longitude` plus a full edit form (previously only photo/
+   UPI/NEMIS/class were patchable) and a Leaflet/OpenStreetMap pin-drop picker (no paid maps API key
+   anywhere in this repo). `BiometricEvent` (subjectType STUDENT|STAFF, method FACE|FINGERPRINT,
+   direction IN|OUT) is logged by staff through a form standing in for a real device webhook; a
+   STUDENT OUT event fires a guardian SMS with a static ETA from the student's transport `Route.
+   estimatedMinutes` (no live GPS); no DELETE route exists anywhere in the module — events are
+   `archived`, never removed. Report cards gained a real downloadable filename
+   (`Lastname_Firstname_ExamName_TermN_ReportCard.pdf`, previously always `report-card.pdf`) and
+   admin-configurable pass-mark coloring (`Tenant.passMarkPercent`) applied identically in the PDF and
+   the on-screen table. The Kitchen module is deliberately *not* a new parallel stock system — it
+   reuses `InventoryItem`/`StockMovement` (the same running-quantity math from Phase 5) filtered to
+   `category="Kitchen"`, exactly matching what docs/SRS.md always said the plan was for category-
+   specific inventory views. Every staff member (teaching or not) gets a Payslips tab (HR-issued,
+   downloadable PDF — not computed from an automatic payroll engine, that remains PLANNED) and a daily
+   Work Log, both added to the existing HR page rather than a separate "non-teaching staff" module,
+   since RBAC already treats "any non-Parent/Student role" as staff uniformly. The Super Admin
+   dashboard gained a real per-school storage figure (`SUM(pg_total_relation_size(...))` across every
+   table in the tenant's Postgres schema, plus the tenant's uploads-folder byte size — not an
+   estimate). A `prisma/backup-database.ts` script wraps `pg_dump` (the whole database in one dump,
+   since schema-per-tenant means every school lives in one Postgres database) plus a tar of the
+   uploads folder into timestamped files under `backups/`; it does not upload anywhere, since this
+   environment has no cloud storage credentials to wire it to.
+9. **Phase 9** — Mobile apps, AI features, full biometric hardware/ML integration (the honest-stub
+   version landed in Phase 8; this is the part that needs real devices), test suites, CI/CD,
+   Kubernetes, manuals, security hardening pass.
 
 ## 7. Security posture at each phase
 

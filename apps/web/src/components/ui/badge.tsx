@@ -18,6 +18,8 @@ const statusStyles: Record<string, string> = {
   REJECTED: 'bg-red-100 text-red-700',
   CANCELLED: 'bg-red-100 text-red-700',
   COMPLETED: 'bg-slate-200 text-slate-700',
+  IN: 'bg-emerald-100 text-emerald-700',
+  OUT: 'bg-amber-100 text-amber-700',
 };
 
 export function Badge({ status, className }: { status: string; className?: string }) {

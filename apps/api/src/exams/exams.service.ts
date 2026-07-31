@@ -241,7 +241,11 @@ export class ExamsService {
     }));
   }
 
-  async reportCardPdf(user: JwtUserPayload, examId: string, studentId: string): Promise<Buffer> {
+  async reportCardPdf(
+    user: JwtUserPayload,
+    examId: string,
+    studentId: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     await this.assertCanViewReportCard(user, studentId);
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
 
@@ -254,7 +258,7 @@ export class ExamsService {
     if (!student) throw new NotFoundException('Student not found');
     if (!exam) throw new NotFoundException('Exam not found');
 
-    return renderReportCardPdf({
+    const buffer = await renderReportCardPdf({
       school: {
         name: tenant?.name ?? user.tenantSlug ?? 'School',
         logoUrl: tenant?.logoUrl ?? null,
@@ -262,6 +266,7 @@ export class ExamsService {
         vision: tenant?.vision ?? null,
         motto: tenant?.motto ?? null,
         address: tenant?.address ?? null,
+        passMarkPercent: tenant?.passMarkPercent ?? 50,
       },
       student: {
         firstName: student.firstName,
@@ -281,5 +286,10 @@ export class ExamsService {
       })),
       generatedAt: new Date(),
     });
+
+    const slug = (s: string) => s.trim().replace(/[^a-zA-Z0-9]+/g, '');
+    const filename = `${slug(student.lastName)}_${slug(student.firstName)}_${slug(exam.name)}_Term${exam.term}_ReportCard.pdf`;
+
+    return { buffer, filename };
   }
 }

@@ -17,8 +17,8 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get('items')
-  listItems(@CurrentUser() user: JwtUserPayload) {
-    return this.inventoryService.listItems(user);
+  listItems(@CurrentUser() user: JwtUserPayload, @Query('category') category?: string) {
+    return this.inventoryService.listItems(user, category);
   }
 
   @Post('items')

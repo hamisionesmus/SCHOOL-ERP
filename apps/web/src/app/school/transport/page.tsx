@@ -23,6 +23,7 @@ interface Route {
   name: string;
   description: string | null;
   vehicle: Vehicle | null;
+  estimatedMinutes: number | null;
 }
 interface Student {
   id: string;
@@ -88,6 +89,7 @@ export default function TransportPage() {
           name: fd.get('name'),
           description: fd.get('description') || undefined,
           vehicleId: fd.get('vehicleId') || undefined,
+          estimatedMinutes: fd.get('estimatedMinutes') ? Number(fd.get('estimatedMinutes')) : undefined,
         }),
       }),
     onSuccess: () => {
@@ -176,6 +178,12 @@ export default function TransportPage() {
                       </option>
                     ))}
                   </select>
+                  <Input
+                    name="estimatedMinutes"
+                    type="number"
+                    min={1}
+                    placeholder="Est. travel time (minutes, for pickup SMS)"
+                  />
                   <Button type="submit" size="sm" disabled={createRoute.isPending}>
                     Save
                   </Button>
@@ -186,6 +194,7 @@ export default function TransportPage() {
                   <li key={r.id}>
                     {r.name}
                     {r.vehicle && ` — ${r.vehicle.plateNumber}`}
+                    {r.estimatedMinutes && ` · ~${r.estimatedMinutes} min`}
                   </li>
                 ))}
               </ul>

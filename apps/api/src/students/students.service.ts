@@ -84,6 +84,10 @@ export class StudentsService {
         currentClassId: dto.currentClassId,
         upiNumber: dto.upiNumber,
         nemisNumber: dto.nemisNumber,
+        addressLine: dto.addressLine,
+        landmark: dto.landmark,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
       },
       include: { gradeLevel: true, currentClass: true },
     });
@@ -94,9 +98,10 @@ export class StudentsService {
     const student = await db.student.findFirst({ where: { id: studentId, deletedAt: null } });
     if (!student) throw new NotFoundException('Student not found');
 
+    const { dateOfBirth, ...rest } = dto;
     return db.student.update({
       where: { id: studentId },
-      data: dto,
+      data: { ...rest, ...(dateOfBirth ? { dateOfBirth: new Date(dateOfBirth) } : {}) },
       include: { gradeLevel: true, currentClass: true },
     });
   }

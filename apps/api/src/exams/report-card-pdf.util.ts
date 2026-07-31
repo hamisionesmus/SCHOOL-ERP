@@ -8,6 +8,26 @@ function resolveUploadPath(url: string | null | undefined): string | null {
   return existsSync(path) ? path : null;
 }
 
+const PASS_GREEN = '#16a34a';
+const BORDERLINE_AMBER = '#d97706';
+const FAIL_RED = '#dc2626';
+
+// Numeric scores are colored against the school's admin-configurable pass mark; CBC rubric levels
+// use a fixed EE/ME=green, AE=amber, BE=red mapping since they aren't a percentage.
+function scoreColor(
+  mark: { score: number | null; maxScore: number; rubricLevel: string | null },
+  passMarkPercent: number,
+): string {
+  if (mark.rubricLevel) {
+    if (mark.rubricLevel === 'EE' || mark.rubricLevel === 'ME') return PASS_GREEN;
+    if (mark.rubricLevel === 'AE') return BORDERLINE_AMBER;
+    return FAIL_RED;
+  }
+  if (mark.score == null || mark.maxScore === 0) return '#334155';
+  const pct = (mark.score / mark.maxScore) * 100;
+  return pct >= passMarkPercent ? PASS_GREEN : FAIL_RED;
+}
+
 export interface ReportCardPdfInput {
   school: {
     name: string;
@@ -16,6 +36,7 @@ export interface ReportCardPdfInput {
     vision: string | null;
     motto: string | null;
     address: string | null;
+    passMarkPercent: number;
   };
   student: {
     firstName: string;
@@ -115,9 +136,11 @@ export function renderReportCardPdf(input: ReportCardPdfInput): Promise<Buffer> 
       y += 18;
     } else {
       for (const mark of input.marks) {
-        doc.text(mark.subject, colX.subject, y, { width: 240 });
-        doc.text(mark.rubricLevel ?? String(mark.score ?? '-'), colX.score, y);
-        doc.text(mark.rubricLevel ? '-' : String(mark.maxScore), colX.max, y);
+        doc.fillColor('#334155').text(mark.subject, colX.subject, y, { width: 240 });
+        doc
+          .fillColor(scoreColor(mark, input.school.passMarkPercent))
+          .text(mark.rubricLevel ?? String(mark.score ?? '-'), colX.score, y);
+        doc.fillColor('#334155').text(mark.rubricLevel ? '-' : String(mark.maxScore), colX.max, y);
         doc.text(mark.comment ?? '-', colX.comment, y, { width: 85 });
         y += 20;
       }
