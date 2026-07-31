@@ -1,11 +1,13 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { TenantsService } from './tenants.service';
-import { CreateTenantDto } from './dto/create-tenant.dto';
+import { RequestTenantDto } from './dto/request-tenant.dto';
+import { ConfirmTenantDto } from './dto/confirm-tenant.dto';
 import { UpdatePaymentConfigDto } from './dto/update-payment-config.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePlatformRole } from '../../common/decorators/require-platform-role.decorator';
+import { CurrentUser, JwtUserPayload } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('platform/tenants')
 @ApiBearerAuth()
@@ -30,9 +32,14 @@ export class TenantsController {
     return this.tenantsService.getUsage(id);
   }
 
-  @Post()
-  create(@Body() dto: CreateTenantDto) {
-    return this.tenantsService.create(dto);
+  @Post('request')
+  requestCreate(@Body() dto: RequestTenantDto, @CurrentUser() user: JwtUserPayload) {
+    return this.tenantsService.requestCreate(dto, user.sub);
+  }
+
+  @Post('confirm')
+  confirmCreate(@Body() dto: ConfirmTenantDto) {
+    return this.tenantsService.confirmCreate(dto);
   }
 
   @Patch(':id/suspend')

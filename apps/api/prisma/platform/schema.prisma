@@ -83,11 +83,45 @@ model Tenant {
   // and reactivates a SUSPENDED tenant automatically (see TenantsService.recordPayment()).
   billingCycle           BillingCycle      @default(MONTHLY)
   currentPeriodEnd       DateTime?
+  // First-login onboarding: false until the School Administrator saves the Settings page once
+  // (branding/payment review, password change prompt lives client-side). Drives a forced redirect
+  // to /school/settings so a freshly-provisioned school doesn't skip setup.
+  settingsConfigured     Boolean           @default(false)
+  // Demo/trial accounts created by the Super Admin with a time-boxed expiry (hours or days, chosen
+  // at creation). Enforced live at login (same check as SUSPENDED) — no background job expires it,
+  // since this environment has no scheduler; see docs/SRS.md §4.1.
+  isDemo                 Boolean           @default(false)
+  demoExpiresAt          DateTime?
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
   deletedAt              DateTime?
 
   invoices PlatformInvoice[]
+}
+
+// Two-step tenant creation: the Super Admin submits the school details, a 6-digit code is sent to
+// their own registered email/phone (platform email/SMS stubs — logs instead of sending, same
+// pattern as every other provider in this app), and only submitting that code actually creates the
+// tenant. This prevents a compromised or unattended Super Admin session from silently provisioning
+// schools.
+model TenantCreationRequest {
+  id             String    @id @default(uuid())
+  name           String
+  slug           String
+  code           String
+  requestedById  String
+  adminFullName     String
+  adminEmail        String
+  adminPhone        String?
+  adminPasswordHash String
+  planId            String?
+  // Demo/trial requests: isDemo + demoDurationHours (from the Super Admin's day/hour picker) get
+  // applied to the resulting Tenant on confirmation — see TenantsService.confirmCreate().
+  isDemo            Boolean   @default(false)
+  demoDurationHours Int?
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  createdAt         DateTime  @default(now())
 }
 
 model PlatformUser {

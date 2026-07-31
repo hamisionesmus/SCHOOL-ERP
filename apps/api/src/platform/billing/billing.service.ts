@@ -170,13 +170,18 @@ export class BillingService {
     return { email: admin.email, fullName: admin.fullName, temporaryPassword: tempPassword };
   }
 
-  async getAuditLogs(tenantId: string, limit = 100) {
+  async getAuditLogs(tenantId: string, page = 1, pageSize = 20) {
     const tenant = await this.findTenant(tenantId);
     const db = this.tenantPrisma.forSchema(tenant.schemaName);
-    return db.auditLog.findMany({
-      include: { actor: { select: { id: true, fullName: true, email: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
+    const [data, total] = await Promise.all([
+      db.auditLog.findMany({
+        include: { actor: { select: { id: true, fullName: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.auditLog.count(),
+    ]);
+    return { data, meta: { page, pageSize, total } };
   }
 }

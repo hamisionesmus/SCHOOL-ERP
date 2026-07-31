@@ -134,7 +134,10 @@ export const ROLE_DEFINITIONS: { name: string; description: string; permissions:
 export interface TenantAdminSeed {
   email: string;
   fullName: string;
-  password: string;
+  // Exactly one of these — raw password gets hashed here; passwordHash (e.g. from a two-step
+  // creation flow that pre-hashed it while the confirmation code was pending) is used as-is.
+  password?: string;
+  passwordHash?: string;
 }
 
 /**
@@ -185,7 +188,7 @@ export async function seedPermissionsAndRoles(db: PrismaClient): Promise<{ admin
 export async function seedTenantCore(db: PrismaClient, admin: TenantAdminSeed) {
   const { adminRoleId } = await seedPermissionsAndRoles(db);
 
-  const passwordHash = await bcrypt.hash(admin.password, 12);
+  const passwordHash = admin.passwordHash ?? (await bcrypt.hash(admin.password!, 12));
   const adminUser = await db.user.upsert({
     where: { email: admin.email },
     update: {},

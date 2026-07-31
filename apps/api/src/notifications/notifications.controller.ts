@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -15,5 +15,10 @@ export class NotificationsController {
   @Get()
   list(@CurrentUser() user: JwtUserPayload) {
     return this.notificationsService.list(user);
+  }
+
+  @Post(':notifKey/read')
+  markRead(@CurrentUser() user: JwtUserPayload, @Param('notifKey') notifKey: string) {
+    return this.notificationsService.markRead(user, notifKey);
   }
 }

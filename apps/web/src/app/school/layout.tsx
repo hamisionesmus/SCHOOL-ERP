@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Sidebar } from '@/components/sidebar';
 import { NotificationBell } from '@/components/notification-bell';
@@ -10,12 +12,15 @@ interface SchoolBranding {
   name: string;
   logoUrl: string | null;
   primaryColor: string | null;
+  settingsConfigured: boolean;
 }
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 export default function SchoolLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useSession('tenant');
+  const router = useRouter();
+  const pathname = usePathname();
 
   const { data: branding } = useQuery({
     queryKey: ['branding'],
@@ -23,6 +28,20 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });
+
+  // First-time onboarding: a School Administrator whose school hasn't saved Settings yet gets
+  // steered there (branding review, payment reference, password change) before anything else.
+  const canManageSettings = !!user?.permissions?.includes('SETTINGS:MANAGE');
+  useEffect(() => {
+    if (
+      canManageSettings &&
+      branding &&
+      !branding.settingsConfigured &&
+      pathname !== '/school/settings'
+    ) {
+      router.replace('/school/settings');
+    }
+  }, [canManageSettings, branding, pathname, router]);
 
   if (!user) return null;
 

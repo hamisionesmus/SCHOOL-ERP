@@ -58,7 +58,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Academics',
     items: [
       { href: '/school/attendance', label: 'Attendance', icon: CalendarCheck, anyOf: ['ATTENDANCE:MARK', 'ATTENDANCE:VIEW', ...OWN_RECORD_PERMS] },
-      { href: '/school/biometric', label: 'Biometric Log', icon: ScanFace },
+      { href: '/school/biometric', label: 'Biometric Log', icon: ScanFace, noneOf: OWN_RECORD_PERMS },
       { href: '/school/homework', label: 'Homework', icon: BookOpen, anyOf: ['HOMEWORK:ASSIGN', 'HOMEWORK:VIEW', ...OWN_RECORD_PERMS] },
       { href: '/school/exams', label: 'Exams', icon: ClipboardList, anyOf: ['EXAM:MANAGE', 'EXAM:ENTER_MARKS', 'EXAM:APPROVE', ...OWN_RECORD_PERMS] },
       { href: '/school/admissions', label: 'Admissions', icon: UserPlus, anyOf: ['ADMISSION:MANAGE'] },
@@ -74,16 +74,16 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Life & Activities',
     items: [
       { href: '/school/trips', label: 'Trips', icon: MapPinned, anyOf: ['TRANSPORT:MANAGE', 'TRANSPORT:PROPOSE', ...OWN_RECORD_PERMS] },
-      { href: '/school/library', label: 'Library', icon: LibraryIcon, anyOf: ['LIBRARY:MANAGE', ...OWN_RECORD_PERMS] },
-      { href: '/school/health', label: 'Health', icon: HeartPulse, anyOf: ['HEALTH:MANAGE', ...OWN_RECORD_PERMS] },
-      { href: '/school/discipline', label: 'Discipline', icon: ShieldAlert, anyOf: ['DISCIPLINE:MANAGE', ...OWN_RECORD_PERMS] },
+      { href: '/school/library', label: 'Library', icon: LibraryIcon, anyOf: ['LIBRARY:MANAGE', ...OWN_RECORD_PERMS], noneOf: ['STUDENT:VIEW_OWN_CHILD'] },
+      { href: '/school/health', label: 'Health', icon: HeartPulse, anyOf: ['HEALTH:MANAGE', ...OWN_RECORD_PERMS], noneOf: ['STUDENT:VIEW_OWN_CHILD'] },
+      { href: '/school/discipline', label: 'Discipline', icon: ShieldAlert, anyOf: ['DISCIPLINE:MANAGE', ...OWN_RECORD_PERMS], noneOf: ['STUDENT:VIEW_OWN_CHILD'] },
       { href: '/school/announcements', label: 'Announcements', icon: Megaphone, anyOf: ['ANNOUNCEMENT:SEND_TO_PARENTS', ...OWN_RECORD_PERMS] },
     ],
   },
   {
     label: 'Operations',
     items: [
-      { href: '/school/transport', label: 'Transport', icon: Bus, anyOf: ['TRANSPORT:MANAGE', ...OWN_RECORD_PERMS] },
+      { href: '/school/transport', label: 'Transport', icon: Bus, anyOf: ['TRANSPORT:MANAGE', ...OWN_RECORD_PERMS], noneOf: ['STUDENT:VIEW_OWN_CHILD'] },
       { href: '/school/inventory', label: 'Inventory', icon: Boxes, anyOf: ['INVENTORY:MANAGE'] },
       { href: '/school/kitchen', label: 'Kitchen', icon: ChefHat, anyOf: ['INVENTORY:MANAGE'] },
     ],

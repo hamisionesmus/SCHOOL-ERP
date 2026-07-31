@@ -1,15 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
 
-export class CreateTenantDto {
+export class RequestTenantDto {
   @ApiProperty({ example: 'Greenfield Academy' })
   @IsString()
   name!: string;
 
-  @ApiProperty({
-    example: 'greenfield-academy',
-    description: 'Lowercase, hyphenated, unique. Used as the subdomain and schema-name suffix.',
-  })
+  @ApiProperty({ example: 'greenfield-academy' })
   @IsString()
   @Matches(/^[a-z0-9]+(-[a-z0-9]+)*$/, {
     message: 'slug must be lowercase letters/numbers separated by hyphens',
@@ -43,4 +40,25 @@ export class CreateTenantDto {
   @IsString()
   @MinLength(8)
   adminPassword!: string;
+
+  @ApiPropertyOptional({ description: 'For the demo welcome SMS, if provided (E.164 or local format)' })
+  @IsOptional()
+  @IsString()
+  adminPhone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  planId?: string;
+
+  @ApiPropertyOptional({ description: 'Create as a time-boxed demo account instead of a normal school' })
+  @IsOptional()
+  @IsBoolean()
+  isDemo?: boolean;
+
+  @ApiPropertyOptional({ description: 'Demo lifetime in hours (e.g. 24 for 1 day, 4 for 4 hours) — required when isDemo is true' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  demoDurationHours?: number;
 }

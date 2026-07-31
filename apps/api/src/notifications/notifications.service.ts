@@ -7,7 +7,10 @@ export interface NotificationItem {
   message: string;
   href: string;
   tone: 'info' | 'warning' | 'danger';
+  read: boolean;
 }
+
+type ComputedItem = Omit<NotificationItem, 'read'>;
 
 /**
  * A computed feed, not a persisted table — mirrors the Dashboard module's "server decides what's
@@ -22,7 +25,7 @@ export class NotificationsService {
   async list(user: JwtUserPayload): Promise<NotificationItem[]> {
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
     const perms = user.permissions ?? [];
-    const items: NotificationItem[] = [];
+    const items: ComputedItem[] = [];
 
     const tasks: Promise<void>[] = [];
 
@@ -165,6 +168,30 @@ export class NotificationsService {
     }
 
     await Promise.all(tasks);
-    return items;
+
+    const dismissals = await db.notificationDismissal.findMany({ where: { userId: user.sub } });
+    const dismissedByKey = new Map(dismissals.map((d) => [d.notifKey, d.snapshot]));
+
+    return items.map((item) => ({
+      ...item,
+      read: dismissedByKey.get(item.id) === item.message,
+    }));
+  }
+
+  /** Marks one computed item as read. The item's current message is looked up fresh (not trusted from
+   * the client) and stored as the dismissal's snapshot, so if the underlying count/content changes
+   * later the old dismissal no longer matches and the item reappears as unread automatically. */
+  async markRead(user: JwtUserPayload, notifKey: string) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const current = await this.list(user);
+    const item = current.find((i) => i.id === notifKey);
+    if (!item) return { ok: true };
+
+    await db.notificationDismissal.upsert({
+      where: { userId_notifKey: { userId: user.sub, notifKey } },
+      update: { snapshot: item.message, dismissedAt: new Date() },
+      create: { userId: user.sub, notifKey, snapshot: item.message },
+    });
+    return { ok: true };
   }
 }

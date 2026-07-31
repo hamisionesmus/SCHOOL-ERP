@@ -169,6 +169,7 @@ model User {
   clinicVisitsRecorded ClinicVisit[]     @relation("ClinicVisitRecordedBy")
   disciplineCasesReported DisciplineCase[] @relation("DisciplineReportedBy")
   leaveRequests       LeaveRequest[]     @relation("LeaveRequestedBy")
+  notificationDismissals NotificationDismissal[]
   leaveRequestsReviewed LeaveRequest[]   @relation("LeaveReviewedBy")
   tripsProposed       Trip[]             @relation("TripProposedBy")
   tripsApproved        Trip[]             @relation("TripApprovedBy")
@@ -341,6 +342,21 @@ model AuditLog {
   newValue    Json?
   ipAddress   String?
   createdAt   DateTime @default(now())
+}
+
+// Notification bell "mark as read": items are computed on the fly (see NotificationsService), not a
+// stored feed, so there's no per-instance row to mark. Instead a dismissal is keyed on (user, the
+// item's stable category id, and its rendered message text) — if the underlying count/content changes
+// the message changes too, so the dismissal stops matching and the item reappears as unread on its own.
+model NotificationDismissal {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  notifKey   String
+  snapshot   String
+  dismissedAt DateTime @default(now())
+
+  @@unique([userId, notifKey])
 }
 
 // Per-lesson/per-day register. A (student, class, date) row is created locked; only ATTENDANCE:REOPEN

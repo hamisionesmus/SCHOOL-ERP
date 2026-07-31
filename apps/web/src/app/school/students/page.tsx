@@ -1,7 +1,8 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, apiUpload, API_ORIGIN } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
@@ -10,6 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonTable } from '@/components/ui/skeleton';
 import { MapPicker } from '@/components/ui/map-picker';
+import { SortableTh } from '@/components/ui/sortable-th';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
 
 interface GradeLevel {
   id: string;
@@ -219,6 +223,21 @@ export default function StudentsPage() {
     enabled: !!user,
   });
 
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(() => {
+    if (!students) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter(
+      (s) =>
+        `${s.firstName} ${s.lastName}`.toLowerCase().includes(q) ||
+        s.admissionNumber.toLowerCase().includes(q) ||
+        s.gradeLevel?.name?.toLowerCase().includes(q),
+    );
+  }, [students, search]);
+
+  const table = useTableControls(filtered, { pageSize: 10, initialSortKey: 'lastName' });
+
   const createStudent = useMutation({
     mutationFn: (formData: FormData) =>
       apiFetch<Student>('/students', {
@@ -322,19 +341,32 @@ export default function StudentsPage() {
           ) : !students || students.length === 0 ? (
             <p className="text-sm text-slate-500">No students yet.</p>
           ) : (
+            <>
+              <div className="relative mb-3 max-w-xs">
+                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by name, admission #, or grade..."
+                  className="pl-8"
+                />
+              </div>
+              {table.pageItems.length === 0 ? (
+                <p className="text-sm text-slate-500">No students match &quot;{search}&quot;.</p>
+              ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-slate-500">
                   <th className="py-2 font-medium">Photo</th>
-                  <th className="py-2 font-medium">Admission #</th>
-                  <th className="py-2 font-medium">Name</th>
+                  <SortableTh label="Admission #" active={table.sortKey === 'admissionNumber'} dir={table.sortDir} onClick={() => table.toggleSort('admissionNumber')} />
+                  <SortableTh label="Name" active={table.sortKey === 'lastName'} dir={table.sortDir} onClick={() => table.toggleSort('lastName')} />
                   <th className="py-2 font-medium">Grade</th>
                   <th className="py-2 font-medium">Address</th>
                   {canEdit && <th className="py-2" />}
                 </tr>
               </thead>
               <tbody>
-                {students.map((s) => (
+                {table.pageItems.map((s) => (
                   <tr key={s.id} className="border-b border-slate-100">
                     <td className="py-2">
                       <StudentPhotoCell student={s} canEdit={!!canEdit} />
@@ -358,6 +390,15 @@ export default function StudentsPage() {
                 ))}
               </tbody>
             </table>
+              )}
+              <Pagination
+                page={table.page}
+                pageCount={table.pageCount}
+                totalItems={table.totalItems}
+                pageSize={table.pageSize}
+                onPageChange={table.setPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>

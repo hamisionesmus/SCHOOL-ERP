@@ -1,4 +1,5 @@
-import { Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, StreamableFile, UseGuards } from '@nestjs/common';
+import { createReadStream } from 'node:fs';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -14,12 +15,21 @@ export class BackupsController {
   constructor(private readonly backupsService: BackupsService) {}
 
   @Get()
-  list() {
-    return this.backupsService.list();
+  list(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+    return this.backupsService.list(page ? Number(page) : 1, pageSize ? Number(pageSize) : 10);
   }
 
   @Post('run')
   trigger() {
     return this.backupsService.trigger();
+  }
+
+  @Get(':filename')
+  download(@Param('filename') filename: string) {
+    const path = this.backupsService.resolvePath(filename);
+    return new StreamableFile(createReadStream(path), {
+      type: filename.endsWith('.sql') ? 'application/sql' : 'application/gzip',
+      disposition: `attachment; filename="${filename}"`,
+    });
   }
 }

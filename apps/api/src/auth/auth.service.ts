@@ -64,8 +64,20 @@ export class AuthService {
       where: { slug: tenantSlug, deletedAt: null },
     });
     if (!tenant) throw new UnauthorizedException('Unknown school');
+
+    // Demo accounts are time-boxed at creation (see TenantsService.confirmCreate) and there's no
+    // background job in this environment to flip their status the moment they lapse, so it's
+    // enforced live here — and opportunistically persisted as SUSPENDED so the Super Admin dashboard
+    // reflects it after the first blocked login attempt, not just in-memory for this request.
+    if (tenant.isDemo && tenant.demoExpiresAt && tenant.demoExpiresAt < new Date() && tenant.status !== 'SUSPENDED') {
+      await this.platformPrisma.tenant.update({ where: { id: tenant.id }, data: { status: 'SUSPENDED' } });
+      tenant.status = 'SUSPENDED';
+    }
+
     if (tenant.status === 'SUSPENDED') {
-      throw new UnauthorizedException('This school account is suspended');
+      throw new UnauthorizedException(
+        tenant.isDemo ? 'This demo account has expired' : 'This school account is suspended',
+      );
     }
 
     const db = this.tenantPrisma.forSchema(tenant.schemaName);

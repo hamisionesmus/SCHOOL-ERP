@@ -86,13 +86,15 @@ export class BiometricService {
       return db.biometricEvent.findMany({ include: INCLUDE, orderBy: { occurredAt: 'desc' }, take: 200 });
     }
 
+    // Guardians no longer see their children's biometric log (Phase 10) — the school communicates
+    // relevant events (e.g. departure) directly via SMS instead of exposing the raw event log as a
+    // parent self-service page. A staff member without BIOMETRIC:MANAGE still sees their own
+    // clock-in/out events, and a student their own, but STUDENT:VIEW_OWN_CHILD is deliberately
+    // excluded from this OR clause.
     return db.biometricEvent.findMany({
       where: {
         OR: [
           { subjectType: 'STAFF' as const, staffUserId: user.sub },
-          ...(perms.includes('STUDENT:VIEW_OWN_CHILD')
-            ? [{ subjectType: 'STUDENT' as const, student: { guardians: { some: { guardianUserId: user.sub } } } }]
-            : []),
           ...(perms.includes('STUDENT:VIEW_OWN_RECORD')
             ? [{ subjectType: 'STUDENT' as const, student: { userId: user.sub } }]
             : []),

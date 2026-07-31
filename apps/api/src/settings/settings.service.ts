@@ -23,7 +23,10 @@ export class SettingsService {
     });
     if (!tenant) throw new NotFoundException('School not found');
 
-    return this.platformPrisma.tenant.update({ where: { id: tenant.id }, data: dto });
+    return this.platformPrisma.tenant.update({
+      where: { id: tenant.id },
+      data: { ...dto, settingsConfigured: true },
+    });
   }
 
   /** A School Administrator's own read-only view of the Super Admin's billing records for their
