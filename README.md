@@ -10,11 +10,11 @@ real, working codebase rather than a mockup. See `docs/` for the full design:
 - [`docs/API.md`](docs/API.md) — endpoint index (live spec at `/api/docs` once running)
 
 This repo is built phase by phase (tracked in `ARCHITECTURE.md` §6), with each phase landing a
-working, browser-verified increment rather than stubs. **Phases 1–6 are done** — see "What's built"
+working, browser-verified increment rather than stubs. **Phases 1–7 are done** — see "What's built"
 below. Mobile apps, biometric attendance, AI features, and the full test/CI/CD/hardening pass remain
-planned (Phases 7–8).
+planned (Phases 8–9).
 
-## What's built (Phases 1–6)
+## What's built (Phases 1–7)
 
 - **Platform**: Super Admin creates/suspends/activates schools; each school gets its own isolated
   Postgres schema, provisioned automatically via `prisma migrate deploy`.
@@ -38,7 +38,19 @@ planned (Phases 7–8).
 - **Trips**: a Class Teacher proposes a one-off school trip, a School Administrator approves or
   rejects it (broadcasting an SMS to every guardian on approval), and a Parent registers their child
   and pays the exact per-student cost, receiving a receipt and confirmation SMS. A separate ledger
-  from Finance's fee invoices, with its own `TRP-YYYY-NNNN` receipt series.
+  from Finance's fee invoices, with its own `TRP-YYYY-NNNN` receipt series, plus a live
+  days-until-trip countdown badge on every trip.
+- **Analytics dashboard**: `/school` is now a role-aware dashboard (animated stat cards + recharts
+  bar/pie/line charts) instead of a plain list — a School Administrator sees student/staff/finance/
+  trip stats, a Class Teacher sees their own class's attendance trend, a Parent/Student sees their
+  children's attendance/fees/next trip. The Super Admin dashboard got the same stat-card/chart
+  treatment.
+- **Classes**: every class now has an assignable class teacher of record, managed from a dedicated
+  Classes page — this is what activates a teacher's attendance-marking rights (the enforcement
+  already existed since Phase 2; there was just no UI to set it until now).
+- **UI polish**: toast notifications (`sonner`) and confirm-dialog modals in place of raw inline
+  errors and native `confirm()` popups, shimmer skeleton loaders while data is fetched, animated
+  count-up stat cards, and a redesigned gradient/glassmorphism login page.
 
 ## Monorepo layout
 

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError, API_ORIGIN } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
+import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -76,6 +77,9 @@ export default function ExamsPage() {
       a.download = 'report-card.pdf';
       a.click();
       URL.revokeObjectURL(url);
+      notifySuccess('Report card downloaded');
+    } catch (err) {
+      notifyError(err, 'Failed to generate report card PDF');
     } finally {
       setDownloadingPdf(false);
     }

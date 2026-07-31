@@ -119,7 +119,7 @@ sequenceDiagram
 | Cache/Queue | Redis + BullMQ | SMS/report/biometric-event processing off the request path |
 | Object storage | S3-compatible (MinIO locally, AWS S3/DO Spaces in prod) | Documents, photos, biometric refs |
 | Auth | JWT + refresh, bcrypt, TOTP | Stateless horizontal scaling, standard 2FA |
-| Infra | Docker Compose (dev) → Kubernetes (prod, Phase 7) | Reproducible local dev now, documented scale-out path |
+| Infra | Docker Compose (dev) → Kubernetes (prod, Phase 9) | Reproducible local dev now, documented scale-out path |
 
 ## 6. Phase roadmap (source of truth: `C:\Users\Administrator\.claude\plans\dynamic-coalescing-deer.md`)
 
@@ -152,14 +152,33 @@ sequenceDiagram
    every guardian on approval), and a Parent registers a child and pays the exact per-student cost
    through a trip-scoped ledger separate from the Finance `Invoice`/`Payment` tables, with its own
    `TRP-YYYY-NNNN` receipt series and a payment-confirmation SMS.
-7. **Phase 7** — Mobile apps, biometric device integration layer, AI features (originally scoped as
-   Phase 6 in the source requirements; renumbered after Phase 6 above was redirected toward UX depth
-   at the user's request).
-8. **Phase 8** — Test suites, CI/CD, Kubernetes, manuals, security hardening pass.
+7. **Phase 7 (done)** — Analytics dashboards and remaining cross-module UX depth. A role-scoped
+   `GET /dashboard` endpoint (`DashboardModule`) computes stat/chart sections conditionally by
+   permission, exactly mirroring the "server decides what's included" scoping pattern used by
+   `StudentsService.list()` since Phase 1 — a School Administrator (who holds nearly every permission)
+   sees a school-wide section (student/gender/grade counts, staff-by-role), a finance section
+   (revenue/outstanding/collection rate), and a trips section; a Class Teacher sees only their own
+   class's attendance stats; a Parent/Student sees only their own children's attendance/fee/trip data.
+   The `/school` route became this dashboard (Students moved to `/school/students`); charts render via
+   `recharts` (bar/pie/line). Every class now has an assignable class teacher of record via
+   `PATCH /classes/:id` and a dedicated Classes management page — this is what actually activates a
+   teacher's attendance-marking rights, since `AttendanceService` already enforced `classTeacherId`
+   from Phase 2 but there was previously no UI to set it. Trips gained a live days-until-trip countdown
+   badge (computed client-side from `tripDate`, shown to teachers/admins/parents alike). A UI polish
+   pass added toast notifications (`sonner`) and "sweet alert"-style confirm dialogs in place of raw
+   inline errors and native `confirm()` calls, shimmer skeleton loaders in place of "Loading..." text,
+   animated stat cards, and a redesigned login page — built on the existing Tailwind/hand-rolled
+   component system rather than adopting the MUI component library, since swapping component systems
+   mid-project across 15+ existing pages would be a much larger, riskier rewrite for the same visual
+   outcome.
+8. **Phase 8** — Mobile apps, biometric device integration layer, AI features (originally scoped as
+   Phase 6 in the source requirements; renumbered twice as Phase 6 and Phase 7 were each redirected
+   toward UX work at the user's request).
+9. **Phase 9** — Test suites, CI/CD, Kubernetes, manuals, security hardening pass.
 
 ## 7. Security posture at each phase
 
 Phase 1 ships: hashed passwords, JWT + refresh rotation, server-side RBAC checks, tenant isolation by
 construction, soft deletes, audit log for auth/tenant/user mutations. Rate limiting, full 2FA
-enforcement, GDPR/Kenya DPA request handling, and a formal pen-test pass are tracked for Phase 7 and
+enforcement, GDPR/Kenya DPA request handling, and a formal pen-test pass are tracked for Phase 9 and
 should not be assumed present before then.

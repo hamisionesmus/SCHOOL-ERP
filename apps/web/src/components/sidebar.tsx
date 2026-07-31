@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  LayoutDashboard,
   GraduationCap,
+  School,
   CalendarCheck,
   BookOpen,
   ClipboardList,
@@ -43,7 +45,10 @@ interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Overview',
-    items: [{ href: '/school', label: 'Students', icon: GraduationCap }],
+    items: [
+      { href: '/school', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/school/students', label: 'Students', icon: GraduationCap },
+    ],
   },
   {
     label: 'Academics',
@@ -83,7 +88,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'Administration',
-    items: [{ href: '/school/settings', label: 'School Settings', icon: SettingsIcon, anyOf: ['SETTINGS:MANAGE'] }],
+    items: [
+      { href: '/school/classes', label: 'Classes', icon: School, anyOf: ['TENANT:MANAGE_USERS'] },
+      { href: '/school/settings', label: 'School Settings', icon: SettingsIcon, anyOf: ['SETTINGS:MANAGE'] },
+    ],
   },
 ];
 

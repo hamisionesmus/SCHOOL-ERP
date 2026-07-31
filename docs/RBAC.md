@@ -124,7 +124,16 @@ registration/payment) reused existing codes — `STUDENT:EDIT` for photo upload,
 `STUDENT:VIEW_OWN_CHILD`/`VIEW_OWN_RECORD` for trip registration/payment and PDF report-card download,
 exactly the same scoping pattern already used everywhere else in this table.
 
-## 5. Seed data (Phase 1)
+## 5. Phase 7 additions
+
+No new permission codes. The `GET /dashboard` endpoint reuses `TENANT:MANAGE_USERS`, `FINANCE:EDIT`/
+`FINANCE:RECEIVE_PAYMENT`, `ATTENDANCE:MARK`, `TRANSPORT:MANAGE`/`TRANSPORT:PROPOSE`, and
+`STUDENT:VIEW_OWN_CHILD`/`VIEW_OWN_RECORD` to decide which sections of the response to compute for the
+caller — the same "server decides what's included" pattern as `StudentsService.list()`, just applied
+to five independent sections instead of one dataset. `PATCH /classes/:id` (class teacher assignment)
+reuses `TENANT:MANAGE_USERS`, matching the existing `POST /classes` gate.
+
+## 6. Seed data (Phase 1)
 
 `apps/api/prisma/seed.ts` creates, per new tenant: the six `[BUILT]` roles above, their permission
 rows per the matrix, and the tenant's first `School Administrator` user (credentials emailed/shown to

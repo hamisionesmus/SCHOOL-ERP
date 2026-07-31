@@ -3,11 +3,15 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
+import { notifyError, notifySuccess } from '@/lib/notify';
+import { daysUntil, formatCountdown, countdownTone } from '@/lib/date';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 interface UserRef {
   id: string;
@@ -45,12 +49,31 @@ interface Trip {
   registrations?: TripRegistration[];
 }
 
+function CountdownBadge({ tripDate }: { tripDate: string }) {
+  const days = daysUntil(tripDate);
+  const tone = countdownTone(days);
+  const toneClass =
+    tone === 'past'
+      ? 'bg-slate-100 text-slate-500'
+      : tone === 'soon'
+        ? 'bg-amber-100 text-amber-700'
+        : 'bg-emerald-100 text-emerald-700';
+  return (
+    <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${toneClass}`}>
+      {formatCountdown(days)}
+    </span>
+  );
+}
+
 export default function TripsPage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [registerStudentId, setRegisterStudentId] = useState<Record<string, string>>({});
+  const [reviewTarget, setReviewTarget] = useState<{ id: string; title: string; action: 'approve' | 'reject' } | null>(
+    null,
+  );
 
   const perms = user?.permissions ?? [];
   const canPropose = perms.includes('TRANSPORT:PROPOSE');
@@ -76,6 +99,7 @@ export default function TripsPage() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['trips'] });
     queryClient.invalidateQueries({ queryKey: ['trip-registrations'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
   };
 
   const propose = useMutation({
@@ -90,25 +114,43 @@ export default function TripsPage() {
           costPerStudent: Number(fd.get('costPerStudent')),
         }),
       }),
-    onSuccess: () => {
+    onSuccess: (_data, fd) => {
       invalidate();
       setShowForm(false);
       setError(null);
+      notifySuccess(`"${fd.get('title')}" submitted for approval`);
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to propose trip'),
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to propose trip');
+      notifyError(err, 'Failed to propose trip');
+    },
   });
 
   const review = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'approve' | 'reject' }) =>
       apiFetch(`/trips/${id}/${action}`, { method: 'PATCH' }),
-    onSuccess: invalidate,
+    onSuccess: (_data, { action }) => {
+      invalidate();
+      notifySuccess(action === 'approve' ? 'Trip approved — guardians notified by SMS' : 'Trip rejected');
+      setReviewTarget(null);
+    },
+    onError: (err) => {
+      notifyError(err, 'Failed to update trip');
+      setReviewTarget(null);
+    },
   });
 
   const register = useMutation({
     mutationFn: ({ tripId, studentId }: { tripId: string; studentId: string }) =>
       apiFetch(`/trips/${tripId}/register`, { method: 'POST', body: JSON.stringify({ studentId }) }),
-    onSuccess: invalidate,
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to register'),
+    onSuccess: () => {
+      invalidate();
+      notifySuccess('Registered for the trip');
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to register');
+      notifyError(err, 'Failed to register');
+    },
   });
 
   const pay = useMutation({
@@ -117,8 +159,14 @@ export default function TripsPage() {
         method: 'POST',
         body: JSON.stringify({ amount, method: 'MPESA' }),
       }),
-    onSuccess: invalidate,
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Payment failed'),
+    onSuccess: () => {
+      invalidate();
+      notifySuccess('Payment received — receipt generated');
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Payment failed');
+      notifyError(err, 'Payment failed');
+    },
   });
 
   if (!user) return null;
@@ -140,7 +188,7 @@ export default function TripsPage() {
                   e.preventDefault();
                   propose.mutate(new FormData(e.currentTarget));
                 }}
-                className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
+                className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4 animate-float-up"
               >
                 <Input name="title" placeholder="Trip title" required className="col-span-2" />
                 <Input name="destination" placeholder="Destination" required />
@@ -167,7 +215,14 @@ export default function TripsPage() {
         )}
         <CardContent className={canPropose ? 'pt-6' : undefined}>
           {isLoading ? (
-            <p className="text-sm text-slate-500">Loading...</p>
+            <div className="flex flex-col gap-4">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="rounded-lg border border-slate-200 p-4">
+                  <Skeleton className="mb-2 h-4 w-1/3" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+              ))}
+            </div>
           ) : !trips || trips.length === 0 ? (
             <p className="text-sm text-slate-500">No trips yet.</p>
           ) : (
@@ -178,8 +233,8 @@ export default function TripsPage() {
                 const availableStudents = (students ?? []).filter((s) => !registeredStudentIds.has(s.id));
 
                 return (
-                  <div key={trip.id} className="rounded-lg border border-slate-200 p-4">
-                    <div className="mb-1 flex items-start justify-between">
+                  <div key={trip.id} className="animate-float-up rounded-lg border border-slate-200 p-4 transition-shadow hover:shadow-sm">
+                    <div className="mb-1 flex items-start justify-between gap-2">
                       <div>
                         <p className="font-medium text-slate-900">{trip.title}</p>
                         <p className="text-xs text-slate-500">
@@ -187,7 +242,12 @@ export default function TripsPage() {
                           {trip.costPerStudent.toLocaleString()}/student
                         </p>
                       </div>
-                      <Badge status={trip.status} />
+                      <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
+                        <Badge status={trip.status} />
+                        {(trip.status === 'APPROVED' || trip.status === 'PROPOSED') && (
+                          <CountdownBadge tripDate={trip.tripDate} />
+                        )}
+                      </div>
                     </div>
                     {trip.description && <p className="mb-2 text-sm text-slate-600">{trip.description}</p>}
                     <p className="mb-2 text-xs text-slate-400">
@@ -198,13 +258,16 @@ export default function TripsPage() {
 
                     {canManage && trip.status === 'PROPOSED' && (
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={() => review.mutate({ id: trip.id, action: 'approve' })}>
+                        <Button
+                          size="sm"
+                          onClick={() => setReviewTarget({ id: trip.id, title: trip.title, action: 'approve' })}
+                        >
                           Approve
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => review.mutate({ id: trip.id, action: 'reject' })}
+                          onClick={() => setReviewTarget({ id: trip.id, title: trip.title, action: 'reject' })}
                         >
                           Reject
                         </Button>
@@ -274,6 +337,21 @@ export default function TripsPage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={!!reviewTarget}
+        title={reviewTarget?.action === 'approve' ? 'Approve this trip?' : 'Reject this trip?'}
+        description={
+          reviewTarget?.action === 'approve'
+            ? `"${reviewTarget?.title}" will become visible to parents, and every guardian will get an SMS notification.`
+            : `"${reviewTarget?.title}" will be marked as rejected and the proposing teacher will be notified.`
+        }
+        tone={reviewTarget?.action === 'approve' ? 'success' : 'danger'}
+        confirmLabel={reviewTarget?.action === 'approve' ? 'Approve trip' : 'Reject trip'}
+        loading={review.isPending}
+        onConfirm={() => reviewTarget && review.mutate({ id: reviewTarget.id, action: reviewTarget.action })}
+        onCancel={() => setReviewTarget(null)}
+      />
     </div>
   );
 }

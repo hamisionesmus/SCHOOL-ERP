@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiFetch, ApiError } from '@/lib/api';
+import { notifyError, notifySuccess } from '@/lib/notify';
 
 const schema = z.object({
   name: z.string().min(2),
@@ -33,12 +34,16 @@ export function CreateSchoolDialog() {
   const createSchool = useMutation({
     mutationFn: (values: FormValues) =>
       apiFetch('/platform/tenants', { method: 'POST', body: JSON.stringify(values) }),
-    onSuccess: () => {
+    onSuccess: (_data, values) => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
       reset();
       setOpen(false);
+      notifySuccess(`${values.name} created`);
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to create school'),
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Failed to create school');
+      notifyError(err, 'Failed to create school');
+    },
   });
 
   if (!open) {
@@ -46,8 +51,8 @@ export function CreateSchoolDialog() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md animate-scale-in rounded-xl bg-white p-6 shadow-2xl">
         <h2 className="mb-4 text-lg font-semibold text-slate-900">Create a new school</h2>
         <form
           onSubmit={handleSubmit((v) => {

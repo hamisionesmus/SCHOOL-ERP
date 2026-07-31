@@ -4,9 +4,11 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, apiUpload, API_ORIGIN, ApiError } from '@/lib/api';
+import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface SchoolSettings {
   name: string;
@@ -56,9 +58,14 @@ export default function SettingsPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['branding'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setError(null);
+      notifySuccess('Settings saved');
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to save settings'),
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Failed to save settings');
+      notifyError(err, 'Failed to save settings');
+    },
   });
 
   const uploadLogo = useMutation({
@@ -70,14 +77,30 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['branding'] });
       setUploading(false);
+      notifySuccess('Logo updated');
     },
     onError: (err) => {
       setUploading(false);
       setError(err instanceof ApiError ? err.message : 'Failed to upload logo');
+      notifyError(err, 'Failed to upload logo');
     },
   });
 
-  if (!user || isLoading || !settings) return null;
+  if (!user || isLoading || !settings) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>School Settings</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <Skeleton className="h-16 w-16 rounded-lg" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!canManage) {
     return (

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -7,6 +7,7 @@ import { CurrentUser, JwtUserPayload } from '../common/decorators/current-user.d
 import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { CreateSchoolClassDto } from './dto/create-school-class.dto';
+import { UpdateSchoolClassDto } from './dto/update-school-class.dto';
 
 @ApiTags('academic')
 @ApiBearerAuth()
@@ -53,5 +54,26 @@ export class AcademicController {
   @RequirePermission('TENANT:MANAGE_USERS')
   createClass(@CurrentUser() user: JwtUserPayload, @Body() dto: CreateSchoolClassDto) {
     return this.tenantPrisma.forSchema(user.tenantSchema!).schoolClass.create({ data: dto });
+  }
+
+  // Every class should have exactly one class teacher of record — this is also what
+  // AttendanceService/HomeworkService already enforce against (classTeacherId), so assigning it
+  // here is what actually activates a teacher's ability to mark that class's attendance.
+  @Patch('classes/:id')
+  @RequirePermission('TENANT:MANAGE_USERS')
+  updateClass(
+    @CurrentUser() user: JwtUserPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateSchoolClassDto,
+  ) {
+    return this.tenantPrisma.forSchema(user.tenantSchema!).schoolClass.update({
+      where: { id },
+      data: dto,
+      include: {
+        gradeLevel: true,
+        academicYear: true,
+        classTeacher: { select: { id: true, fullName: true, email: true } },
+      },
+    });
   }
 }

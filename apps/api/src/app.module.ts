@@ -26,6 +26,7 @@ import { HrModule } from './hr/hr.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { SettingsModule } from './settings/settings.module';
 import { TripsModule } from './trips/trips.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { TripsModule } from './trips/trips.module';
     UploadsModule,
     SettingsModule,
     TripsModule,
+    DashboardModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

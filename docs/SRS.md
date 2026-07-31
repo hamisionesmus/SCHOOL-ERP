@@ -61,10 +61,13 @@ results, edit another teacher's marks, or approve payroll). See `docs/RBAC.md` f
 ### 4.4 Dashboards
 Role-specific dashboards (Super Admin, Teacher, Student, Parent, Finance, etc.) surfacing the
 information relevant to that role — timetable, pending tasks, results, fee balance, alerts.
-`[SCAFFOLDED: Super Admin dashboard shell; BUILT: permission-gated sidebar app shell for all
-tenant-side roles (School Administrator/Class Teacher/Finance Officer/Parent/Student), replacing the
-earlier flat top-nav — each role sees only the modules its permissions unlock; PLANNED: widget-level
-dashboards (pending tasks, alerts) beyond navigation]`
+`[BUILT: permission-gated sidebar app shell for all tenant-side roles (School Administrator/Class
+Teacher/Finance Officer/Parent/Student), replacing the earlier flat top-nav; a role-scoped analytics
+dashboard at /school (`GET /dashboard`, see §4.32) with animated stat cards and recharts
+bar/pie/line charts, sections computed conditionally by permission so each role sees only what's
+relevant to it (School Administrator: student/staff/finance/trip stats; Class Teacher: own-class
+attendance trend; Parent/Student: own children's attendance/fees/next trip); a restyled Super Admin
+dashboard with the same stat-card/chart treatment; PLANNED: pending-task/alert widgets beyond stats]`
 
 ### 4.5 Admissions
 Online application, document upload, interview scheduling, approval workflow, waiting list, student
@@ -95,7 +98,7 @@ Facial recognition attendance for students (gate scan → auto attendance + SMS 
 and departure), staff biometric time-in/out (feeds payroll), visitor registration & badge printing,
 security dashboard (live gate feed, who's on site, missing-student/emergency evacuation list).
 Architecture: device/edge integration posts events to a webhook (`POST /attendance/biometric-events`);
-the platform does not perform on-device face matching itself. `[PLANNED — Phase 7, integration layer]`
+the platform does not perform on-device face matching itself. `[PLANNED — Phase 8, integration layer]`
 
 ### 4.10 SMS / Communications
 Automatic SMS for arrival/departure, fee reminders, results, absentee/discipline alerts, transport
@@ -108,7 +111,7 @@ credentials configured for this environment), SmsMessage delivery log, manual an
 triggered from FinanceService, automatic trip-approval broadcast SMS (to every guardian, on approval)
 and trip-payment-confirmation SMS from the Phase 6 Trips module (see §4.31); PLANNED: real Africa's
 Talking/Twilio/Safaricom implementation (swap-in, no call-site changes needed), email/push/WhatsApp
-channels, message templates, automatic arrival/departure/absentee triggers (tied to Phase 7 biometric
+channels, message templates, automatic arrival/departure/absentee triggers (tied to Phase 8 biometric
 attendance)]`
 
 ### 4.11 Transport
@@ -126,7 +129,12 @@ attendance]`
 
 ### 4.12 Academic / Timetable
 Academic year/terms/calendar, timetable, lesson planning, schemes of work, learning outcomes,
-subjects/classes/streams/teacher assignment, CBC competencies. `[SCAFFOLDED: AcademicYear, SchoolClass; PLANNED — Phase 2/3: timetable, lesson planning]`
+subjects/classes/streams/teacher assignment, CBC competencies.
+`[BUILT: AcademicYear, SchoolClass, a dedicated Classes management page (School-Administrator-only)
+to create classes and assign/reassign each class's class teacher of record via
+PATCH /classes/:id — this is what actually activates a Class Teacher's attendance-marking rights,
+since AttendanceService has enforced classTeacherId since Phase 2 but there was previously no UI to
+set it; PLANNED: timetable, lesson planning, streams as a distinct concept from SchoolClass]`
 
 ### 4.13 Attendance
 Per-lesson/per-day register; only the assigned class teacher submits a class's attendance; once
@@ -232,13 +240,13 @@ messages, timetable, downloads). `[SCAFFOLDED: auth + role model; PLANNED — Ph
 
 ### 4.25 Mobile Applications
 Teacher, Parent, Student, Driver, Security apps (Expo/React Native) consuming the same REST API;
-offline mode, push notifications, biometric device support, QR scanning. `[PLANNED — Phase 7]`
+offline mode, push notifications, biometric device support, QR scanning. `[PLANNED — Phase 8]`
 
 ### 4.26 Reporting
 Cross-module report generation (attendance, finance, payroll, inventory, library, transport,
 academic, CBC, HR, discipline, medical, admissions, government/statutory reports), export to
 PDF/Excel/CSV. `[BUILT: first PDF export — the branded student report card, see §4.14/§4.29;
-PLANNED: everything else, incrementally per module, consolidated reporting engine in Phase 8]`
+PLANNED: everything else, incrementally per module, consolidated reporting engine in Phase 9]`
 
 ### 4.27 Audit Trail
 Every mutating action logged: actor, action, timestamp, old/new value, IP, device. No hard deletes —
@@ -248,7 +256,7 @@ soft delete only. `[BUILT: soft-delete convention + AuditLog model + interceptor
 AI report-card narrative writing, performance analysis, teacher recommendations, timetable
 optimization, fee-default prediction, attendance-anomaly prediction, behavioral alerts, chatbot,
 academic assistant, document search. Designed as an opt-in service layer calling an LLM provider, not
-a hard dependency of core workflows. `[PLANNED — Phase 7]`
+a hard dependency of core workflows. `[PLANNED — Phase 8]`
 
 ### 4.29 School Settings / Branding
 Self-service branding configuration per tenant: school name, logo, primary color, address, website,
@@ -281,9 +289,26 @@ STUDENT:VIEW_OWN_CHILD/VIEW_OWN_RECORD pattern, TripRegistration (UNPAID/PAID) w
 [tripId, studentId] constraint, TripPayment with its own sequential TRP-YYYY-NNNN receipt series
 (kept separate from Finance's RCT- series since trip money is scoped to the trip, not general fees),
 payment amount validated to exactly match the trip's costPerStudent, approval-broadcast and
-payment-confirmation SMS; PLANNED: partial/installment trip payments, trip capacity limits, a
-dedicated Transport Manager role (currently TRANSPORT:MANAGE is School-Administrator-only, like the
-other Phase 5 modules)]`
+payment-confirmation SMS, a live days-until-trip countdown badge (color-coded: green when >7 days
+out, amber within a week, gray once past) computed client-side from tripDate and shown to teachers,
+admins, and parents alike on both the Trips list and the dashboard's "Next Trip" card; PLANNED:
+partial/installment trip payments, trip capacity limits, a dedicated Transport Manager role (currently
+TRANSPORT:MANAGE is School-Administrator-only, like the other Phase 5 modules)]`
+
+### 4.32 Analytics Dashboard
+A role-aware landing page replacing the old flat "first tab" pattern — animated stat cards and
+recharts bar/pie/line charts summarizing the data most relevant to whoever is logged in.
+`[BUILT: GET /dashboard (DashboardModule) computes independent sections conditionally by permission
+and runs them in parallel via Promise.all — school (TENANT:MANAGE_USERS: total students, boys/girls
+split, students-by-grade bar chart, staff-by-role pie chart, pending admissions count), finance
+(FINANCE:EDIT/RECEIVE_PAYMENT: total revenue, outstanding balance, collection rate, invoice-status
+breakdown), myClass (ATTENDANCE:MARK, scoped to the caller's own classTeacherId: student count,
+today's attendance rate, a 7-day attendance-rate line chart), trips (TRANSPORT:MANAGE/PROPOSE:
+upcoming/pending counts, total trip revenue, next trip), own (STUDENT:VIEW_OWN_CHILD/VIEW_OWN_RECORD:
+per-child 30-day attendance rate, fee balance, next trip) — a School Administrator holds nearly every
+permission and so sees every section, while a Class Teacher/Finance Officer/Parent/Student each see
+only their own; PLANNED: date-range filtering, exportable PDF/Excel dashboard snapshots (ties into the
+consolidated reporting engine planned for Phase 9, see §4.26)]`
 
 ## 5. Non-Functional Requirements
 
@@ -291,12 +316,12 @@ other Phase 5 modules)]`
   passwords (bcrypt/argon2) `[BUILT]`; per-role permission checks server-side on every request
   `[BUILT]`; API rate limiting, device/session management `[PLANNED]`.
 - **Compliance**: Kenya Data Protection Act 2019 and GDPR-aligned data handling — consent tracking,
-  data export/erasure requests (soft-delete + anonymization), data residency awareness. `[PLANNED — Phase 7]`
+  data export/erasure requests (soft-delete + anonymization), data residency awareness. `[PLANNED — Phase 9]`
 - **Scalability**: target 100,000+ students / 10,000+ teachers across tenants; horizontal scaling of
   API via stateless JWT + Redis-backed sessions/cache/queues; connection pooling (PgBouncer) as tenant
-  count grows. `[ARCHITECTURE SUPPORTS; load-tested — Phase 7]`
+  count grows. `[ARCHITECTURE SUPPORTS; load-tested — Phase 9]`
 - **Availability**: containerized services behind a load balancer, health checks, graceful restarts;
-  Kubernetes manifests for production. `[PLANNED — Phase 7]`
+  Kubernetes manifests for production. `[PLANNED — Phase 9]`
 - **Auditability**: see 4.27.
 - **Accessibility**: WCAG-conscious component choices (shadcn/ui + Radix primitives), keyboard
   navigation, dark/light mode. `[PLANNED — progressive, from Phase 2 UI work onward]`

@@ -46,7 +46,13 @@ every field — treat Swagger as authoritative for request/response shapes.
 |---|---|---|
 | GET/POST | `/academic-years` | Manage academic years, mark current |
 | GET/POST | `/grade-levels` | PP1–Grade 9 configuration |
-| GET/POST | `/classes` | Classes/streams, assign class teacher |
+| GET/POST | `/classes` | Classes/streams, assign class teacher on creation |
+| PATCH | `/classes/:id` | Reassign (or unassign with `classTeacherId: null`) a class's class teacher — `TENANT:MANAGE_USERS` |
+
+### Tenant-scoped: Dashboard (Phase 7)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/dashboard` | Role-scoped stat/chart sections (school/finance/myClass/trips/own), each computed only if the caller's permissions warrant it — no blanket permission requirement |
 
 ### Tenant-scoped: Students
 | Method | Path | Notes |
@@ -56,13 +62,21 @@ every field — treat Swagger as authoritative for request/response shapes.
 | GET | `/students/:id` | Full profile |
 | PATCH | `/students/:id` | Update (audited) |
 
-## Planned endpoint groups (by phase — see `docs/ARCHITECTURE.md`)
+## Endpoint groups landed since (by phase — see `docs/ARCHITECTURE.md`)
+
+Phases 2–7 are done; the endpoints below are all live, not planned. Full request/response shapes live
+in Swagger (`/api/docs`), not repeated here.
 
 - `/admissions/*`, `/attendance/*`, `/homework/*` — Phase 2
-- `/exams/*`, `/cbc/*`, `/report-cards/*` — Phase 3
+- `/exams/*`, `/cbc/*`, `/exams/:examId/report-card/*` — Phase 3
 - `/finance/*`, `/communications/*` — Phase 4
 - `/transport/*`, `/library/*`, `/inventory/*`, `/hr/*`, `/health/*`, `/discipline/*` — Phase 5
-- `/attendance/biometric-events` (device webhook), `/ai/*` — Phase 6
+- `/uploads`, `/settings`, `/trips/*`, `/platform/tenants/:id/payment-config` — Phase 6
+- `/dashboard`, `/classes/:id` (PATCH) — Phase 7
+
+## Planned endpoint groups (by phase — see `docs/ARCHITECTURE.md`)
+
+- `/attendance/biometric-events` (device webhook), `/ai/*` — Phase 8
 
 ## OpenAPI/Swagger
 
