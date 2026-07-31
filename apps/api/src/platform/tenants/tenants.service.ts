@@ -67,6 +67,9 @@ export class TenantsService {
         website: dto.website,
         smsSenderId: dto.smsSenderId,
         status: 'ACTIVE',
+        // A 30-day grace period before the Super Admin needs to issue a real subscription invoice —
+        // see BillingService/docs/SRS.md §4.1 for the invoicing flow that extends this.
+        currentPeriodEnd: new Date(Date.now() + 30 * 86_400_000),
       },
     });
 

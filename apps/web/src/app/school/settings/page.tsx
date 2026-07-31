@@ -4,9 +4,12 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, apiUpload, API_ORIGIN, ApiError } from '@/lib/api';
+import { getAccessToken } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
+import { daysUntil, formatCountdown, countdownTone } from '@/lib/date';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -25,6 +28,30 @@ interface SchoolSettings {
   bankAccountName: string | null;
   bankAccountNumber: string | null;
   passMarkPercent: number;
+  billingCycle: 'MONTHLY' | 'YEARLY';
+  currentPeriodEnd: string | null;
+}
+interface Payment {
+  id: string;
+  amount: number;
+  method: string;
+  receiptNumber: string;
+  createdAt: string;
+}
+interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  billingCycle: string;
+  periodStart: string;
+  periodEnd: string;
+  amount: number;
+  status: 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+  dueDate: string;
+  payments: Payment[];
+}
+
+function kes(n: number) {
+  return `KES ${n.toLocaleString()}`;
 }
 
 export default function SettingsPage() {
@@ -267,6 +294,115 @@ export default function SettingsPage() {
           </dl>
         </CardContent>
       </Card>
+
+      <BillingCard settings={settings} />
     </div>
+  );
+}
+
+function BillingCard({ settings }: { settings: SchoolSettings }) {
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const { data: invoices, isLoading: invoicesLoading } = useQuery({
+    queryKey: ['billing-invoices'],
+    queryFn: () => apiFetch<Invoice[]>('/settings/billing'),
+  });
+
+  const days = settings.currentPeriodEnd ? daysUntil(settings.currentPeriodEnd) : null;
+  const tone = days !== null ? countdownTone(days) : 'upcoming';
+
+  async function downloadPdf(invoiceId: string) {
+    setDownloadingId(invoiceId);
+    try {
+      const token = getAccessToken();
+      const res = await fetch(`${API_ORIGIN}/settings/billing/${invoiceId}/pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error('Failed to generate invoice PDF');
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filenameMatch?.[1] ?? 'invoice.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+      notifySuccess('Invoice downloaded');
+    } catch (err) {
+      notifyError(err, 'Failed to download invoice');
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Subscription &amp; Billing</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-5 flex items-center justify-between rounded-lg bg-slate-50 p-4">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              {settings.billingCycle === 'YEARLY' ? 'Yearly' : 'Monthly'} subscription renews
+            </p>
+            <p
+              className={`mt-1 text-lg font-semibold ${
+                tone === 'past' ? 'text-rose-600' : tone === 'soon' ? 'text-amber-600' : 'text-slate-900'
+              }`}
+            >
+              {days !== null ? formatCountdown(days) : 'Not set'}
+            </p>
+          </div>
+          {settings.currentPeriodEnd && (
+            <p className="text-sm text-slate-500">{new Date(settings.currentPeriodEnd).toLocaleDateString()}</p>
+          )}
+        </div>
+
+        <p className="mb-3 text-xs text-slate-500">
+          Invoices and receipts issued by the platform for this school&apos;s subscription. Emailed to
+          this account when issued or paid.
+        </p>
+
+        {invoicesLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : !invoices || invoices.length === 0 ? (
+          <p className="text-sm text-slate-500">No invoices yet.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-slate-500">
+                <th className="py-2 font-medium">Invoice</th>
+                <th className="py-2 font-medium">Amount</th>
+                <th className="py-2 font-medium">Status</th>
+                <th className="py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.map((inv) => (
+                <tr key={inv.id} className="border-b border-slate-100">
+                  <td className="py-2 font-medium text-slate-900">{inv.invoiceNumber}</td>
+                  <td className="py-2 text-slate-700">{kes(inv.amount)}</td>
+                  <td className="py-2">
+                    <Badge status={inv.status} />
+                  </td>
+                  <td className="py-2 text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={downloadingId === inv.id}
+                      onClick={() => downloadPdf(inv.id)}
+                    >
+                      {downloadingId === inv.id ? '...' : 'Download PDF'}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
   );
 }

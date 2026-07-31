@@ -20,6 +20,10 @@ const statusStyles: Record<string, string> = {
   COMPLETED: 'bg-slate-200 text-slate-700',
   IN: 'bg-emerald-100 text-emerald-700',
   OUT: 'bg-amber-100 text-amber-700',
+  PRESENT: 'bg-emerald-100 text-emerald-700',
+  ABSENT: 'bg-rose-100 text-rose-700',
+  LATE: 'bg-amber-100 text-amber-700',
+  EXCUSED: 'bg-blue-100 text-blue-700',
 };
 
 export function Badge({ status, className }: { status: string; className?: string }) {

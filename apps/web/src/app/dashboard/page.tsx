@@ -4,15 +4,19 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { School, CheckCircle2, PauseCircle, Clock } from 'lucide-react';
 import { useState } from 'react';
-import { useSession } from '@/lib/use-session';
+import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
+import { daysUntil, formatCountdown, countdownTone } from '@/lib/date';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { SkeletonCard, SkeletonTable } from '@/components/ui/skeleton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Pagination } from '@/components/ui/pagination';
+import { SortableTh } from '@/components/ui/sortable-th';
+import { useTableControls } from '@/hooks/use-table-controls';
 import { CreateSchoolDialog } from './create-school-dialog';
 
 interface Tenant {
@@ -21,6 +25,7 @@ interface Tenant {
   slug: string;
   status: 'TRIAL' | 'ACTIVE' | 'SUSPENDED';
   address: string | null;
+  currentPeriodEnd: string | null;
   createdAt: string;
 }
 interface TenantUsage {
@@ -47,10 +52,18 @@ function UsageCell({ tenantId }: { tenantId: string }) {
   );
 }
 
+function RenewalCell({ currentPeriodEnd }: { currentPeriodEnd: string | null }) {
+  if (!currentPeriodEnd) return <span className="text-slate-300">Not set</span>;
+  const days = daysUntil(currentPeriodEnd);
+  const tone = countdownTone(days);
+  const toneClass =
+    tone === 'past' ? 'text-rose-600 font-medium' : tone === 'soon' ? 'text-amber-600 font-medium' : 'text-slate-600';
+  return <span className={toneClass}>{formatCountdown(days)}</span>;
+}
+
 const STATUS_COLORS: Record<string, string> = { ACTIVE: '#10b981', TRIAL: '#f59e0b', SUSPENDED: '#f43f5e' };
 
 export default function DashboardPage() {
-  const { user, logout } = useSession('platform');
   const queryClient = useQueryClient();
   const [confirmTarget, setConfirmTarget] = useState<{ id: string; name: string; action: 'suspend' | 'activate' } | null>(
     null,
@@ -59,7 +72,6 @@ export default function DashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['tenants'],
     queryFn: () => apiFetch<{ data: Tenant[] }>('/platform/tenants'),
-    enabled: !!user,
   });
 
   const toggleStatus = useMutation({
@@ -76,8 +88,6 @@ export default function DashboardPage() {
     },
   });
 
-  if (!user) return null;
-
   const tenants = data?.data ?? [];
   const activeCount = tenants.filter((t) => t.status === 'ACTIVE').length;
   const trialCount = tenants.filter((t) => t.status === 'TRIAL').length;
@@ -88,16 +98,13 @@ export default function DashboardPage() {
     { status: 'SUSPENDED', count: suspendedCount },
   ].filter((s) => s.count > 0);
 
+  const table = useTableControls(tenants, { pageSize: 8, initialSortKey: 'createdAt' });
+
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10">
-      <header className="mb-8 flex items-center justify-between animate-float-up">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Super Admin</h1>
-          <p className="text-sm text-slate-500">{user.email}</p>
-        </div>
-        <Button variant="outline" onClick={logout}>
-          Log out
-        </Button>
+    <>
+      <header className="mb-8 animate-float-up">
+        <h1 className="text-2xl font-semibold text-slate-900">Schools</h1>
+        <p className="text-sm text-slate-500">Every school on the platform, at a glance.</p>
       </header>
 
       {isLoading ? (
@@ -146,54 +153,86 @@ export default function DashboardPage() {
           ) : tenants.length === 0 ? (
             <p className="text-sm text-slate-500">No schools yet. Create the first one.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="py-2 font-medium">Name</th>
-                  <th className="py-2 font-medium">Slug</th>
-                  <th className="py-2 font-medium">Status</th>
-                  <th className="py-2 font-medium">Storage</th>
-                  <th className="py-2 font-medium">Created</th>
-                  <th className="py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {tenants.map((t) => (
-                  <tr key={t.id} className="border-b border-slate-100">
-                    <td className="py-2 font-medium text-slate-900">{t.name}</td>
-                    <td className="py-2 text-slate-500">{t.slug}</td>
-                    <td className="py-2">
-                      <Badge status={t.status} />
-                    </td>
-                    <td className="py-2">
-                      <UsageCell tenantId={t.id} />
-                    </td>
-                    <td className="py-2 text-slate-500">
-                      {new Date(t.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="py-2 text-right">
-                      {t.status === 'SUSPENDED' ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setConfirmTarget({ id: t.id, name: t.name, action: 'activate' })}
-                        >
-                          Activate
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => setConfirmTarget({ id: t.id, name: t.name, action: 'suspend' })}
-                        >
-                          Suspend
-                        </Button>
-                      )}
-                    </td>
+            <>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                    <SortableTh label="Name" active={table.sortKey === 'name'} dir={table.sortDir} onClick={() => table.toggleSort('name')} />
+                    <SortableTh label="Slug" active={table.sortKey === 'slug'} dir={table.sortDir} onClick={() => table.toggleSort('slug')} />
+                    <SortableTh label="Status" active={table.sortKey === 'status'} dir={table.sortDir} onClick={() => table.toggleSort('status')} />
+                    <th className="py-2 font-medium">Storage</th>
+                    <SortableTh
+                      label="Renewal"
+                      active={table.sortKey === 'currentPeriodEnd'}
+                      dir={table.sortDir}
+                      onClick={() => table.toggleSort('currentPeriodEnd')}
+                    />
+                    <SortableTh
+                      label="Created"
+                      active={table.sortKey === 'createdAt'}
+                      dir={table.sortDir}
+                      onClick={() => table.toggleSort('createdAt')}
+                    />
+                    <th className="py-2" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {table.pageItems.map((t) => (
+                    <tr key={t.id} className="border-b border-slate-100">
+                      <td className="py-2 font-medium text-slate-900">
+                        <Link href={`/dashboard/schools/${t.id}`} className="hover:underline">
+                          {t.name}
+                        </Link>
+                      </td>
+                      <td className="py-2 text-slate-500">{t.slug}</td>
+                      <td className="py-2">
+                        <Badge status={t.status} />
+                      </td>
+                      <td className="py-2">
+                        <UsageCell tenantId={t.id} />
+                      </td>
+                      <td className="py-2">
+                        <RenewalCell currentPeriodEnd={t.currentPeriodEnd} />
+                      </td>
+                      <td className="py-2 text-slate-500">{new Date(t.createdAt).toLocaleDateString()}</td>
+                      <td className="py-2 text-right">
+                        <div className="flex justify-end gap-2">
+                          <Link href={`/dashboard/schools/${t.id}`}>
+                            <Button size="sm" variant="outline">
+                              Manage
+                            </Button>
+                          </Link>
+                          {t.status === 'SUSPENDED' ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setConfirmTarget({ id: t.id, name: t.name, action: 'activate' })}
+                            >
+                              Activate
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => setConfirmTarget({ id: t.id, name: t.name, action: 'suspend' })}
+                            >
+                              Suspend
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Pagination
+                page={table.page}
+                pageCount={table.pageCount}
+                onPageChange={table.setPage}
+                totalItems={table.totalItems}
+                pageSize={table.pageSize}
+              />
+            </>
           )}
         </CardContent>
       </Card>
@@ -212,6 +251,6 @@ export default function DashboardPage() {
         onConfirm={() => confirmTarget && toggleStatus.mutate({ id: confirmTarget.id, action: confirmTarget.action })}
         onCancel={() => setConfirmTarget(null)}
       />
-    </main>
+    </>
   );
 }

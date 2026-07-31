@@ -91,11 +91,39 @@ in Swagger (`/api/docs`), not repeated here.
 - `/dashboard`, `/classes/:id` (PATCH) — Phase 7
 - `/biometric-events/*`, `/hr/payslips/*`, `/hr/work-logs`, `/inventory/items?category=` (Kitchen
   filter), `/platform/tenants/:id/usage` — Phase 8
+- `/notifications`, `/platform/tenants/:id/invoices`, `/platform/invoices/:id/payments`,
+  `/platform/invoices/:id/pdf`, `/platform/tenants/:id/reset-admin-password`,
+  `/platform/tenants/:id/audit-logs`, `/platform/backups`, `/platform/backups/run`,
+  `/settings/billing`, `/settings/billing/:invoiceId/pdf` — Phase 9 (see table below)
+
+### Tenant-scoped: Notifications (Phase 9)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/notifications` | Computed feed, no dedicated permission gate — any authenticated tenant user; items are individually gated by the permission that owns each underlying module (leave, admissions, trips, low stock, mark-sheet approval, overdue invoices, own fee balance/upcoming trip) |
+
+### Platform: Billing, password reset, audit logs (Super Admin only, Phase 9)
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/platform/tenants/:id/invoices` | Issues a `PlatformInvoice`; emails the school admin via the platform `EmailProvider` stub (logs instead of sending) |
+| GET | `/platform/tenants/:id/invoices` | List invoices for a tenant |
+| POST | `/platform/invoices/:invoiceId/payments` | Records a `PlatformPayment`; if cumulative payments reach the invoice amount, marks it PAID, extends `Tenant.currentPeriodEnd`, and reactivates a SUSPENDED tenant — atomically, regardless of payment method |
+| GET | `/platform/invoices/:invoiceId/pdf` | Downloadable invoice/receipt PDF |
+| POST | `/platform/tenants/:id/reset-admin-password` | Generates and sets a fresh temporary password for the tenant's School Administrator, returned exactly once in the response — real passwords are never retrievable or displayed |
+| GET | `/platform/tenants/:id/audit-logs` | Reads the tenant's own `AuditLog` table by schema name (cross-schema read from the platform layer) |
+| GET | `/platform/backups` | Lists backup files (database dumps + uploads archives) on disk |
+| POST | `/platform/backups/run` | Triggers `prisma/backup-database.ts` in the background |
+
+### Tenant-scoped: Billing view (Phase 9)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/settings/billing` | `SETTINGS:MANAGE` — the School Administrator's own read-only view of `billingCycle`/`currentPeriodEnd`/invoices/payments |
+| GET | `/settings/billing/:invoiceId/pdf` | `SETTINGS:MANAGE` — same PDF renderer as the Super Admin route, with a cross-tenant-access check |
 
 ## Planned endpoint groups (by phase — see `docs/ARCHITECTURE.md`)
 
 - `/ai/*`, real biometric device/ML integration (Phase 8 shipped the event-log data model + a manual
-  logging endpoint, not real hardware) — Phase 9
+  logging endpoint, not real hardware), live M-Pesa/bank payment-gateway webhooks (Phase 9 shipped
+  manual-confirm payment recording, not automatic callbacks) — Phase 10
 
 ## OpenAPI/Swagger
 

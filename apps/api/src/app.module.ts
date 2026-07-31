@@ -28,6 +28,9 @@ import { SettingsModule } from './settings/settings.module';
 import { TripsModule } from './trips/trips.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { BiometricModule } from './biometric/biometric.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { BillingModule } from './platform/billing/billing.module';
+import { BackupsModule } from './platform/backups/backups.module';
 
 @Module({
   imports: [
@@ -59,6 +62,9 @@ import { BiometricModule } from './biometric/biometric.module';
     TripsModule,
     DashboardModule,
     BiometricModule,
+    NotificationsModule,
+    BillingModule,
+    BackupsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

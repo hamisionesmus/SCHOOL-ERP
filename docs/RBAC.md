@@ -150,7 +150,18 @@ permission), `INVENTORY:MANAGE` for the Kitchen page (same engine as Inventory, 
 needs no permission code at all beyond authentication — any signed-in staff member logs their own day,
 the same pattern as `LeaveRequest` creation.
 
-## 7. Seed data (Phase 1)
+## 7. Phase 9 additions
+
+No new tenant-side permission codes. The Parent/Student attendance-view fix (docs/SRS.md §4.13) and the
+notification bell (§4.4) both reuse existing codes — the bell computes each item under the same
+permission that already gates its underlying module (`HR:EDIT`, `ADMISSION:MANAGE`, `TRANSPORT:MANAGE`,
+`INVENTORY:MANAGE`, `EXAM:APPROVE`, `FINANCE:EDIT`/`APPROVE_INVOICE`, `STUDENT:VIEW_OWN_CHILD`/
+`VIEW_OWN_RECORD`) rather than introducing a new `NOTIFICATION:*` code. All of the new Super Admin
+billing/backups/audit-log/password-reset functionality is gated by the existing platform-level
+`@RequirePlatformRole()` guard (Super Admin only) — there is no tenant-schema RBAC involved since none
+of it runs inside a tenant's schema-scoped request.
+
+## 8. Seed data (Phase 1)
 
 `apps/api/prisma/seed.ts` creates, per new tenant: the six `[BUILT]` roles above, their permission
 rows per the matrix, and the tenant's first `School Administrator` user (credentials emailed/shown to

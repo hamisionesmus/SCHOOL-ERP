@@ -18,6 +18,24 @@ enum PlatformRole {
   SUPER_ADMIN
 }
 
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum PlatformInvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PlatformPaymentMethod {
+  BANK
+  MPESA
+  CASH
+}
+
 model SubscriptionPlan {
   id              String   @id @default(uuid())
   name            String   @unique
@@ -59,9 +77,17 @@ model Tenant {
   storageLimitMbOverride Int?
   subscriptionPlanId     String?
   subscriptionPlan       SubscriptionPlan? @relation(fields: [subscriptionPlanId], references: [id])
+  // Billing: manually invoiced by the Super Admin (no scheduled job in this environment generates
+  // renewal invoices automatically — see docs/SRS.md §4.1). currentPeriodEnd drives the renewal
+  // countdown shown on the Super Admin dashboard; recording a payment against an invoice extends it
+  // and reactivates a SUSPENDED tenant automatically (see TenantsService.recordPayment()).
+  billingCycle           BillingCycle      @default(MONTHLY)
+  currentPeriodEnd       DateTime?
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
   deletedAt              DateTime?
+
+  invoices PlatformInvoice[]
 }
 
 model PlatformUser {
@@ -76,7 +102,8 @@ model PlatformUser {
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
 
-  refreshTokens PlatformRefreshToken[]
+  refreshTokens    PlatformRefreshToken[]
+  paymentsRecorded PlatformPayment[]
 }
 
 model PlatformRefreshToken {
@@ -99,4 +126,40 @@ model PlatformAuditLog {
   newValue    Json?
   ipAddress   String?
   createdAt   DateTime @default(now())
+}
+
+// Subscription billing — a school's recurring fee for one billing period. Amounts are whole KES
+// (Int), same convention as the tenant-side Finance module. Issued manually by the Super Admin, not
+// by a scheduled job (see Tenant.billingCycle comment).
+model PlatformInvoice {
+  id            String                 @id @default(uuid())
+  tenantId      String
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id])
+  billingCycle  BillingCycle
+  periodStart   DateTime
+  periodEnd     DateTime
+  amount        Int
+  status        PlatformInvoiceStatus  @default(PENDING)
+  dueDate       DateTime
+  invoiceNumber String                 @unique
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  payments PlatformPayment[]
+}
+
+// Recording a payment that reaches the invoice amount marks it PAID, pushes the tenant's
+// currentPeriodEnd out to the invoice's periodEnd, and reactivates the tenant if it had been
+// SUSPENDED for non-payment — see TenantsService.recordPayment().
+model PlatformPayment {
+  id               String                 @id @default(uuid())
+  invoiceId        String
+  invoice          PlatformInvoice        @relation(fields: [invoiceId], references: [id])
+  amount           Int
+  method           PlatformPaymentMethod
+  reference        String?
+  receiptNumber    String                 @unique
+  recordedByUserId String
+  recordedBy       PlatformUser           @relation(fields: [recordedByUserId], references: [id])
+  createdAt        DateTime               @default(now())
 }

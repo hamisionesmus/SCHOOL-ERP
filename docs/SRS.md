@@ -43,8 +43,24 @@ billing, system analytics, impersonate school admin, push updates, platform-wide
 (PATCH /platform/tenants/:id/payment-config — API only, no Super Admin UI page yet), real per-school
 storage usage (GET /platform/tenants/:id/usage — sums pg_total_relation_size across every table in
 the tenant's Postgres schema plus the tenant's uploads-folder byte size, not an estimate; shown as a
-column on the Super Admin dashboard, flagged red past 90% of storageLimitMbOverride when set);
-PLANNED: billing, usage analytics beyond storage, impersonation, updates, payment-config UI]`
+column on the Super Admin dashboard, flagged red past 90% of storageLimitMbOverride when set), a
+sidebar-shelled Super Admin app (Schools list, Backups) instead of one flat page, a per-school detail
+page (Overview/Billing/Audit Log tabs) with real subscription billing — PlatformInvoice/
+PlatformPayment models, issuing an invoice emails the school admin (platform EmailProvider stub, logs
+instead of sending — mirrors SmsProvider exactly), recording a payment that reaches the invoice
+amount marks it PAID, extends Tenant.currentPeriodEnd, and automatically reactivates a SUSPENDED
+tenant regardless of method (bank/M-Pesa/cash) — the manual step is confirming the payment happened,
+not the reactivation logic; a downloadable invoice/receipt PDF; a renewal countdown computed from
+currentPeriodEnd (30-day grace period set at tenant creation); a School Administrator password-reset
+action that generates a fresh temporary password shown exactly once — real passwords are never
+displayed anywhere, to the Super Admin or anyone else, since they're one-way bcrypt hashes; a
+cross-schema audit-log view (GET /platform/tenants/:id/audit-logs, reads the tenant's own AuditLog
+table by schema name); a backups list + trigger (GET/POST /platform/backups, background-runs
+prisma/backup-database.ts, which shells out to `docker compose exec` for pg_dump since Postgres runs
+in Docker, not on the host, in this environment); PLANNED: subscription plan assignment UI, usage
+analytics beyond storage, impersonation, push updates, payment-config UI, live M-Pesa/bank
+payment-gateway webhooks (Phase 9 payment confirmation is a manual Super-Admin action, not an
+automatic callback — see Finance §4.18 for the identical caveat on the tenant-side M-Pesa stub)]`
 
 ### 4.2 Multi-Tenancy
 Each school: own isolated data (schema-per-tenant), logo/colors/branding, name/address/website, SMS
@@ -70,7 +86,16 @@ dashboard at /school (`GET /dashboard`, see §4.32) with animated stat cards and
 bar/pie/line charts, sections computed conditionally by permission so each role sees only what's
 relevant to it (School Administrator: student/staff/finance/trip stats; Class Teacher: own-class
 attendance trend; Parent/Student: own children's attendance/fees/next trip); a restyled Super Admin
-dashboard with the same stat-card/chart treatment; PLANNED: pending-task/alert widgets beyond stats]`
+dashboard with the same stat-card/chart treatment, now behind its own sidebar shell (see §4.1); a
+computed notification bell (GET /notifications) surfacing pending leave requests, pending admissions,
+trips awaiting approval, low-stock items, mark-sheets awaiting approval, overdue invoices, and (for
+Parent/Student) their own fee balance/upcoming trip — one item per condition, each gated by the same
+permission that gates the underlying module, not a persisted notification table; a sidebar
+collapse-to-icon-rail toggle (persisted per browser) and an independently-scrolling sidebar/main
+content pane (previously the whole page scrolled together); client-side sort/paginate
+(`useTableControls` + `<Pagination>`/`<SortableTh>`) applied to the Super Admin schools list and
+several tenant list pages — not yet every list page in the app; PLANNED: pending-task/alert widgets
+beyond the notification bell, pagination/sorting on the remaining list pages]`
 
 ### 4.5 Admissions
 Online application, document upload, interview scheduling, approval workflow, waiting list, student
@@ -167,7 +192,11 @@ set it; PLANNED: timetable, lesson planning, streams as a distinct concept from 
 Per-lesson/per-day register; only the assigned class teacher submits a class's attendance; once
 submitted the record locks (only Head Teacher/Principal can reopen, with a reason, under audit).
 `[BUILT: mark/lock/reopen with class-teacher-of-record + ATTENDANCE:REOPEN enforcement, audit log
-entries, Parent/Student-scoped views; PLANNED: per-lesson (vs per-day) granularity, reopen reason field]`
+entries, Parent/Student-scoped read-only views (fixed a Phase 9 frontend bug where Parent/Student
+viewers were rendered an editable status dropdown per student — the backend never accepted their
+writes, but the UI implied they could mark attendance; now gated on the same permission check used to
+decide whether the row is editable at all, rendering a read-only status Badge otherwise); PLANNED:
+per-lesson (vs per-day) granularity, reopen reason field]`
 
 ### 4.14 Examinations & CBC Assessment
 CATs, midterm, end-term, CBC competency assessments, projects, rubrics, practicals. A teacher enters
@@ -363,17 +392,20 @@ consolidated reporting engine planned for Phase 9, see §4.26)]`
   passwords (bcrypt/argon2) `[BUILT]`; per-role permission checks server-side on every request
   `[BUILT]`; API rate limiting, device/session management `[PLANNED]`.
 - **Compliance**: Kenya Data Protection Act 2019 and GDPR-aligned data handling — consent tracking,
-  data export/erasure requests (soft-delete + anonymization), data residency awareness. `[PLANNED — Phase 9]`
+  data export/erasure requests (soft-delete + anonymization), data residency awareness. `[PLANNED — Phase 10]`
 - **Scalability**: target 100,000+ students / 10,000+ teachers across tenants; horizontal scaling of
   API via stateless JWT + Redis-backed sessions/cache/queues; connection pooling (PgBouncer) as tenant
-  count grows. `[ARCHITECTURE SUPPORTS; load-tested — Phase 9]`
+  count grows. `[ARCHITECTURE SUPPORTS; load-tested — Phase 10]`
 - **Availability**: containerized services behind a load balancer, health checks, graceful restarts;
-  Kubernetes manifests for production. `[PLANNED — Phase 9]`
-- **Backups**: `apps/api/prisma/backup-database.ts` wraps `pg_dump` (the entire Postgres database in
-  one dump — schema-per-tenant means every school's data lives in one database, so this covers all of
-  them) plus a tar of the local-disk uploads folder into timestamped files under `backups/`, run via
-  `npm run backup` or on a schedule (cron / Windows Task Scheduler — the script itself has no
-  scheduling logic). `[BUILT: local backup script; PLANNED: automated off-box/cloud upload — this
+  Kubernetes manifests for production. `[PLANNED — Phase 10]`
+- **Backups**: `apps/api/prisma/backup-database.ts` shells into the Postgres Docker container
+  (`docker compose exec ... pg_dump`, since this environment runs Postgres in Docker rather than as a
+  host binary) to dump the entire database in one file (schema-per-tenant means every school's data
+  lives in one database, so this covers all of them) plus a `tar --force-local` archive of the
+  local-disk uploads folder into timestamped files under `apps/api/backups/`. Runnable via
+  `npm run backup`, on a schedule (cron / Windows Task Scheduler — the script itself has no scheduling
+  logic), or on demand from the Super Admin Backups page (`GET/POST /platform/backups`).
+  `[BUILT: backup script + Super Admin trigger/list UI; PLANNED: automated off-box/cloud upload — this
   environment has no cloud storage credentials to wire it to — retention policy, restore runbook]`
 - **Auditability**: see 4.27.
 - **Accessibility**: WCAG-conscious component choices (shadcn/ui + Radix primitives), keyboard

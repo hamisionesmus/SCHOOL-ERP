@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface SchoolClass {
@@ -48,16 +49,26 @@ export default function AttendancePage() {
     enabled: !!user,
   });
 
-  const myClasses = useMemo(
-    () => (classes ?? []).filter((c) => !canMark || user?.roles?.includes('School Administrator') || c.classTeacherId === user?.sub),
-    [classes, user, canMark],
-  );
-
   const { data: students } = useQuery({
     queryKey: ['students'],
     queryFn: () => apiFetch<Student[]>('/students'),
     enabled: !!user,
   });
+
+  // A marker (admin/class teacher) picks from classes they're allowed to mark; anyone else (parent/
+  // student, view-only) only ever sees classes that actually contain a student visible to them —
+  // /students is already scoped server-side to "my children"/"my own record", so this never leaks
+  // other students, it just avoids offering an empty "no students" dead end for every other class.
+  const myClasses = useMemo(() => {
+    if (canMark) {
+      return (classes ?? []).filter(
+        (c) => user?.roles?.includes('School Administrator') || c.classTeacherId === user?.sub,
+      );
+    }
+    const visibleClassIds = new Set((students ?? []).map((s) => s.currentClassId).filter(Boolean));
+    return (classes ?? []).filter((c) => visibleClassIds.has(c.id));
+  }, [classes, students, user, canMark]);
+
   const classStudents = (students ?? []).filter((s) => s.currentClassId === classId);
 
   const { data: records, isLoading } = useQuery({
@@ -100,7 +111,7 @@ export default function AttendancePage() {
     <>
           <Card>
         <CardHeader>
-          <CardTitle>Mark attendance</CardTitle>
+          <CardTitle>{canMark ? 'Mark attendance' : 'Attendance'}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="mb-4 flex gap-3">
@@ -149,20 +160,24 @@ export default function AttendancePage() {
                           {s.firstName} {s.lastName}
                         </td>
                         <td className="py-2">
-                          <select
-                            value={current}
-                            disabled={isLocked && !canReopen}
-                            onChange={(e) =>
-                              setDraft((d) => ({ ...d, [s.id]: e.target.value as (typeof STATUSES)[number] }))
-                            }
-                            className="h-8 rounded-md border border-slate-300 px-2 text-xs disabled:bg-slate-100"
-                          >
-                            {STATUSES.map((st) => (
-                              <option key={st} value={st}>
-                                {st}
-                              </option>
-                            ))}
-                          </select>
+                          {canMark ? (
+                            <select
+                              value={current}
+                              disabled={isLocked && !canReopen}
+                              onChange={(e) =>
+                                setDraft((d) => ({ ...d, [s.id]: e.target.value as (typeof STATUSES)[number] }))
+                              }
+                              className="h-8 rounded-md border border-slate-300 px-2 text-xs disabled:bg-slate-100"
+                            >
+                              {STATUSES.map((st) => (
+                                <option key={st} value={st}>
+                                  {st}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <Badge status={current} />
+                          )}
                         </td>
                       </tr>
                     );

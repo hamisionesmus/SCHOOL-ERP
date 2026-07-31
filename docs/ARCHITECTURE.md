@@ -119,7 +119,7 @@ sequenceDiagram
 | Cache/Queue | Redis + BullMQ | SMS/report/biometric-event processing off the request path |
 | Object storage | S3-compatible (MinIO locally, AWS S3/DO Spaces in prod) | Documents, photos, biometric refs |
 | Auth | JWT + refresh, bcrypt, TOTP | Stateless horizontal scaling, standard 2FA |
-| Infra | Docker Compose (dev) → Kubernetes (prod, Phase 9) | Reproducible local dev now, documented scale-out path |
+| Infra | Docker Compose (dev) → Kubernetes (prod, Phase 10) | Reproducible local dev now, documented scale-out path |
 
 ## 6. Phase roadmap (source of truth: `C:\Users\Administrator\.claude\plans\dynamic-coalescing-deer.md`)
 
@@ -196,13 +196,48 @@ sequenceDiagram
    since schema-per-tenant means every school lives in one Postgres database) plus a tar of the
    uploads folder into timestamped files under `backups/`; it does not upload anywhere, since this
    environment has no cloud storage credentials to wire it to.
-9. **Phase 9** — Mobile apps, AI features, full biometric hardware/ML integration (the honest-stub
-   version landed in Phase 8; this is the part that needs real devices), test suites, CI/CD,
-   Kubernetes, manuals, security hardening pass.
+9. **Phase 9 (done)** — Cross-cutting UI/UX depth and a real Super Admin platform-ops layer, plus one
+   correctness bug fix. A `noneOf`/`disabled`-gating bug let a Parent see (but not actually submit —
+   the backend guard was always sound) editable attendance dropdowns on `/school/attendance`; the
+   status cell now renders a read-only `Badge` for anyone without `ATTENDANCE:MARK`. The `/school`
+   and Super Admin layouts moved from a single page-level scroll to `h-screen overflow-hidden` with
+   independently scrolling sidebar/main panes; the sidebar gained a collapse-to-icon-rail toggle
+   (persisted in `localStorage`). A computed notification bell (`GET /notifications`) surfaces
+   pending-approval/low-stock/overdue-invoice/upcoming-trip items per permission — same "server
+   decides what's included" pattern as `DashboardService`, not a new persisted table. A reusable
+   `useTableControls` hook (client-side sort/paginate) plus `<Pagination>`/`<SortableTh>` components
+   were applied across the Super Admin schools list and several tenant list pages.
+   The Super Admin got its own sidebar-shelled app (`SuperAdminSidebar`, mirroring the tenant
+   `Sidebar`) instead of one flat page, plus a genuine platform billing system: `PlatformInvoice`/
+   `PlatformPayment` models (whole-KES amounts, same convention as tenant-side Finance), a
+   platform-level `EmailProvider` stub mirroring `SmsProvider` exactly (logs instead of sending — no
+   email credentials in this environment), issuing an invoice emails the school's admin, recording a
+   payment that reaches the invoice amount marks it PAID, extends `Tenant.currentPeriodEnd` by the
+   billing period, and **automatically reactivates a SUSPENDED tenant** — the "restore after payment"
+   behavior works for any recorded method (bank, M-Pesa, cash), it's just that M-Pesa/bank
+   confirmation itself is still a manual Super-Admin action, not a live payment-gateway webhook (no
+   real Daraja/bank API credentials exist in this environment, same caveat as the tenant-side M-Pesa
+   stub from Phase 4). Downloadable invoice/receipt PDFs are available to both the Super Admin and,
+   read-only, the School Administrator (`GET /settings/billing`) on their own Settings page. A
+   password-reset action generates a fresh temporary password shown once — **real passwords are
+   never displayed, to the Super Admin or anyone else**, since they're one-way bcrypt hashes; this is
+   the only honest way to help a locked-out school. Cross-schema audit-log and real per-school storage
+   (Postgres table sizes + uploads-folder bytes) round out the School detail page. A `backups/run`
+   endpoint (background-triggers `backup-database.ts`) and a `backups/` list page complete the
+   platform-ops picture — the earlier host-installed-`pg_dump` assumption was fixed to shell out via
+   `docker compose exec` into the `postgres` service instead, since Postgres runs in Docker, not on
+   the host, in this environment.
+   Finally, the login page dropped its explicit "Super Admin / School" tab UI — one form (email,
+   password, an optional collapsed "School slug" field) now covers both, exactly mirroring what
+   `AuthService.login()` already did server-side (route by whether a `tenantSlug` was submitted).
+10. **Phase 10** — Mobile apps, AI features, full biometric hardware/ML integration (the honest-stub
+    version landed in Phase 8; this is the part that needs real devices), live payment-gateway
+    webhooks for platform billing (Phase 9 shipped manual confirm, not M-Pesa/bank callbacks), test
+    suites, CI/CD, Kubernetes, manuals, security hardening pass.
 
 ## 7. Security posture at each phase
 
 Phase 1 ships: hashed passwords, JWT + refresh rotation, server-side RBAC checks, tenant isolation by
 construction, soft deletes, audit log for auth/tenant/user mutations. Rate limiting, full 2FA
-enforcement, GDPR/Kenya DPA request handling, and a formal pen-test pass are tracked for Phase 9 and
+enforcement, GDPR/Kenya DPA request handling, and a formal pen-test pass are tracked for Phase 10 and
 should not be assumed present before then.

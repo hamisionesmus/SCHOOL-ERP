@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { GraduationCap, Building2, School } from 'lucide-react';
+import { GraduationCap, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -20,9 +20,12 @@ const loginSchema = z.object({
 });
 type LoginForm = z.infer<typeof loginSchema>;
 
+// One login form for everyone — the backend already resolves realm from what's submitted (a
+// tenantSlug routes to that school's tenant schema, its absence tries the platform account), so the
+// UI doesn't need to ask "which kind of account are you" up front. See AuthService.login().
 export default function LoginPage() {
   const router = useRouter();
-  const [asSchool, setAsSchool] = useState(false);
+  const [showSchoolField, setShowSchoolField] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const {
     register,
@@ -33,7 +36,7 @@ export default function LoginPage() {
   async function onSubmit(values: LoginForm) {
     setError(null);
     try {
-      const payload = asSchool ? values : { email: values.email, password: values.password };
+      const payload = { email: values.email, password: values.password, tenantSlug: values.tenantSlug || undefined };
       const data = await apiFetch<{ accessToken: string; refreshToken: string; user: SessionUser }>(
         '/auth/login',
         { method: 'POST', body: JSON.stringify(payload) },
@@ -66,42 +69,7 @@ export default function LoginPage() {
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl backdrop-blur-xl">
-          <div className="mb-5 flex rounded-lg bg-white/5 p-1">
-            <button
-              type="button"
-              onClick={() => setAsSchool(false)}
-              className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all',
-                !asSchool ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-300 hover:text-white',
-              )}
-            >
-              <Building2 size={13} />
-              Super Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => setAsSchool(true)}
-              className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all',
-                asSchool ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-300 hover:text-white',
-              )}
-            >
-              <School size={13} />
-              School
-            </button>
-          </div>
-
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-            {asSchool && (
-              <div className="flex flex-col gap-1 animate-fade-in">
-                <label className="text-xs font-medium text-slate-300">School slug</label>
-                <Input
-                  placeholder="greenfield-academy"
-                  className="border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus-visible:ring-blue-500"
-                  {...register('tenantSlug')}
-                />
-              </div>
-            )}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-slate-300">Email</label>
               <Input
@@ -121,6 +89,26 @@ export default function LoginPage() {
               />
               {errors.password && <p className="text-xs text-rose-400">{errors.password.message}</p>}
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowSchoolField((v) => !v)}
+              className="flex items-center gap-1 self-start text-xs text-slate-400 hover:text-slate-200"
+            >
+              <ChevronDown size={13} className={cn('transition-transform', showSchoolField && 'rotate-180')} />
+              Signing in to a specific school?
+            </button>
+            {showSchoolField && (
+              <div className="flex flex-col gap-1 animate-fade-in">
+                <label className="text-xs font-medium text-slate-300">School slug</label>
+                <Input
+                  placeholder="greenfield-academy"
+                  className="border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus-visible:ring-blue-500"
+                  {...register('tenantSlug')}
+                />
+              </div>
+            )}
+
             {error && (
               <p className="animate-fade-in rounded-md bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{error}</p>
             )}

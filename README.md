@@ -10,11 +10,11 @@ real, working codebase rather than a mockup. See `docs/` for the full design:
 - [`docs/API.md`](docs/API.md) — endpoint index (live spec at `/api/docs` once running)
 
 This repo is built phase by phase (tracked in `ARCHITECTURE.md` §6), with each phase landing a
-working, browser-verified increment rather than stubs. **Phases 1–8 are done** — see "What's built"
-below. Mobile apps, AI features, real biometric hardware/ML integration, and the full
-test/CI/CD/hardening pass remain planned (Phase 9).
+working, browser-verified increment rather than stubs. **Phases 1–9 are done** — see "What's built"
+below. Mobile apps, AI features, real biometric hardware/ML integration, live payment-gateway
+webhooks, and the full test/CI/CD/hardening pass remain planned (Phase 10).
 
-## What's built (Phases 1–8)
+## What's built (Phases 1–9)
 
 - **Platform**: Super Admin creates/suspends/activates schools; each school gets its own isolated
   Postgres schema, provisioned automatically via `prisma migrate deploy`.
@@ -74,6 +74,34 @@ test/CI/CD/hardening pass remain planned (Phase 9).
 - **Backups**: `npm run backup` (in `apps/api`) wraps `pg_dump` + an uploads-folder archive into
   timestamped local files — see `docs/SRS.md` §5 for what's still manual (off-box/cloud upload,
   retention, restore runbook).
+- **UI/UX overhaul**: independently-scrolling sidebar and main content pane on every layout (was
+  whole-page scroll); a sidebar collapse-to-icon-rail toggle on both the tenant app and the Super
+  Admin app, persisted per browser; a computed notification bell (pending leave/admissions/trips/low
+  stock/mark-sheet approvals/overdue invoices/own fee balance, each gated by the permission that owns
+  it); reusable client-side sort + pagination components, wired into the Super Admin schools list and
+  several tenant list pages.
+- **Super Admin app**: rebuilt behind its own sidebar shell (Schools, Backups) instead of one flat
+  page. Each school now has a detail page with:
+  - **Subscription billing** — issue invoices, record payments (bank/M-Pesa/cash), and a payment that
+    reaches the invoice amount **automatically reactivates a suspended school** and extends its
+    renewal date — no manual re-enable step beyond confirming the payment happened. Invoices/receipts
+    are downloadable as PDF and emailed to the school admin (platform email stub — logs instead of
+    sending, same pattern as SMS).
+  - **Renewal countdown** computed from the tenant's current billing period.
+  - **School Administrator password reset** — generates a fresh one-time temporary password. Real
+    passwords are never shown to the Super Admin (or anyone) since they're one-way bcrypt hashes; this
+    is the honest alternative to "view the admin's password."
+  - **Cross-school audit log** viewer.
+  - **Backups page** — lists and triggers on-demand database + uploads backups from the UI.
+- **Tenant-side billing view**: the School Administrator's own Settings page now shows a read-only
+  billing card (renewal countdown, invoice history, PDF downloads) for their school.
+- **Unified login**: one login form for every role — no separate "Super Admin" login UI. The backend
+  already resolved realm from whether a tenant slug was submitted; the frontend just stopped exposing
+  that as a visible choice, folding the tenant-slug field behind an optional "Signing in to a specific
+  school?" toggle.
+- **Attendance fix**: Parents/Students were being rendered an editable per-student status dropdown
+  (the backend already rejected their writes, but the UI implied they could mark attendance) — now a
+  read-only status badge for non-markers.
 
 ## Monorepo layout
 
@@ -115,8 +143,11 @@ exists — see each script's header comment). Demo logins, all password `ChangeM
 | Class Teacher | `teacher@greenfield.ac.ke` | Peter Otieno — attendance, marks entry, trip proposals |
 | Parent | `parent@greenfield.ac.ke` | Mary Mwangi — guardian of student John Mwangi |
 
-Use the "Sign in to a school instead" link on the login page (as opposed to the Super Admin sign-in)
-and enter the tenant slug above.
+On the login page, click "Signing in to a specific school?" to reveal the tenant-slug field and enter
+`greenfield-academy`, alongside the email/password above. Leaving the slug field blank and empty
+instead logs in as the Super Admin (`SUPER_ADMIN_EMAIL`/`SUPER_ADMIN_PASSWORD` from `.env`) — there is
+a single login form for both; the backend resolves which realm to authenticate against based on
+whether a slug was submitted.
 
 ## File uploads
 
