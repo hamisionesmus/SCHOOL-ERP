@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "**/*spec.ts",
+    "prisma/seed.ts",
+    "prisma/migrate-all-tenants.ts",
+    "prisma/reseed-all-tenants.ts",
+    "prisma/seed-phase2-demo.ts",
+    "prisma/seed-phase3-demo.ts",
+    "prisma/seed-phase4-demo.ts",
+    "prisma/seed-phase5-demo.ts"
+  ]
+}

@@ -1,0 +1,672 @@
+// Tenant-schema Prisma definition.
+//
+// This schema is never migrated against a single fixed database schema in production — it is the
+// template. `prisma migrate dev` here (run once, against a scratch `tenant_template` schema) produces
+// the SQL migration files under `prisma/tenant/migrations/`. TenantProvisioningService replays those
+// same SQL files against each real tenant's schema (`tenant_<slug>`) at school-creation time, and
+// TenantPrismaService opens a PrismaClient per tenant pointed at that schema via a `?schema=` query
+// param on the connection string. See docs/ARCHITECTURE.md §2.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../generated/tenant-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("TENANT_TEMPLATE_DATABASE_URL")
+}
+
+enum StudentStatus {
+  ACTIVE
+  TRANSFERRED
+  GRADUATED
+  WITHDRAWN
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  INTERVIEW
+  OFFERED
+  ADMITTED
+  REJECTED
+  WAITLISTED
+}
+
+enum ExamType {
+  CAT
+  MIDTERM
+  ENDTERM
+  CBC_ASSESSMENT
+  PROJECT
+  PRACTICAL
+}
+
+enum ScoringMode {
+  NUMERIC
+  RUBRIC
+}
+
+enum ExamSubjectStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+enum RubricLevel {
+  EE
+  ME
+  AE
+  BE
+}
+
+enum InvoiceStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK
+  MPESA
+}
+
+enum MpesaStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum SmsStatus {
+  SENT
+  FAILED
+}
+
+enum StockMovementType {
+  IN
+  OUT
+}
+
+enum DisciplineCategory {
+  WARNING
+  DETENTION
+  SUSPENSION
+  POSITIVE_BEHAVIOR
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  phone            String?
+  passwordHash     String
+  fullName         String
+  twoFactorEnabled Boolean   @default(false)
+  twoFactorSecret  String?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  userRoles          UserRole[]
+  refreshTokens       RefreshToken[]
+  studentProfile      Student?          @relation("StudentUser")
+  guardianOfStudents  GuardianLink[]
+  classTeacherOf      SchoolClass[]     @relation("ClassTeacher")
+  auditLogs           AuditLog[]
+  markedAttendance    AttendanceRecord[] @relation("AttendanceMarkedBy")
+  createdAssignments  Assignment[]       @relation("AssignmentCreatedBy")
+  subjectAssignments  SubjectAssignment[]
+  marksEntered        Mark[]             @relation("MarkEnteredBy")
+  paymentsReceived    Payment[]          @relation("PaymentReceivedBy")
+  smsMessages         SmsMessage[]       @relation("SmsRecipient")
+  drivenVehicles      Vehicle[]          @relation("VehicleDriver")
+  stockMovements      StockMovement[]    @relation("StockMovementRecordedBy")
+  clinicVisitsRecorded ClinicVisit[]     @relation("ClinicVisitRecordedBy")
+  disciplineCasesReported DisciplineCase[] @relation("DisciplineReportedBy")
+  leaveRequests       LeaveRequest[]     @relation("LeaveRequestedBy")
+  leaveRequestsReviewed LeaveRequest[]   @relation("LeaveReviewedBy")
+}
+
+model Role {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  description  String?
+  isSystemRole Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+}
+
+model Permission {
+  id     String @id @default(uuid())
+  module String
+  action String
+  code   String @unique
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model GradeLevel {
+  id        String @id @default(uuid())
+  code      String @unique // PP1, PP2, G1..G9
+  name      String
+  sortOrder Int
+
+  classes      SchoolClass[]
+  students     Student[]
+  applications Application[]
+  feeStructures FeeStructure[]
+}
+
+model AcademicYear {
+  id        String   @id @default(uuid())
+  name      String   @unique // e.g. "2026"
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+
+  classes       SchoolClass[]
+  exams         Exam[]
+  feeStructures FeeStructure[]
+  invoices      Invoice[]
+}
+
+model SchoolClass {
+  id             String   @id @default(uuid())
+  name           String // e.g. "Grade 4 Blue"
+  gradeLevelId   String
+  gradeLevel     GradeLevel   @relation(fields: [gradeLevelId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  classTeacherId String?
+  classTeacher   User?        @relation("ClassTeacher", fields: [classTeacherId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  students Student[]
+  attendanceRecords AttendanceRecord[]
+  assignments       Assignment[]
+  subjectAssignments SubjectAssignment[]
+  examSubjects       ExamSubject[]
+
+  @@unique([name, academicYearId])
+}
+
+model Student {
+  id              String        @id @default(uuid())
+  userId          String?       @unique
+  user            User?         @relation("StudentUser", fields: [userId], references: [id])
+  admissionNumber String        @unique
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime
+  gender          String
+  gradeLevelId    String
+  gradeLevel      GradeLevel    @relation(fields: [gradeLevelId], references: [id])
+  currentClassId  String?
+  currentClass    SchoolClass?  @relation(fields: [currentClassId], references: [id])
+  upiNumber       String?
+  nemisNumber     String?
+  status          StudentStatus @default(ACTIVE)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  guardians         GuardianLink[]
+  attendanceRecords AttendanceRecord[]
+  submissions       Submission[]
+  application       Application?
+  marks             Mark[]
+  invoices          Invoice[]
+  loans             Loan[]
+  transportAssignment TransportAssignment?
+  medicalAlerts     MedicalAlert[]
+  clinicVisits      ClinicVisit[]
+  disciplineCases   DisciplineCase[]
+
+  @@index([currentClassId])
+}
+
+model GuardianLink {
+  id               String  @id @default(uuid())
+  studentId        String
+  student          Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardianUserId   String
+  guardianUser     User    @relation(fields: [guardianUserId], references: [id])
+  relationship     String // MOTHER, FATHER, GUARDIAN
+  isPrimaryContact Boolean @default(false)
+
+  @@unique([studentId, guardianUserId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  actor       User?    @relation(fields: [actorUserId], references: [id])
+  action      String
+  entityType  String
+  entityId    String?
+  oldValue    Json?
+  newValue    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+}
+
+// Per-lesson/per-day register. A (student, class, date) row is created locked; only ATTENDANCE:REOPEN
+// holders can unlock it for correction (docs/SRS.md §4.13). See AttendanceService for the class-teacher-
+// of-record check that sits on top of the ATTENDANCE:MARK permission.
+model AttendanceRecord {
+  id             String           @id @default(uuid())
+  studentId      String
+  student        Student          @relation(fields: [studentId], references: [id])
+  classId        String
+  schoolClass    SchoolClass      @relation(fields: [classId], references: [id])
+  date           DateTime
+  status         AttendanceStatus
+  markedByUserId String
+  markedBy       User             @relation("AttendanceMarkedBy", fields: [markedByUserId], references: [id])
+  locked         Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([studentId, classId, date])
+}
+
+model Assignment {
+  id              String   @id @default(uuid())
+  classId         String
+  schoolClass     SchoolClass @relation(fields: [classId], references: [id])
+  title           String
+  description     String?
+  dueDate         DateTime
+  createdByUserId String
+  createdBy       User     @relation("AssignmentCreatedBy", fields: [createdByUserId], references: [id])
+  createdAt       DateTime @default(now())
+
+  submissions Submission[]
+}
+
+model Submission {
+  id             String     @id @default(uuid())
+  assignmentId   String
+  assignment     Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        Student    @relation(fields: [studentId], references: [id])
+  submittedAt    DateTime?
+  content        String?
+  grade          String?
+  teacherComment String?
+
+  @@unique([assignmentId, studentId])
+}
+
+// Pre-enrollment pipeline. Admitting an application creates a Student via the same admission-number
+// logic used by direct student creation (StudentsService) — see AdmissionsService.admit().
+model Application {
+  id                String            @id @default(uuid())
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime
+  gender            String
+  gradeLevelId      String
+  gradeLevel        GradeLevel        @relation(fields: [gradeLevelId], references: [id])
+  guardianName      String
+  guardianEmail     String
+  guardianPhone     String
+  status            ApplicationStatus @default(APPLIED)
+  notes             String?
+  admittedStudentId String?           @unique
+  admittedStudent   Student?          @relation(fields: [admittedStudentId], references: [id])
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model Subject {
+  id   String @id @default(uuid())
+  name String @unique
+  code String @unique
+
+  subjectAssignments SubjectAssignment[]
+  examSubjects       ExamSubject[]
+}
+
+// "Which teacher teaches which subject in which class" — the row EXAM:ENTER_MARKS checks against so
+// a teacher can only enter marks for their own assigned subject+class (docs/SRS.md §4.14).
+model SubjectAssignment {
+  id        String      @id @default(uuid())
+  subjectId String
+  subject   Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  classId   String
+  schoolClass SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacherId String
+  teacher   User        @relation(fields: [teacherId], references: [id])
+  createdAt DateTime    @default(now())
+
+  @@unique([subjectId, classId, teacherId])
+}
+
+model Exam {
+  id             String   @id @default(uuid())
+  name           String // e.g. "Term 2 CAT 1"
+  examType       ExamType
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  term           Int // 1, 2, 3
+  startDate      DateTime
+  endDate        DateTime
+  createdAt      DateTime @default(now())
+
+  examSubjects ExamSubject[]
+}
+
+// One row per (exam, subject, class): defines the scoring mode and carries the approval-workflow
+// state that gates Mark edits. Status machine: DRAFT (teacher entering) -> SUBMITTED (teacher locks)
+// -> APPROVED (Academic Office; only EXAM:REOPEN can revert) — or SUBMITTED -> DRAFT via reject
+// (return for correction). Mirrors the AttendanceRecord lock pattern; see docs/SRS.md §4.14.
+model ExamSubject {
+  id          String            @id @default(uuid())
+  examId      String
+  exam        Exam              @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject           @relation(fields: [subjectId], references: [id])
+  classId     String
+  schoolClass SchoolClass       @relation(fields: [classId], references: [id])
+  maxScore    Int               @default(100)
+  scoringMode ScoringMode       @default(NUMERIC)
+  status      ExamSubjectStatus @default(DRAFT)
+  reviewComment String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  marks Mark[]
+
+  @@unique([examId, subjectId, classId])
+}
+
+model Mark {
+  id            String      @id @default(uuid())
+  examSubjectId String
+  examSubject   ExamSubject @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       Student     @relation(fields: [studentId], references: [id])
+  score         Int?
+  rubricLevel   RubricLevel?
+  comment       String?
+  enteredByUserId String
+  enteredBy     User        @relation("MarkEnteredBy", fields: [enteredByUserId], references: [id])
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([examSubjectId, studentId])
+}
+
+// Amounts are whole Kenyan Shillings (Int), not Decimal — avoids Prisma Decimal/JSON-serialization
+// friction for a domain that doesn't deal in fractional shillings. Revisit if cents ever matter.
+
+model FeeStructure {
+  id             String   @id @default(uuid())
+  name           String // e.g. "Grade 4 Term 2 Fees"
+  gradeLevelId   String
+  gradeLevel     GradeLevel   @relation(fields: [gradeLevelId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  term           Int
+  amount         Int
+  createdAt      DateTime @default(now())
+
+  invoices Invoice[]
+}
+
+// One invoice = one student's fee for one term. Generated in bulk from a FeeStructure (one per
+// student in that grade level) or created ad hoc. `balance` is denormalized (kept in sync by
+// FinanceService on every payment) rather than computed on read, so invoice listings stay a single
+// query — see docs/ARCHITECTURE.md.
+model Invoice {
+  id             String        @id @default(uuid())
+  studentId      String
+  student        Student       @relation(fields: [studentId], references: [id])
+  feeStructureId String?
+  feeStructure   FeeStructure? @relation(fields: [feeStructureId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id])
+  term           Int
+  amount         Int
+  balance        Int
+  status         InvoiceStatus @default(PENDING)
+  dueDate        DateTime
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  payments      Payment[]
+  mpesaRequests MpesaStkRequest[]
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  invoiceId       String
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id])
+  amount          Int
+  method          PaymentMethod
+  reference       String? // bank slip no., M-Pesa receipt no., etc.
+  receiptNumber   String        @unique
+  receivedByUserId String
+  receivedBy      User          @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id])
+  createdAt       DateTime      @default(now())
+}
+
+// Stub M-Pesa Daraja STK Push integration: initiate() creates a PENDING row; in production Safaricom
+// calls a public callback URL which a platform-level (public-schema) lookup table would route to the
+// right tenant schema. That cross-schema webhook routing is out of scope for this phase — instead a
+// staff member (or, in a later phase, the parent from their own STK prompt) hits a "confirm" action
+// that completes the request and records the Payment, so the state machine and UI are real even
+// though the Safaricom leg is simulated. See docs/ARCHITECTURE.md and FinanceService.
+model MpesaStkRequest {
+  id                String      @id @default(uuid())
+  invoiceId         String
+  invoice           Invoice     @relation(fields: [invoiceId], references: [id])
+  phoneNumber       String
+  amount            Int
+  checkoutRequestId String      @unique @default(uuid())
+  status            MpesaStatus @default(PENDING)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+// Provider-agnostic outbound SMS log. StubSmsProvider "sends" by writing SENT here and logging —
+// swapping in Africa's Talking/Twilio/Safaricom later means implementing SmsProvider, not touching
+// call sites. See docs/ARCHITECTURE.md and CommunicationsService.
+model SmsMessage {
+  id              String    @id @default(uuid())
+  recipientUserId String?
+  recipient       User?     @relation("SmsRecipient", fields: [recipientUserId], references: [id])
+  recipientPhone  String
+  body            String
+  status          SmsStatus @default(SENT)
+  createdAt       DateTime  @default(now())
+}
+
+// ---- Library ----
+
+model Book {
+  id             String @id @default(uuid())
+  title          String
+  author         String
+  isbn           String? @unique
+  totalCopies    Int
+  availableCopies Int
+  createdAt      DateTime @default(now())
+
+  loans Loan[]
+}
+
+// Fine is a flat KES-per-day-late rate applied on return; see LibraryService.FINE_PER_DAY.
+model Loan {
+  id          String    @id @default(uuid())
+  bookId      String
+  book        Book      @relation(fields: [bookId], references: [id])
+  studentId   String
+  student     Student   @relation(fields: [studentId], references: [id])
+  borrowedAt  DateTime  @default(now())
+  dueDate     DateTime
+  returnedAt  DateTime?
+  fineAmount  Int       @default(0)
+}
+
+// ---- Transport ----
+
+model Vehicle {
+  id           String  @id @default(uuid())
+  plateNumber  String  @unique
+  capacity     Int
+  driverId     String?
+  driver       User?   @relation("VehicleDriver", fields: [driverId], references: [id])
+  createdAt    DateTime @default(now())
+
+  routes Route[]
+}
+
+model Route {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  vehicleId   String?
+  vehicle     Vehicle? @relation(fields: [vehicleId], references: [id])
+  createdAt   DateTime @default(now())
+
+  assignments TransportAssignment[]
+}
+
+model TransportAssignment {
+  id        String  @id @default(uuid())
+  studentId String  @unique
+  student   Student @relation(fields: [studentId], references: [id])
+  routeId   String
+  route     Route   @relation(fields: [routeId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+// ---- Inventory ----
+
+model InventoryItem {
+  id            String  @id @default(uuid())
+  name          String
+  category      String
+  quantity      Int     @default(0)
+  unit          String // e.g. "pcs", "kg", "litres"
+  reorderLevel  Int     @default(0)
+  createdAt     DateTime @default(now())
+
+  movements StockMovement[]
+}
+
+model StockMovement {
+  id              String            @id @default(uuid())
+  itemId          String
+  item            InventoryItem     @relation(fields: [itemId], references: [id])
+  type            StockMovementType
+  quantity        Int
+  reason          String?
+  recordedByUserId String
+  recordedBy      User              @relation("StockMovementRecordedBy", fields: [recordedByUserId], references: [id])
+  createdAt       DateTime          @default(now())
+}
+
+// ---- Health ----
+
+model MedicalAlert {
+  id        String  @id @default(uuid())
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+  condition String // e.g. "Peanut allergy"
+  severity  String // e.g. "HIGH"
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model ClinicVisit {
+  id              String   @id @default(uuid())
+  studentId       String
+  student         Student  @relation(fields: [studentId], references: [id])
+  visitDate       DateTime @default(now())
+  symptoms        String
+  treatment       String?
+  medication      String?
+  recordedByUserId String
+  recordedBy      User     @relation("ClinicVisitRecordedBy", fields: [recordedByUserId], references: [id])
+}
+
+// ---- Discipline ----
+
+// Creating a case auto-notifies the student's primary guardian via CommunicationsService — see
+// DisciplineService, matching the pattern established by FinanceService's payment-receipt SMS.
+model DisciplineCase {
+  id              String             @id @default(uuid())
+  studentId       String
+  student         Student            @relation(fields: [studentId], references: [id])
+  category        DisciplineCategory
+  description     String
+  actionTaken     String?
+  reportedByUserId String
+  reportedBy      User               @relation("DisciplineReportedBy", fields: [reportedByUserId], references: [id])
+  createdAt       DateTime           @default(now())
+}
+
+// ---- HR (leave only — see docs/SRS.md §4.19 for what's still planned) ----
+
+model LeaveRequest {
+  id               String      @id @default(uuid())
+  requestedByUserId String
+  requestedBy      User        @relation("LeaveRequestedBy", fields: [requestedByUserId], references: [id])
+  leaveType        String // e.g. "Annual", "Sick", "Maternity"
+  startDate        DateTime
+  endDate          DateTime
+  reason           String?
+  status           LeaveStatus @default(PENDING)
+  reviewedByUserId String?
+  reviewedBy       User?       @relation("LeaveReviewedBy", fields: [reviewedByUserId], references: [id])
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}

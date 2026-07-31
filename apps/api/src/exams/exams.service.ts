@@ -1,0 +1,231 @@
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
+import { JwtUserPayload } from '../common/decorators/current-user.decorator';
+import { CreateExamDto } from './dto/create-exam.dto';
+import { CreateExamSubjectDto } from './dto/create-exam-subject.dto';
+import { EnterMarksDto } from './dto/enter-marks.dto';
+import { RejectExamSubjectDto } from './dto/reject-exam-subject.dto';
+
+@Injectable()
+export class ExamsService {
+  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+
+  async createExam(user: JwtUserPayload, dto: CreateExamDto) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    return db.exam.create({
+      data: {
+        name: dto.name,
+        examType: dto.examType,
+        academicYearId: dto.academicYearId,
+        term: dto.term,
+        startDate: new Date(dto.startDate),
+        endDate: new Date(dto.endDate),
+      },
+    });
+  }
+
+  async listExams(user: JwtUserPayload) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    return db.exam.findMany({
+      include: { academicYear: true, examSubjects: { include: { subject: true, schoolClass: true } } },
+      orderBy: { startDate: 'desc' },
+    });
+  }
+
+  async createExamSubject(user: JwtUserPayload, examId: string, dto: CreateExamSubjectDto) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const exam = await db.exam.findUnique({ where: { id: examId } });
+    if (!exam) throw new NotFoundException('Exam not found');
+
+    return db.examSubject.create({
+      data: {
+        examId,
+        subjectId: dto.subjectId,
+        classId: dto.classId,
+        maxScore: dto.maxScore ?? 100,
+        scoringMode: dto.scoringMode ?? 'NUMERIC',
+      },
+      include: { subject: true, schoolClass: true },
+    });
+  }
+
+  /** School Administrator (EXAM:MANAGE/APPROVE) sees everything; a subject teacher sees only the
+   * exam-subjects they're assigned to (so they know what to grade), scoped like attendance/homework. */
+  async listExamSubjects(user: JwtUserPayload, examId?: string) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const perms = user.permissions ?? [];
+    const where: Record<string, unknown> = {};
+    if (examId) where.examId = examId;
+
+    if (perms.includes('EXAM:MANAGE') || perms.includes('EXAM:APPROVE')) {
+      return db.examSubject.findMany({
+        where,
+        include: { subject: true, schoolClass: true, exam: true },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    const myAssignments = await db.subjectAssignment.findMany({ where: { teacherId: user.sub } });
+    const pairs = myAssignments.map((a) => ({ subjectId: a.subjectId, classId: a.classId }));
+    if (pairs.length === 0) return [];
+
+    return db.examSubject.findMany({
+      where: { ...where, OR: pairs.map((p) => ({ subjectId: p.subjectId, classId: p.classId })) },
+      include: { subject: true, schoolClass: true, exam: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  private async assertCanEnterMarks(user: JwtUserPayload, examSubject: { subjectId: string; classId: string }) {
+    const perms = user.permissions ?? [];
+    if (perms.includes('EXAM:MANAGE')) return;
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const assignment = await db.subjectAssignment.findFirst({
+      where: { teacherId: user.sub, subjectId: examSubject.subjectId, classId: examSubject.classId },
+    });
+    if (!assignment) {
+      throw new ForbiddenException('You are not the assigned teacher for this subject and class');
+    }
+  }
+
+  async enterMarks(user: JwtUserPayload, examSubjectId: string, dto: EnterMarksDto) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const examSubject = await db.examSubject.findUnique({ where: { id: examSubjectId } });
+    if (!examSubject) throw new NotFoundException('Exam subject not found');
+    if (examSubject.status !== 'DRAFT') {
+      throw new BadRequestException('Marks are locked. Ask a School Administrator to reopen this exam subject.');
+    }
+    await this.assertCanEnterMarks(user, examSubject);
+
+    return db.$transaction(
+      dto.entries.map((entry) =>
+        db.mark.upsert({
+          where: { examSubjectId_studentId: { examSubjectId, studentId: entry.studentId } },
+          update: { score: entry.score, rubricLevel: entry.rubricLevel, comment: entry.comment, enteredByUserId: user.sub },
+          create: {
+            examSubjectId,
+            studentId: entry.studentId,
+            score: entry.score,
+            rubricLevel: entry.rubricLevel,
+            comment: entry.comment,
+            enteredByUserId: user.sub,
+          },
+        }),
+      ),
+    );
+  }
+
+  async getMarks(user: JwtUserPayload, examSubjectId: string) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const examSubject = await db.examSubject.findUnique({ where: { id: examSubjectId } });
+    if (!examSubject) throw new NotFoundException('Exam subject not found');
+
+    const perms = user.permissions ?? [];
+    if (!perms.includes('EXAM:MANAGE') && !perms.includes('EXAM:APPROVE')) {
+      await this.assertCanEnterMarks(user, examSubject);
+    }
+
+    return db.mark.findMany({ where: { examSubjectId }, include: { student: true } });
+  }
+
+  async submit(user: JwtUserPayload, examSubjectId: string) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const examSubject = await db.examSubject.findUnique({ where: { id: examSubjectId } });
+    if (!examSubject) throw new NotFoundException('Exam subject not found');
+    if (examSubject.status !== 'DRAFT') throw new BadRequestException('Only draft exam subjects can be submitted');
+    await this.assertCanEnterMarks(user, examSubject);
+
+    const updated = await db.examSubject.update({ where: { id: examSubjectId }, data: { status: 'SUBMITTED' } });
+    await db.auditLog.create({
+      data: { actorUserId: user.sub, action: 'EXAM_MARKS_SUBMITTED', entityType: 'ExamSubject', entityId: examSubjectId },
+    });
+    return updated;
+  }
+
+  async approve(user: JwtUserPayload, examSubjectId: string) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const examSubject = await db.examSubject.findUnique({ where: { id: examSubjectId } });
+    if (!examSubject) throw new NotFoundException('Exam subject not found');
+    if (examSubject.status !== 'SUBMITTED') throw new BadRequestException('Only submitted exam subjects can be approved');
+
+    const updated = await db.examSubject.update({
+      where: { id: examSubjectId },
+      data: { status: 'APPROVED', reviewComment: null },
+    });
+    await db.auditLog.create({
+      data: { actorUserId: user.sub, action: 'EXAM_MARKS_APPROVED', entityType: 'ExamSubject', entityId: examSubjectId },
+    });
+    return updated;
+  }
+
+  async reject(user: JwtUserPayload, examSubjectId: string, dto: RejectExamSubjectDto) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const examSubject = await db.examSubject.findUnique({ where: { id: examSubjectId } });
+    if (!examSubject) throw new NotFoundException('Exam subject not found');
+    if (examSubject.status !== 'SUBMITTED') throw new BadRequestException('Only submitted exam subjects can be rejected');
+
+    const updated = await db.examSubject.update({
+      where: { id: examSubjectId },
+      data: { status: 'DRAFT', reviewComment: dto.comment ?? 'Returned for correction' },
+    });
+    await db.auditLog.create({
+      data: {
+        actorUserId: user.sub,
+        action: 'EXAM_MARKS_REJECTED',
+        entityType: 'ExamSubject',
+        entityId: examSubjectId,
+        newValue: { comment: dto.comment },
+      },
+    });
+    return updated;
+  }
+
+  async reopen(user: JwtUserPayload, examSubjectId: string) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const examSubject = await db.examSubject.findUnique({ where: { id: examSubjectId } });
+    if (!examSubject) throw new NotFoundException('Exam subject not found');
+    if (examSubject.status !== 'APPROVED') throw new BadRequestException('Only approved exam subjects can be reopened');
+
+    const updated = await db.examSubject.update({ where: { id: examSubjectId }, data: { status: 'DRAFT' } });
+    await db.auditLog.create({
+      data: { actorUserId: user.sub, action: 'EXAM_MARKS_REOPENED', entityType: 'ExamSubject', entityId: examSubjectId },
+    });
+    return updated;
+  }
+
+  /** Report card: every APPROVED mark for a student within one exam. Scoped the same way as
+   * Attendance/Homework — a Parent/Student never sees a DRAFT/SUBMITTED (unapproved) mark. */
+  async reportCard(user: JwtUserPayload, examId: string, studentId: string) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const perms = user.permissions ?? [];
+
+    const canViewAny = perms.includes('EXAM:MANAGE') || perms.includes('EXAM:APPROVE');
+    if (!canViewAny) {
+      const student = await db.student.findFirst({
+        where: {
+          id: studentId,
+          OR: [
+            { userId: perms.includes('STUDENT:VIEW_OWN_RECORD') ? user.sub : undefined },
+            perms.includes('STUDENT:VIEW_OWN_CHILD')
+              ? { guardians: { some: { guardianUserId: user.sub } } }
+              : undefined,
+          ].filter(Boolean) as object[],
+        },
+      });
+      if (!student) throw new ForbiddenException('No permission to view this report card');
+    }
+
+    const marks = await db.mark.findMany({
+      where: { studentId, examSubject: { examId, status: 'APPROVED' } },
+      include: { examSubject: { include: { subject: true } } },
+    });
+
+    return marks.map((m) => ({
+      subject: m.examSubject.subject.name,
+      maxScore: m.examSubject.maxScore,
+      score: m.score,
+      rubricLevel: m.rubricLevel,
+      comment: m.comment,
+    }));
+  }
+}
