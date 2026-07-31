@@ -109,6 +109,18 @@ enum LeaveStatus {
   REJECTED
 }
 
+enum TripStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum TripRegistrationStatus {
+  UNPAID
+  PAID
+}
+
 model User {
   id               String    @id @default(uuid())
   email            String    @unique
@@ -140,6 +152,9 @@ model User {
   disciplineCasesReported DisciplineCase[] @relation("DisciplineReportedBy")
   leaveRequests       LeaveRequest[]     @relation("LeaveRequestedBy")
   leaveRequestsReviewed LeaveRequest[]   @relation("LeaveReviewedBy")
+  tripsProposed       Trip[]             @relation("TripProposedBy")
+  tripsApproved        Trip[]             @relation("TripApprovedBy")
+  tripPaymentsReceived TripPayment[]      @relation("TripPaymentReceivedBy")
 }
 
 model Role {
@@ -250,6 +265,7 @@ model Student {
   currentClass    SchoolClass?  @relation(fields: [currentClassId], references: [id])
   upiNumber       String?
   nemisNumber     String?
+  photoUrl        String?
   status          StudentStatus @default(ACTIVE)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -266,6 +282,7 @@ model Student {
   medicalAlerts     MedicalAlert[]
   clinicVisits      ClinicVisit[]
   disciplineCases   DisciplineCase[]
+  tripRegistrations TripRegistration[]
 
   @@index([currentClassId])
 }
@@ -669,4 +686,55 @@ model LeaveRequest {
   reviewedBy       User?       @relation("LeaveReviewedBy", fields: [reviewedByUserId], references: [id])
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+}
+
+// ---- Trips (teacher proposes -> admin approves -> parents register + pay) ----
+// A trip only becomes visible to parents once APPROVED. Payment reuses the Finance module's
+// receipt-numbering/M-Pesa-stub pattern (see TripsService) but is deliberately a separate ledger
+// from school-fees Invoices — a trip is opt-in and per-event, not a termly fee.
+
+model Trip {
+  id               String     @id @default(uuid())
+  title            String
+  description      String?
+  destination      String
+  tripDate         DateTime
+  costPerStudent   Int // whole KES, same convention as Finance
+  status           TripStatus @default(PROPOSED)
+  proposedByUserId String
+  proposedBy       User       @relation("TripProposedBy", fields: [proposedByUserId], references: [id])
+  approvedByUserId String?
+  approvedBy       User?      @relation("TripApprovedBy", fields: [approvedByUserId], references: [id])
+  rejectionReason  String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  registrations TripRegistration[]
+}
+
+model TripRegistration {
+  id        String                  @id @default(uuid())
+  tripId    String
+  trip      Trip                    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student                 @relation(fields: [studentId], references: [id])
+  status    TripRegistrationStatus  @default(UNPAID)
+  createdAt DateTime                @default(now())
+
+  payments TripPayment[]
+
+  @@unique([tripId, studentId])
+}
+
+model TripPayment {
+  id                 String        @id @default(uuid())
+  tripRegistrationId String
+  tripRegistration   TripRegistration @relation(fields: [tripRegistrationId], references: [id], onDelete: Cascade)
+  amount             Int
+  method             PaymentMethod
+  reference          String?
+  receiptNumber      String        @unique
+  receivedByUserId   String
+  receivedBy         User          @relation("TripPaymentReceivedBy", fields: [receivedByUserId], references: [id])
+  createdAt          DateTime      @default(now())
 }

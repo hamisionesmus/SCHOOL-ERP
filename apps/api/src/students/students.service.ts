@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { UpdateStudentDto } from './dto/update-student.dto';
 import { AddGuardianDto } from './dto/add-guardian.dto';
 import { generateAdmissionNumber } from './admission-number.util';
 import * as bcrypt from 'bcryptjs';
@@ -84,6 +85,18 @@ export class StudentsService {
         upiNumber: dto.upiNumber,
         nemisNumber: dto.nemisNumber,
       },
+      include: { gradeLevel: true, currentClass: true },
+    });
+  }
+
+  async update(user: JwtUserPayload, studentId: string, dto: UpdateStudentDto) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const student = await db.student.findFirst({ where: { id: studentId, deletedAt: null } });
+    if (!student) throw new NotFoundException('Student not found');
+
+    return db.student.update({
+      where: { id: studentId },
+      data: dto,
       include: { gradeLevel: true, currentClass: true },
     });
   }

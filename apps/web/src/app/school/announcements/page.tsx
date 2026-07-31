@@ -6,7 +6,6 @@ import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SchoolNav } from '@/components/school-nav';
 
 interface SchoolClass {
   id: string;
@@ -35,7 +34,7 @@ interface SmsMessage {
 }
 
 export default function AnnouncementsPage() {
-  const { user, logout } = useSession('tenant');
+  const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [classId, setClassId] = useState('');
   const [guardians, setGuardians] = useState<GuardianUser[]>([]);
@@ -102,10 +101,8 @@ export default function AnnouncementsPage() {
   if (!user) return null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <SchoolNav user={user} onLogout={logout} />
-
-      {canSend && (
+    <>
+          {canSend && (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Send announcement</CardTitle>
@@ -195,6 +192,6 @@ export default function AnnouncementsPage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </>
   );
 }

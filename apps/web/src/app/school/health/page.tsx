@@ -7,7 +7,6 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SchoolNav } from '@/components/school-nav';
 
 interface Student {
   id: string;
@@ -30,7 +29,7 @@ interface ClinicVisit {
 }
 
 export default function HealthPage() {
-  const { user, logout } = useSession('tenant');
+  const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showAlertForm, setShowAlertForm] = useState(false);
   const [showVisitForm, setShowVisitForm] = useState(false);
@@ -95,10 +94,8 @@ export default function HealthPage() {
   if (!user) return null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <SchoolNav user={user} onLogout={logout} />
-
-      <Card className="mb-6">
+    <>
+          <Card className="mb-6">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Medical alerts</CardTitle>
           {canManage && (
@@ -214,6 +211,6 @@ export default function HealthPage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </>
   );
 }

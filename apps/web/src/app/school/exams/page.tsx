@@ -3,12 +3,12 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch, ApiError, API_ORIGIN } from '@/lib/api';
+import { getAccessToken } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SchoolNav } from '@/components/school-nav';
 
 interface Subject {
   id: string;
@@ -52,13 +52,34 @@ interface ReportCardLine {
 const RUBRIC_LEVELS = ['EE', 'ME', 'AE', 'BE'] as const;
 
 export default function ExamsPage() {
-  const { user, logout } = useSession('tenant');
+  const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [selectedExamId, setSelectedExamId] = useState('');
   const [showExamForm, setShowExamForm] = useState(false);
   const [showSubjectForm, setShowSubjectForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reportCardStudentId, setReportCardStudentId] = useState('');
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  async function downloadReportCardPdf(examId: string, studentId: string) {
+    setDownloadingPdf(true);
+    try {
+      const token = getAccessToken();
+      const res = await fetch(`${API_ORIGIN}/exams/${examId}/report-card/${studentId}/pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error('Failed to generate PDF');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'report-card.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
   const [draftMarks, setDraftMarks] = useState<Record<string, { score?: string; rubricLevel?: string }>>({});
 
   const perms = user?.permissions ?? [];
@@ -176,10 +197,8 @@ export default function ExamsPage() {
   if (!user) return null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <SchoolNav user={user} onLogout={logout} />
-
-      <Card className="mb-6">
+    <>
+          <Card className="mb-6">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Exams</CardTitle>
           {canManage && (
@@ -438,8 +457,18 @@ export default function ExamsPage() {
 
       {selectedExamId && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Report card</CardTitle>
+            {reportCardStudentId && reportCard && reportCard.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={downloadingPdf}
+                onClick={() => downloadReportCardPdf(selectedExamId, reportCardStudentId)}
+              >
+                {downloadingPdf ? 'Preparing...' : 'Download PDF'}
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <select
@@ -484,6 +513,6 @@ export default function ExamsPage() {
           </CardContent>
         </Card>
       )}
-    </main>
+    </>
   );
 }

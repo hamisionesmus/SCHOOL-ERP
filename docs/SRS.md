@@ -39,13 +39,18 @@ per line here to keep this scannable.
 ### 4.1 Platform / Super Admin
 Create/suspend/activate schools, assign subscription plans & storage limits, usage monitoring,
 billing, system analytics, impersonate school admin, push updates, platform-wide announcements.
-`[BUILT: create/list/suspend/activate tenant; PLANNED: billing, analytics, impersonation, updates]`
+`[BUILT: create/list/suspend/activate tenant, per-tenant payment/banking config
+(PATCH /platform/tenants/:id/payment-config — API only, no Super Admin UI page yet);
+PLANNED: billing, analytics, impersonation, updates, payment-config UI]`
 
 ### 4.2 Multi-Tenancy
 Each school: own isolated data (schema-per-tenant), logo/colors/branding, name/address/website, SMS
 sender ID, payment config, grading system, academic calendar, transport routes, users, teachers,
 students, finance, examinations. No cross-tenant data access under any circumstance.
-`[BUILT: schema isolation, branding fields, core entities; PLANNED: payment/SMS provider config UI]`
+`[BUILT: schema isolation, branding fields with a self-service School Administrator Settings page
+(logo upload, name, colors, address, website, SMS sender ID, mission/vision/motto — all of which
+flow through to the branded PDF report card, see §4.14), core entities, per-tenant payment config
+(Super-Admin-only, see §4.1); PLANNED: SMS provider config UI]`
 
 ### 4.3 RBAC
 Configurable permissions per role, module × action granularity (e.g. Teacher can mark attendance,
@@ -56,7 +61,10 @@ results, edit another teacher's marks, or approve payroll). See `docs/RBAC.md` f
 ### 4.4 Dashboards
 Role-specific dashboards (Super Admin, Teacher, Student, Parent, Finance, etc.) surfacing the
 information relevant to that role — timetable, pending tasks, results, fee balance, alerts.
-`[SCAFFOLDED: Super Admin dashboard shell; PLANNED: remaining role dashboards]`
+`[SCAFFOLDED: Super Admin dashboard shell; BUILT: permission-gated sidebar app shell for all
+tenant-side roles (School Administrator/Class Teacher/Finance Officer/Parent/Student), replacing the
+earlier flat top-nav — each role sees only the modules its permissions unlock; PLANNED: widget-level
+dashboards (pending tasks, alerts) beyond navigation]`
 
 ### 4.5 Admissions
 Online application, document upload, interview scheduling, approval workflow, waiting list, student
@@ -69,7 +77,9 @@ scheduling, admission letters]`
 Full learner profile: photo, biometric refs, birth certificate, NEMIS/UPI numbers, demographics
 (religion, nationality, county/sub-county/ward), medical info, guardians/emergency contacts, academic
 & behavior history, transport/library/fee/exam history, CBC assessments, document store.
-`[BUILT: core Student entity, guardian linking (STUDENT:EDIT-gated); PLANNED: full profile fields (biometric, medical, NEMIS/UPI as first-class UI), documents]`
+`[BUILT: core Student entity, guardian linking (STUDENT:EDIT-gated), photo upload (via UploadsModule,
+shown as a profile thumbnail on the Students list and printed on the branded PDF report card);
+PLANNED: full profile fields (biometric, medical, NEMIS/UPI as first-class UI), documents]`
 
 ### 4.7 Teacher Management
 Profile, TSC number, employment history, qualifications, contracts, leave, payroll link, subject/class
@@ -85,7 +95,7 @@ Facial recognition attendance for students (gate scan → auto attendance + SMS 
 and departure), staff biometric time-in/out (feeds payroll), visitor registration & badge printing,
 security dashboard (live gate feed, who's on site, missing-student/emergency evacuation list).
 Architecture: device/edge integration posts events to a webhook (`POST /attendance/biometric-events`);
-the platform does not perform on-device face matching itself. `[PLANNED — Phase 6, integration layer]`
+the platform does not perform on-device face matching itself. `[PLANNED — Phase 7, integration layer]`
 
 ### 4.10 SMS / Communications
 Automatic SMS for arrival/departure, fee reminders, results, absentee/discipline alerts, transport
@@ -95,10 +105,11 @@ board.
 `[BUILT: SmsProvider interface + StubSmsProvider (logs instead of calling a real gateway — no API
 credentials configured for this environment), SmsMessage delivery log, manual announcement send
 (ANNOUNCEMENT:SEND_TO_PARENTS, recipients picked by class → guardians), automatic payment-receipt SMS
-triggered from FinanceService; PLANNED: real Africa's Talking/Twilio/Safaricom implementation
-(swap-in, no call-site changes needed), email/push/WhatsApp channels, message templates, automatic
-arrival/departure/absentee/discipline triggers (tied to Phase 6 biometric attendance and Phase 5
-discipline modules)]`
+triggered from FinanceService, automatic trip-approval broadcast SMS (to every guardian, on approval)
+and trip-payment-confirmation SMS from the Phase 6 Trips module (see §4.31); PLANNED: real Africa's
+Talking/Twilio/Safaricom implementation (swap-in, no call-site changes needed), email/push/WhatsApp
+channels, message templates, automatic arrival/departure/absentee triggers (tied to Phase 7 biometric
+attendance)]`
 
 ### 4.11 Transport
 Vehicles, drivers, routes, pickup points, bus attendants, trip logs, fuel/maintenance/insurance;
@@ -106,9 +117,12 @@ parent visibility of pickup/drop time and (where hardware available) live bus lo
 drop notifications; driver attendance.
 `[BUILT: Vehicle (with driver, a User with any role), Route (with assigned vehicle), one-route-per-
 student TransportAssignment, Parent/Student-scoped visibility of their own child's route/vehicle/
-driver; PLANNED: pickup points, trip logs, fuel/maintenance/insurance records, live GPS location,
-boarding/drop SMS notifications (architecture supports it — same CommunicationsService pattern as
-Finance/Discipline — just not wired to a trigger yet), driver attendance]`
+driver, one-off school Trips (see §4.31 — a distinct workflow from daily route transport: teacher
+proposes, admin approves/rejects, parent registers a child and pays a per-trip fee); PLANNED: pickup
+points, daily trip logs (route/vehicle side, not the Trips module), fuel/maintenance/insurance
+records, live GPS location, boarding/drop SMS notifications (architecture supports it — same
+CommunicationsService pattern as Finance/Discipline — just not wired to a trigger yet), driver
+attendance]`
 
 ### 4.12 Academic / Timetable
 Academic year/terms/calendar, timetable, lesson planning, schemes of work, learning outcomes,
@@ -129,8 +143,11 @@ subject/teacher/class/trend analysis, CBC competency reports, parent-facing repo
 `[BUILT: Subject/SubjectAssignment model (teacher × subject × class), Exam/ExamSubject/Mark with full
 DRAFT→SUBMITTED→APPROVED workflow, subject-assignment-of-record enforcement on marks entry (mirrors
 the class-teacher-of-record check on attendance), EXAM:APPROVE-gated approve/reject, EXAM:REOPEN-gated
-reopen, per-student report card scoped to APPROVED marks only, audit log entries; PLANNED: rankings,
-grade-distribution/trend analysis, teacher/class-level analytics, printable report card layout]`
+reopen, per-student report card scoped to APPROVED marks only, audit log entries, downloadable
+branded PDF report card (`GET /exams/:examId/report-card/:studentId/pdf`, rendered server-side with
+`pdfkit`, pulling the tenant's logo/mission/vision/motto from Settings and the student's photo/
+admission number/grade — see §4.29); PLANNED: rankings, grade-distribution/trend analysis,
+teacher/class-level analytics]`
 
 ### 4.15 CBC Module
 Learning areas, competencies, values, rubrics, performance levels, projects, teacher/parent comments,
@@ -215,12 +232,13 @@ messages, timetable, downloads). `[SCAFFOLDED: auth + role model; PLANNED — Ph
 
 ### 4.25 Mobile Applications
 Teacher, Parent, Student, Driver, Security apps (Expo/React Native) consuming the same REST API;
-offline mode, push notifications, biometric device support, QR scanning. `[PLANNED — Phase 6]`
+offline mode, push notifications, biometric device support, QR scanning. `[PLANNED — Phase 7]`
 
 ### 4.26 Reporting
 Cross-module report generation (attendance, finance, payroll, inventory, library, transport,
 academic, CBC, HR, discipline, medical, admissions, government/statutory reports), export to
-PDF/Excel/CSV. `[PLANNED — incrementally per module, consolidated reporting engine in Phase 7]`
+PDF/Excel/CSV. `[BUILT: first PDF export — the branded student report card, see §4.14/§4.29;
+PLANNED: everything else, incrementally per module, consolidated reporting engine in Phase 8]`
 
 ### 4.27 Audit Trail
 Every mutating action logged: actor, action, timestamp, old/new value, IP, device. No hard deletes —
@@ -230,7 +248,42 @@ soft delete only. `[BUILT: soft-delete convention + AuditLog model + interceptor
 AI report-card narrative writing, performance analysis, teacher recommendations, timetable
 optimization, fee-default prediction, attendance-anomaly prediction, behavioral alerts, chatbot,
 academic assistant, document search. Designed as an opt-in service layer calling an LLM provider, not
-a hard dependency of core workflows. `[PLANNED — Phase 6]`
+a hard dependency of core workflows. `[PLANNED — Phase 7]`
+
+### 4.29 School Settings / Branding
+Self-service branding configuration per tenant: school name, logo, primary color, address, website,
+SMS sender ID, mission, vision, motto. Populates report cards, portal headers, and (eventually) other
+printable documents. Payment/banking config (M-Pesa paybill, bank name/account) is kept separate and
+Super-Admin-only, since it controls where real money is expected to land.
+`[BUILT: GET/PATCH /settings (SETTINGS:MANAGE-gated, School Administrator role), logo upload via
+UploadsModule, values consumed by the branded PDF report card and the tenant-wide app header;
+Super-Admin payment-config endpoint (§4.1) kept intentionally separate and read-only to the tenant;
+PLANNED: Super Admin UI for payment config (API exists, no page yet), SMS provider credential config]`
+
+### 4.30 File Uploads
+Student photos, school logo, and (eventually) other document attachments across modules.
+`[BUILT: UploadsModule — local-disk storage under apps/api/uploads/<tenant-schema>/, served via
+Express static assets at /uploads/..., extension allowlist (jpg/jpeg/png/webp) + 5MB size limit,
+tenant-scoped storage folder derived from the authenticated user's JWT; explicitly a swap-later stub
+mirroring the SmsProvider abstraction pattern — the storage backend can move to S3/GCS without
+changing any call site; PLANNED: document attachments for Admissions/Homework/HR, S3/cloud storage,
+antivirus scanning]`
+
+### 4.31 Trips
+One-off school trips distinct from daily route transport (§4.11): a teacher proposes a trip with a
+destination, date, and per-student cost; a School Administrator approves or rejects it; on approval,
+every guardian with a child at the school gets a broadcast SMS; parents then register their own
+children and pay the exact per-student cost through a trip-specific ledger, receiving a receipt and a
+confirmation SMS.
+`[BUILT: Trip (PROPOSED→APPROVED/REJECTED/COMPLETED) with TRANSPORT:PROPOSE-gated creation and
+TRANSPORT:MANAGE-gated approve/reject, guardian-scoped registration re-using the
+STUDENT:VIEW_OWN_CHILD/VIEW_OWN_RECORD pattern, TripRegistration (UNPAID/PAID) with a unique
+[tripId, studentId] constraint, TripPayment with its own sequential TRP-YYYY-NNNN receipt series
+(kept separate from Finance's RCT- series since trip money is scoped to the trip, not general fees),
+payment amount validated to exactly match the trip's costPerStudent, approval-broadcast and
+payment-confirmation SMS; PLANNED: partial/installment trip payments, trip capacity limits, a
+dedicated Transport Manager role (currently TRANSPORT:MANAGE is School-Administrator-only, like the
+other Phase 5 modules)]`
 
 ## 5. Non-Functional Requirements
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Patch, Post, Query, StreamableFile, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -45,6 +45,17 @@ export class ExamsController {
     @Param('studentId') studentId: string,
   ) {
     return this.examsService.reportCard(user, examId, studentId);
+  }
+
+  @Get('exams/:examId/report-card/:studentId/pdf')
+  @Header('Content-Type', 'application/pdf')
+  async reportCardPdf(
+    @CurrentUser() user: JwtUserPayload,
+    @Param('examId') examId: string,
+    @Param('studentId') studentId: string,
+  ) {
+    const buffer = await this.examsService.reportCardPdf(user, examId, studentId);
+    return new StreamableFile(buffer, { disposition: 'attachment; filename="report-card.pdf"' });
   }
 
   @Get('exam-subjects')

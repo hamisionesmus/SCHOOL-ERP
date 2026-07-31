@@ -12,3 +12,5 @@ generated/
 prisma/**/*.js
 prisma/**/*.js.map
 *.tsbuildinfo
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep

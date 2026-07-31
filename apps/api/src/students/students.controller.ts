@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
@@ -6,6 +6,7 @@ import { RequirePermission } from '../common/decorators/require-permission.decor
 import { CurrentUser, JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { StudentsService } from './students.service';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { UpdateStudentDto } from './dto/update-student.dto';
 import { AddGuardianDto } from './dto/add-guardian.dto';
 
 @ApiTags('students')
@@ -29,6 +30,12 @@ export class StudentsController {
   @RequirePermission('STUDENT:CREATE')
   create(@CurrentUser() user: JwtUserPayload, @Body() dto: CreateStudentDto) {
     return this.studentsService.create(user, dto);
+  }
+
+  @Patch(':id')
+  @RequirePermission('STUDENT:EDIT')
+  update(@CurrentUser() user: JwtUserPayload, @Param('id') id: string, @Body() dto: UpdateStudentDto) {
+    return this.studentsService.update(user, id, dto);
   }
 
   @Post(':id/guardians')

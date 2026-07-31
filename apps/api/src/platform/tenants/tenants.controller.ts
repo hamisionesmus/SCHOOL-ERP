@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@ne
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { TenantsService } from './tenants.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { UpdatePaymentConfigDto } from './dto/update-payment-config.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePlatformRole } from '../../common/decorators/require-platform-role.decorator';
@@ -37,5 +38,10 @@ export class TenantsController {
   @Patch(':id/activate')
   activate(@Param('id') id: string) {
     return this.tenantsService.activate(id);
+  }
+
+  @Patch(':id/payment-config')
+  updatePaymentConfig(@Param('id') id: string, @Body() dto: UpdatePaymentConfigDto) {
+    return this.tenantsService.updatePaymentConfig(id, dto);
   }
 }

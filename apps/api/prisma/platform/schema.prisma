@@ -41,6 +41,17 @@ model Tenant {
   address                String?
   website                String?
   smsSenderId            String?
+  // Editable by the School Administrator via the tenant-scoped Settings module — pure branding,
+  // no financial/PII sensitivity, so no reason to route it through the Super Admin.
+  mission                String?
+  vision                 String?
+  motto                  String?
+  // Editable by the Super Admin only (platform/tenants endpoints) — payment credentials are a
+  // platform-level concern, same trust boundary as subscriptionPlan/status/storage limits.
+  mpesaPaybill           String?
+  bankName               String?
+  bankAccountName        String?
+  bankAccountNumber      String?
   status                 TenantStatus      @default(TRIAL)
   storageLimitMbOverride Int?
   subscriptionPlanId     String?

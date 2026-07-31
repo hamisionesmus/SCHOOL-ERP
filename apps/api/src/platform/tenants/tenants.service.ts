@@ -3,6 +3,7 @@ import { PlatformPrismaService } from '../../common/prisma/platform-prisma.servi
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { UpdatePaymentConfigDto } from './dto/update-payment-config.dto';
 import { seedTenantCore } from '../../common/tenant-seed/seed-data';
 
 @Injectable()
@@ -71,5 +72,10 @@ export class TenantsService {
   async activate(id: string) {
     await this.findOne(id);
     return this.platformPrisma.tenant.update({ where: { id }, data: { status: 'ACTIVE' } });
+  }
+
+  async updatePaymentConfig(id: string, dto: UpdatePaymentConfigDto) {
+    await this.findOne(id);
+    return this.platformPrisma.tenant.update({ where: { id }, data: dto });
   }
 }

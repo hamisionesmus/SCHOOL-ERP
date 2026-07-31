@@ -23,6 +23,9 @@ import { InventoryModule } from './inventory/inventory.module';
 import { HealthModule } from './health/health.module';
 import { DisciplineModule } from './discipline/discipline.module';
 import { HrModule } from './hr/hr.module';
+import { UploadsModule } from './uploads/uploads.module';
+import { SettingsModule } from './settings/settings.module';
+import { TripsModule } from './trips/trips.module';
 
 @Module({
   imports: [
@@ -49,6 +52,9 @@ import { HrModule } from './hr/hr.module';
     HealthModule,
     DisciplineModule,
     HrModule,
+    UploadsModule,
+    SettingsModule,
+    TripsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

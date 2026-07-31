@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SchoolNav } from '@/components/school-nav';
 
 interface UserRef {
   id: string;
@@ -26,7 +25,7 @@ interface LeaveRequest {
 }
 
 export default function HrPage() {
-  const { user, logout } = useSession('tenant');
+  const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,10 +66,8 @@ export default function HrPage() {
   if (!user) return null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <SchoolNav user={user} onLogout={logout} />
-
-      <Card>
+    <>
+          <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>{canReview ? 'Leave requests' : 'My leave requests'}</CardTitle>
           <Button size="sm" onClick={() => setShowForm((v) => !v)}>
@@ -147,6 +144,6 @@ export default function HrPage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </>
   );
 }

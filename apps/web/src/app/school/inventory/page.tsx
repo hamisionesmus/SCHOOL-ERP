@@ -7,7 +7,6 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SchoolNav } from '@/components/school-nav';
 
 interface Item {
   id: string;
@@ -19,7 +18,7 @@ interface Item {
 }
 
 export default function InventoryPage() {
-  const { user, logout } = useSession('tenant');
+  const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [movementDrafts, setMovementDrafts] = useState<Record<string, string>>({});
@@ -60,10 +59,8 @@ export default function InventoryPage() {
   if (!user) return null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <SchoolNav user={user} onLogout={logout} />
-
-      <Card>
+    <>
+          <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Inventory</CardTitle>
           <Button size="sm" onClick={() => setShowForm((v) => !v)}>
@@ -154,6 +151,6 @@ export default function InventoryPage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </>
   );
 }

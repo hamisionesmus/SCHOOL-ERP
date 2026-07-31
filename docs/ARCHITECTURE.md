@@ -140,8 +140,22 @@ sequenceDiagram
    fines), Inventory (items/stock movements, staff-only), Health (medical alerts/clinic visits),
    Discipline (cases with automatic guardian SMS), HR (leave request/approval self-service). Kitchen
    and full payroll/GL remain planned — see docs/SRS.md §4.19–4.22.
-6. **Phase 6** — Mobile apps, biometric device integration layer, AI features.
-7. **Phase 7** — Test suites, CI/CD, Kubernetes, manuals, security hardening pass.
+6. **Phase 6 (done)** — UX depth and cross-module polish rather than a new module: a permission-gated
+   sidebar app shell replacing the old top-nav across all `/school/*` pages; a tenant-scoped Settings
+   module so a School Administrator can self-serve branding (logo, mission/vision/motto, colors,
+   address/SMS sender ID), with payment/banking config (M-Pesa paybill, bank details) kept
+   Super-Admin-only per tenant; a local-disk file-upload stub (`UploadsModule`, swappable for S3 later,
+   mirroring the `SmsProvider` abstraction pattern) used for student photos and the school logo;
+   server-rendered branded PDF report cards (`pdfkit`) that pull the school's logo/mission/vision and
+   the student's photo into a downloadable document; and a full Trips workflow on top of Transport —
+   a Class Teacher proposes a trip, a School Administrator approves/rejects it (broadcasting an SMS to
+   every guardian on approval), and a Parent registers a child and pays the exact per-student cost
+   through a trip-scoped ledger separate from the Finance `Invoice`/`Payment` tables, with its own
+   `TRP-YYYY-NNNN` receipt series and a payment-confirmation SMS.
+7. **Phase 7** — Mobile apps, biometric device integration layer, AI features (originally scoped as
+   Phase 6 in the source requirements; renumbered after Phase 6 above was redirected toward UX depth
+   at the user's request).
+8. **Phase 8** — Test suites, CI/CD, Kubernetes, manuals, security hardening pass.
 
 ## 7. Security posture at each phase
 

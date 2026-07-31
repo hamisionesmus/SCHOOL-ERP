@@ -6,7 +6,6 @@ import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SchoolNav } from '@/components/school-nav';
 
 interface SchoolClass {
   id: string;
@@ -33,7 +32,7 @@ function today() {
 }
 
 export default function AttendancePage() {
-  const { user, logout } = useSession('tenant');
+  const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [classId, setClassId] = useState<string>('');
   const [date, setDate] = useState(today());
@@ -98,10 +97,8 @@ export default function AttendancePage() {
   if (!user) return null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <SchoolNav user={user} onLogout={logout} />
-
-      <Card>
+    <>
+          <Card>
         <CardHeader>
           <CardTitle>Mark attendance</CardTitle>
         </CardHeader>
@@ -189,6 +186,6 @@ export default function AttendancePage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </>
   );
 }

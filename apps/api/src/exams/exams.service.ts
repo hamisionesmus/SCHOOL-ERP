@@ -1,14 +1,19 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
+import { PlatformPrismaService } from '../common/prisma/platform-prisma.service';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { CreateExamSubjectDto } from './dto/create-exam-subject.dto';
 import { EnterMarksDto } from './dto/enter-marks.dto';
 import { RejectExamSubjectDto } from './dto/reject-exam-subject.dto';
+import { renderReportCardPdf } from './report-card-pdf.util';
 
 @Injectable()
 export class ExamsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly platformPrisma: PlatformPrismaService,
+  ) {}
 
   async createExam(user: JwtUserPayload, dto: CreateExamDto) {
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
@@ -195,30 +200,37 @@ export class ExamsService {
 
   /** Report card: every APPROVED mark for a student within one exam. Scoped the same way as
    * Attendance/Homework — a Parent/Student never sees a DRAFT/SUBMITTED (unapproved) mark. */
-  async reportCard(user: JwtUserPayload, examId: string, studentId: string) {
+  private async assertCanViewReportCard(user: JwtUserPayload, studentId: string) {
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
     const perms = user.permissions ?? [];
 
-    const canViewAny = perms.includes('EXAM:MANAGE') || perms.includes('EXAM:APPROVE');
-    if (!canViewAny) {
-      const student = await db.student.findFirst({
-        where: {
-          id: studentId,
-          OR: [
-            { userId: perms.includes('STUDENT:VIEW_OWN_RECORD') ? user.sub : undefined },
-            perms.includes('STUDENT:VIEW_OWN_CHILD')
-              ? { guardians: { some: { guardianUserId: user.sub } } }
-              : undefined,
-          ].filter(Boolean) as object[],
-        },
-      });
-      if (!student) throw new ForbiddenException('No permission to view this report card');
-    }
+    if (perms.includes('EXAM:MANAGE') || perms.includes('EXAM:APPROVE')) return;
 
-    const marks = await db.mark.findMany({
+    const student = await db.student.findFirst({
+      where: {
+        id: studentId,
+        OR: [
+          { userId: perms.includes('STUDENT:VIEW_OWN_RECORD') ? user.sub : undefined },
+          perms.includes('STUDENT:VIEW_OWN_CHILD')
+            ? { guardians: { some: { guardianUserId: user.sub } } }
+            : undefined,
+        ].filter(Boolean) as object[],
+      },
+    });
+    if (!student) throw new ForbiddenException('No permission to view this report card');
+  }
+
+  private async getApprovedMarks(user: JwtUserPayload, examId: string, studentId: string) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    return db.mark.findMany({
       where: { studentId, examSubject: { examId, status: 'APPROVED' } },
       include: { examSubject: { include: { subject: true } } },
     });
+  }
+
+  async reportCard(user: JwtUserPayload, examId: string, studentId: string) {
+    await this.assertCanViewReportCard(user, studentId);
+    const marks = await this.getApprovedMarks(user, examId, studentId);
 
     return marks.map((m) => ({
       subject: m.examSubject.subject.name,
@@ -227,5 +239,47 @@ export class ExamsService {
       rubricLevel: m.rubricLevel,
       comment: m.comment,
     }));
+  }
+
+  async reportCardPdf(user: JwtUserPayload, examId: string, studentId: string): Promise<Buffer> {
+    await this.assertCanViewReportCard(user, studentId);
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+
+    const [marks, student, exam, tenant] = await Promise.all([
+      this.getApprovedMarks(user, examId, studentId),
+      db.student.findUnique({ where: { id: studentId }, include: { gradeLevel: true, currentClass: true } }),
+      db.exam.findUnique({ where: { id: examId } }),
+      this.platformPrisma.tenant.findFirst({ where: { schemaName: user.tenantSchema! } }),
+    ]);
+    if (!student) throw new NotFoundException('Student not found');
+    if (!exam) throw new NotFoundException('Exam not found');
+
+    return renderReportCardPdf({
+      school: {
+        name: tenant?.name ?? user.tenantSlug ?? 'School',
+        logoUrl: tenant?.logoUrl ?? null,
+        mission: tenant?.mission ?? null,
+        vision: tenant?.vision ?? null,
+        motto: tenant?.motto ?? null,
+        address: tenant?.address ?? null,
+      },
+      student: {
+        firstName: student.firstName,
+        lastName: student.lastName,
+        admissionNumber: student.admissionNumber,
+        photoUrl: student.photoUrl,
+        gradeLevelName: student.gradeLevel.name,
+        className: student.currentClass?.name ?? null,
+      },
+      exam: { name: exam.name, examType: exam.examType, term: exam.term },
+      marks: marks.map((m) => ({
+        subject: m.examSubject.subject.name,
+        maxScore: m.examSubject.maxScore,
+        score: m.score,
+        rubricLevel: m.rubricLevel,
+        comment: m.comment,
+      })),
+      generatedAt: new Date(),
+    });
   }
 }

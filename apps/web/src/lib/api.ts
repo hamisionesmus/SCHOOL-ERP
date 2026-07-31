@@ -50,3 +50,23 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}, retry
   if (res.status === 204) return undefined as T;
   return res.json();
 }
+
+/** Multipart upload — deliberately bypasses apiFetch's JSON Content-Type so the browser can set
+ * the multipart boundary itself. Returns the relative /uploads/... URL to store on a record. */
+export async function apiUpload(file: File): Promise<{ url: string }> {
+  const token = getAccessToken();
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_URL}/uploads`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ message: res.statusText }));
+    throw new ApiError(res.status, body.message ?? 'Upload failed');
+  }
+  return res.json();
+}
+
+export const API_ORIGIN = API_URL;

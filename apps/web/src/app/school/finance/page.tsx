@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SchoolNav } from '@/components/school-nav';
 
 interface GradeLevel {
   id: string;
@@ -55,7 +54,7 @@ interface Invoice {
 }
 
 export default function FinancePage() {
-  const { user, logout } = useSession('tenant');
+  const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showFeeForm, setShowFeeForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -153,10 +152,8 @@ export default function FinancePage() {
   if (!user) return null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <SchoolNav user={user} onLogout={logout} />
-
-      {isStaff && (
+    <>
+          {isStaff && (
         <Card className="mb-6">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Fee structures</CardTitle>
@@ -332,6 +329,6 @@ export default function FinancePage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </>
   );
 }

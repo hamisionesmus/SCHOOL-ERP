@@ -94,6 +94,8 @@ needing schema changes (the model already supports arbitrary roles/permissions).
 | STUDENT:VIEW_OWN_CHILD | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | STUDENT:VIEW_OWN_RECORD | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | TENANT:MANAGE_USERS | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| SETTINGS:MANAGE (branding, mission/vision/motto) | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| TRANSPORT:PROPOSE (propose a trip) | ✅ | ❌ | ❌ | ✅ (also holds TRANSPORT:MANAGE) | ❌ | ❌ |
 
 This table directly encodes the "can / cannot" examples from the source requirements (teachers
 cannot edit finance/delete exam results/edit another teacher's marks/approve payroll; finance
@@ -112,7 +114,17 @@ reuses the same `STUDENT:VIEW_OWN_CHILD`/`VIEW_OWN_RECORD` scoping as everywhere
 catalog already covered this module's needs. `ANNOUNCEMENT:SEND_TO_PARENTS` (also already existed)
 gates sending SMS in the Communications module.
 
-## 4. Seed data (Phase 1)
+## 4. Phase 6 additions
+
+Two new permission codes were added for the Settings and Trips modules: `SETTINGS:MANAGE` (School
+Administrator only — branding/mission/vision/motto) and `TRANSPORT:PROPOSE` (Class Teacher and School
+Administrator — propose a trip; approving/rejecting still requires the existing `TRANSPORT:MANAGE`).
+Everything else in Phase 6 (student photo upload, logo upload, PDF report card download, trip
+registration/payment) reused existing codes — `STUDENT:EDIT` for photo upload,
+`STUDENT:VIEW_OWN_CHILD`/`VIEW_OWN_RECORD` for trip registration/payment and PDF report-card download,
+exactly the same scoping pattern already used everywhere else in this table.
+
+## 5. Seed data (Phase 1)
 
 `apps/api/prisma/seed.ts` creates, per new tenant: the six `[BUILT]` roles above, their permission
 rows per the matrix, and the tenant's first `School Administrator` user (credentials emailed/shown to

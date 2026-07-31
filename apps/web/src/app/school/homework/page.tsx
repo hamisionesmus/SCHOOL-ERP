@@ -7,7 +7,6 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SchoolNav } from '@/components/school-nav';
 
 interface SchoolClass {
   id: string;
@@ -28,7 +27,7 @@ interface Assignment {
 }
 
 export default function HomeworkPage() {
-  const { user, logout } = useSession('tenant');
+  const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,10 +75,8 @@ export default function HomeworkPage() {
   if (!user) return null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <SchoolNav user={user} onLogout={logout} />
-
-      <Card>
+    <>
+          <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Homework</CardTitle>
           {canAssign && (
@@ -157,6 +154,6 @@ export default function HomeworkPage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </>
   );
 }
