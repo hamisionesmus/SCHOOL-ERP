@@ -6,6 +6,8 @@ import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
 
 interface SchoolClass {
   id: string;
@@ -98,6 +100,8 @@ export default function AnnouncementsPage() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to send announcement'),
   });
 
+  const table = useTableControls(messages ?? [], { pageSize: 10 });
+
   if (!user) return null;
 
   return (
@@ -179,8 +183,9 @@ export default function AnnouncementsPage() {
           {!messages || messages.length === 0 ? (
             <p className="text-sm text-slate-500">No messages yet.</p>
           ) : (
+            <>
             <ul className="flex flex-col gap-2">
-              {messages.map((m) => (
+              {table.pageItems.map((m) => (
                 <li key={m.id} className="rounded-lg border border-slate-200 p-3 text-sm">
                   <p className="text-slate-900">{m.body}</p>
                   <p className="mt-1 text-xs text-slate-500">
@@ -189,6 +194,14 @@ export default function AnnouncementsPage() {
                 </li>
               ))}
             </ul>
+            <Pagination
+              page={table.page}
+              pageCount={table.pageCount}
+              totalItems={table.totalItems}
+              pageSize={table.pageSize}
+              onPageChange={table.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

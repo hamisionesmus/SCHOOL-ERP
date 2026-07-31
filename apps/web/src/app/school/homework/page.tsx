@@ -7,6 +7,9 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
+import { cn } from '@/lib/utils';
 
 interface SchoolClass {
   id: string;
@@ -72,6 +75,8 @@ export default function HomeworkPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['homework'] }),
   });
 
+  const table = useTableControls(assignments ?? [], { pageSize: 8 });
+
   if (!user) return null;
 
   return (
@@ -123,8 +128,26 @@ export default function HomeworkPage() {
           ) : !assignments || assignments.length === 0 ? (
             <p className="text-sm text-slate-500">No homework yet.</p>
           ) : (
+            <>
+            <div className="mb-3 flex items-center gap-1 text-xs text-slate-500">
+              Sort by:
+              {(['dueDate', 'title'] as const).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => table.toggleSort(key)}
+                  className={cn(
+                    'rounded-full border px-2.5 py-1 font-medium capitalize transition-colors',
+                    table.sortKey === key
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-300',
+                  )}
+                >
+                  {key === 'dueDate' ? 'Due date' : 'Title'} {table.sortKey === key && (table.sortDir === 'asc' ? '↑' : '↓')}
+                </button>
+              ))}
+            </div>
             <ul className="flex flex-col gap-3">
-              {assignments.map((a) => {
+              {table.pageItems.map((a) => {
                 const submitted = a.submissions && a.submissions.length > 0 && a.submissions[0].submittedAt;
                 return (
                   <li key={a.id} className="rounded-lg border border-slate-200 p-4">
@@ -151,6 +174,14 @@ export default function HomeworkPage() {
                 );
               })}
             </ul>
+            <Pagination
+              page={table.page}
+              pageCount={table.pageCount}
+              totalItems={table.totalItems}
+              pageSize={table.pageSize}
+              onPageChange={table.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

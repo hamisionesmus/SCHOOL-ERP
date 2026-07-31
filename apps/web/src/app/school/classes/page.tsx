@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonTable } from '@/components/ui/skeleton';
+import { SortableTh } from '@/components/ui/sortable-th';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
 
 interface GradeLevel {
   id: string;
@@ -106,6 +109,8 @@ export default function ClassesPage() {
     onError: (err) => notifyError(err, 'Failed to update class teacher'),
   });
 
+  const table = useTableControls(classes ?? [], { pageSize: 10, initialSortKey: 'name' });
+
   if (!user) return null;
 
   return (
@@ -167,17 +172,18 @@ export default function ClassesPage() {
         ) : !classes || classes.length === 0 ? (
           <p className="text-sm text-slate-500">No classes yet.</p>
         ) : (
+          <>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-500">
-                <th className="py-2 font-medium">Class</th>
+                <SortableTh label="Class" active={table.sortKey === 'name'} dir={table.sortDir} onClick={() => table.toggleSort('name')} />
                 <th className="py-2 font-medium">Grade</th>
                 <th className="py-2 font-medium">Academic Year</th>
                 <th className="py-2 font-medium">Class Teacher</th>
               </tr>
             </thead>
             <tbody>
-              {classes.map((c) => (
+              {table.pageItems.map((c) => (
                 <tr key={c.id} className="border-b border-slate-100">
                   <td className="py-2 font-medium text-slate-900">{c.name}</td>
                   <td className="py-2 text-slate-500">{c.gradeLevel?.name}</td>
@@ -209,6 +215,14 @@ export default function ClassesPage() {
               ))}
             </tbody>
           </table>
+          <Pagination
+            page={table.page}
+            pageCount={table.pageCount}
+            totalItems={table.totalItems}
+            pageSize={table.pageSize}
+            onPageChange={table.setPage}
+          />
+          </>
         )}
       </CardContent>
     </Card>

@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
+import { SortableTh } from '@/components/ui/sortable-th';
+import { useTableControls } from '@/hooks/use-table-controls';
 
 interface GradeLevel {
   id: string;
@@ -84,6 +87,8 @@ export default function AdmissionsPage() {
     },
   });
 
+  const table = useTableControls(applications ?? [], { pageSize: 8 });
+
   if (!user) return null;
 
   return (
@@ -141,18 +146,19 @@ export default function AdmissionsPage() {
           ) : !applications || applications.length === 0 ? (
             <p className="text-sm text-slate-500">No applications yet.</p>
           ) : (
+            <>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="py-2 font-medium">Applicant</th>
+                  <SortableTh label="Applicant" active={table.sortKey === 'firstName'} dir={table.sortDir} onClick={() => table.toggleSort('firstName')} />
                   <th className="py-2 font-medium">Grade</th>
-                  <th className="py-2 font-medium">Guardian</th>
-                  <th className="py-2 font-medium">Status</th>
+                  <SortableTh label="Guardian" active={table.sortKey === 'guardianName'} dir={table.sortDir} onClick={() => table.toggleSort('guardianName')} />
+                  <SortableTh label="Status" active={table.sortKey === 'status'} dir={table.sortDir} onClick={() => table.toggleSort('status')} />
                   <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
-                {applications.map((a) => (
+                {table.pageItems.map((a) => (
                   <tr key={a.id} className="border-b border-slate-100">
                     <td className="py-2 font-medium text-slate-900">
                       {a.firstName} {a.lastName}
@@ -189,6 +195,14 @@ export default function AdmissionsPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={table.page}
+              pageCount={table.pageCount}
+              totalItems={table.totalItems}
+              pageSize={table.pageSize}
+              onPageChange={table.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

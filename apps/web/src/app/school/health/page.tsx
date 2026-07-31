@@ -7,6 +7,8 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
 
 interface Student {
   id: string;
@@ -91,6 +93,9 @@ export default function HealthPage() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to log visit'),
   });
 
+  const alertsTable = useTableControls(alerts ?? [], { pageSize: 8 });
+  const visitsTable = useTableControls(visits ?? [], { pageSize: 8 });
+
   if (!user) return null;
 
   return (
@@ -140,18 +145,27 @@ export default function HealthPage() {
           {!alerts || alerts.length === 0 ? (
             <p className="text-sm text-slate-500">No medical alerts.</p>
           ) : (
-            <ul className="flex flex-col gap-1 text-sm">
-              {alerts.map((a) => (
-                <li key={a.id}>
-                  <span className="font-medium text-slate-900">
-                    {a.student.firstName} {a.student.lastName}
-                  </span>{' '}
-                  <span className="text-slate-500">
-                    — {a.condition} ({a.severity}){a.notes && `: ${a.notes}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="flex flex-col gap-1 text-sm">
+                {alertsTable.pageItems.map((a) => (
+                  <li key={a.id}>
+                    <span className="font-medium text-slate-900">
+                      {a.student.firstName} {a.student.lastName}
+                    </span>{' '}
+                    <span className="text-slate-500">
+                      — {a.condition} ({a.severity}){a.notes && `: ${a.notes}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <Pagination
+                page={alertsTable.page}
+                pageCount={alertsTable.pageCount}
+                totalItems={alertsTable.totalItems}
+                pageSize={alertsTable.pageSize}
+                onPageChange={alertsTable.setPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>
@@ -195,19 +209,28 @@ export default function HealthPage() {
           {!visits || visits.length === 0 ? (
             <p className="text-sm text-slate-500">No clinic visits logged.</p>
           ) : (
-            <ul className="flex flex-col gap-1 text-sm">
-              {visits.map((v) => (
-                <li key={v.id}>
-                  <span className="font-medium text-slate-900">
-                    {v.student.firstName} {v.student.lastName}
-                  </span>{' '}
-                  <span className="text-slate-500">
-                    — {v.symptoms} ({new Date(v.visitDate).toLocaleDateString()})
-                    {v.treatment && `, treated: ${v.treatment}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="flex flex-col gap-1 text-sm">
+                {visitsTable.pageItems.map((v) => (
+                  <li key={v.id}>
+                    <span className="font-medium text-slate-900">
+                      {v.student.firstName} {v.student.lastName}
+                    </span>{' '}
+                    <span className="text-slate-500">
+                      — {v.symptoms} ({new Date(v.visitDate).toLocaleDateString()})
+                      {v.treatment && `, treated: ${v.treatment}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <Pagination
+                page={visitsTable.page}
+                pageCount={visitsTable.pageCount}
+                totalItems={visitsTable.totalItems}
+                pageSize={visitsTable.pageSize}
+                onPageChange={visitsTable.setPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>

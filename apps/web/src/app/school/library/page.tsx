@@ -7,6 +7,9 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
+import { SortableTh } from '@/components/ui/sortable-th';
+import { useTableControls } from '@/hooks/use-table-controls';
 
 interface Book {
   id: string;
@@ -101,6 +104,9 @@ export default function LibraryPage() {
     },
   });
 
+  const booksTable = useTableControls(books ?? [], { pageSize: 8, initialSortKey: 'title' });
+  const loansTable = useTableControls(loans ?? [], { pageSize: 8 });
+
   if (!user) return null;
 
   return (
@@ -137,18 +143,27 @@ export default function LibraryPage() {
           {!books || books.length === 0 ? (
             <p className="text-sm text-slate-500">No books in the catalogue yet.</p>
           ) : (
-            <ul className="flex flex-col gap-1">
-              {books.map((b) => (
-                <li key={b.id} className="flex justify-between text-sm">
-                  <span className="text-slate-900">
-                    {b.title} <span className="text-slate-500">by {b.author}</span>
-                  </span>
-                  <span className="text-slate-500">
-                    {b.availableCopies}/{b.totalCopies} available
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="flex flex-col gap-1">
+                {booksTable.pageItems.map((b) => (
+                  <li key={b.id} className="flex justify-between text-sm">
+                    <span className="text-slate-900">
+                      {b.title} <span className="text-slate-500">by {b.author}</span>
+                    </span>
+                    <span className="text-slate-500">
+                      {b.availableCopies}/{b.totalCopies} available
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <Pagination
+                page={booksTable.page}
+                pageCount={booksTable.pageCount}
+                totalItems={booksTable.totalItems}
+                pageSize={booksTable.pageSize}
+                onPageChange={booksTable.setPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>
@@ -201,18 +216,19 @@ export default function LibraryPage() {
           ) : !loans || loans.length === 0 ? (
             <p className="text-sm text-slate-500">No loans yet.</p>
           ) : (
+            <>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-slate-500">
                   <th className="py-2 font-medium">Book</th>
                   <th className="py-2 font-medium">Student</th>
-                  <th className="py-2 font-medium">Due</th>
+                  <SortableTh label="Due" active={loansTable.sortKey === 'dueDate'} dir={loansTable.sortDir} onClick={() => loansTable.toggleSort('dueDate')} />
                   <th className="py-2 font-medium">Status</th>
                   <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
-                {loans.map((l) => (
+                {loansTable.pageItems.map((l) => (
                   <tr key={l.id} className="border-b border-slate-100">
                     <td className="py-2 text-slate-900">{l.book.title}</td>
                     <td className="py-2 text-slate-500">
@@ -233,6 +249,14 @@ export default function LibraryPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={loansTable.page}
+              pageCount={loansTable.pageCount}
+              totalItems={loansTable.totalItems}
+              pageSize={loansTable.pageSize}
+              onPageChange={loansTable.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

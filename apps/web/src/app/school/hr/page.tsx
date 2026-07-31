@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
+import { SortableTh } from '@/components/ui/sortable-th';
+import { useTableControls } from '@/hooks/use-table-controls';
 import { cn } from '@/lib/utils';
 
 interface UserRef {
@@ -136,6 +139,8 @@ function LeaveTab({ canReview }: { canReview: boolean }) {
     onError: (err) => notifyError(err, 'Failed to update request'),
   });
 
+  const table = useTableControls(requests ?? [], { pageSize: 8 });
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -178,8 +183,9 @@ function LeaveTab({ canReview }: { canReview: boolean }) {
         ) : !requests || requests.length === 0 ? (
           <p className="text-sm text-slate-500">No leave requests yet.</p>
         ) : (
+          <>
           <ul className="flex flex-col gap-3">
-            {requests.map((r) => (
+            {table.pageItems.map((r) => (
               <li key={r.id} className="rounded-lg border border-slate-200 p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -207,6 +213,14 @@ function LeaveTab({ canReview }: { canReview: boolean }) {
               </li>
             ))}
           </ul>
+          <Pagination
+            page={table.page}
+            pageCount={table.pageCount}
+            totalItems={table.totalItems}
+            pageSize={table.pageSize}
+            onPageChange={table.setPage}
+          />
+          </>
         )}
       </CardContent>
     </Card>
@@ -279,6 +293,8 @@ function PayslipsTab({ canReview }: { canReview: boolean }) {
     }
   }
 
+  const table = useTableControls(payslips ?? [], { pageSize: 8 });
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -332,19 +348,20 @@ function PayslipsTab({ canReview }: { canReview: boolean }) {
         ) : !payslips || payslips.length === 0 ? (
           <p className="text-sm text-slate-500">No payslips yet.</p>
         ) : (
+          <>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-500">
                 {canReview && <th className="py-2 font-medium">Staff</th>}
                 <th className="py-2 font-medium">Period</th>
-                <th className="py-2 font-medium">Gross</th>
+                <SortableTh label="Gross" active={table.sortKey === 'grossPay'} dir={table.sortDir} onClick={() => table.toggleSort('grossPay')} />
                 <th className="py-2 font-medium">Deductions</th>
-                <th className="py-2 font-medium">Net</th>
+                <SortableTh label="Net" active={table.sortKey === 'netPay'} dir={table.sortDir} onClick={() => table.toggleSort('netPay')} />
                 <th className="py-2" />
               </tr>
             </thead>
             <tbody>
-              {payslips.map((p) => (
+              {table.pageItems.map((p) => (
                 <tr key={p.id} className="border-b border-slate-100">
                   {canReview && <td className="py-2 text-slate-700">{p.staff.fullName}</td>}
                   <td className="py-2 text-slate-500">
@@ -367,6 +384,14 @@ function PayslipsTab({ canReview }: { canReview: boolean }) {
               ))}
             </tbody>
           </table>
+          <Pagination
+            page={table.page}
+            pageCount={table.pageCount}
+            totalItems={table.totalItems}
+            pageSize={table.pageSize}
+            onPageChange={table.setPage}
+          />
+          </>
         )}
       </CardContent>
     </Card>
@@ -403,6 +428,7 @@ function WorkLogTab({ canReview }: { canReview: boolean }) {
     },
   });
 
+  const table = useTableControls(logs ?? [], { pageSize: 8 });
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -454,8 +480,9 @@ function WorkLogTab({ canReview }: { canReview: boolean }) {
           ) : !logs || logs.length === 0 ? (
             <p className="text-sm text-slate-500">No work logs yet.</p>
           ) : (
+            <>
             <ul className="flex flex-col gap-3">
-              {logs.map((l) => (
+              {table.pageItems.map((l) => (
                 <li key={l.id} className="rounded-lg border border-slate-200 p-3">
                   <p className="text-xs font-medium uppercase text-slate-400">
                     {new Date(l.date).toLocaleDateString()}
@@ -466,6 +493,14 @@ function WorkLogTab({ canReview }: { canReview: boolean }) {
                 </li>
               ))}
             </ul>
+            <Pagination
+              page={table.page}
+              pageCount={table.pageCount}
+              totalItems={table.totalItems}
+              pageSize={table.pageSize}
+              onPageChange={table.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

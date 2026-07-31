@@ -20,6 +20,7 @@ import {
   Boxes,
   ChefHat,
   Briefcase,
+  Users,
   Settings as SettingsIcon,
   LogOut,
   Menu,
@@ -90,7 +91,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'People',
-    items: [{ href: '/school/hr', label: 'HR & Staff Portal', icon: Briefcase, noneOf: OWN_RECORD_PERMS }],
+    items: [
+      { href: '/school/users', label: 'Staff', icon: Users, anyOf: ['TENANT:MANAGE_USERS'] },
+      { href: '/school/hr', label: 'HR & Staff Portal', icon: Briefcase, noneOf: OWN_RECORD_PERMS },
+    ],
   },
   {
     label: 'Administration',

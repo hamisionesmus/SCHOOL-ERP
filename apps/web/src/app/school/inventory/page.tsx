@@ -7,6 +7,9 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SortableTh } from '@/components/ui/sortable-th';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
 
 interface Item {
   id: string;
@@ -56,6 +59,8 @@ export default function InventoryPage() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to record movement'),
   });
 
+  const table = useTableControls(items ?? [], { pageSize: 10, initialSortKey: 'name' });
+
   if (!user) return null;
 
   return (
@@ -94,17 +99,18 @@ export default function InventoryPage() {
           ) : !items || items.length === 0 ? (
             <p className="text-sm text-slate-500">No inventory items yet.</p>
           ) : (
+            <>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="py-2 font-medium">Item</th>
-                  <th className="py-2 font-medium">Category</th>
-                  <th className="py-2 font-medium">Stock</th>
+                  <SortableTh label="Item" active={table.sortKey === 'name'} dir={table.sortDir} onClick={() => table.toggleSort('name')} />
+                  <SortableTh label="Category" active={table.sortKey === 'category'} dir={table.sortDir} onClick={() => table.toggleSort('category')} />
+                  <SortableTh label="Stock" active={table.sortKey === 'quantity'} dir={table.sortDir} onClick={() => table.toggleSort('quantity')} />
                   <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {table.pageItems.map((item) => (
                   <tr key={item.id} className="border-b border-slate-100">
                     <td className="py-2 font-medium text-slate-900">{item.name}</td>
                     <td className="py-2 text-slate-500">{item.category}</td>
@@ -148,6 +154,14 @@ export default function InventoryPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={table.page}
+              pageCount={table.pageCount}
+              totalItems={table.totalItems}
+              pageSize={table.pageSize}
+              onPageChange={table.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

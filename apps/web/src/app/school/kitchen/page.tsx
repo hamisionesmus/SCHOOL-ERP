@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonTable } from '@/components/ui/skeleton';
+import { SortableTh } from '@/components/ui/sortable-th';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
 
 const KITCHEN_CATEGORY = 'Kitchen';
 
@@ -94,6 +97,8 @@ export default function KitchenPage() {
     onError: (err) => notifyError(err, 'Failed to record stock movement'),
   });
 
+  const table = useTableControls(items ?? [], { pageSize: 10, initialSortKey: 'name' });
+
   if (!user) return null;
 
   return (
@@ -138,16 +143,17 @@ export default function KitchenPage() {
           ) : !items || items.length === 0 ? (
             <p className="text-sm text-slate-500">No kitchen stock items yet.</p>
           ) : (
+            <>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="py-2 font-medium">Item</th>
-                  <th className="py-2 font-medium">Remaining</th>
+                  <SortableTh label="Item" active={table.sortKey === 'name'} dir={table.sortDir} onClick={() => table.toggleSort('name')} />
+                  <SortableTh label="Remaining" active={table.sortKey === 'quantity'} dir={table.sortDir} onClick={() => table.toggleSort('quantity')} />
                   <th className="py-2 font-medium">Record intake / usage</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => {
+                {table.pageItems.map((item) => {
                   const draft = drafts[item.id] ?? { qty: '', reason: '' };
                   return (
                     <tr key={item.id} className="border-b border-slate-100">
@@ -203,6 +209,14 @@ export default function KitchenPage() {
                 })}
               </tbody>
             </table>
+            <Pagination
+              page={table.page}
+              pageCount={table.pageCount}
+              totalItems={table.totalItems}
+              pageSize={table.pageSize}
+              onPageChange={table.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

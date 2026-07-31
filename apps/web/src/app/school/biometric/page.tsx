@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonTable } from '@/components/ui/skeleton';
+import { SortableTh } from '@/components/ui/sortable-th';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
 
 interface UserRef {
   id: string;
@@ -92,6 +95,9 @@ export default function BiometricPage() {
     },
   });
 
+  // No initialSortKey: the API already orders newest-first.
+  const table = useTableControls(events ?? [], { pageSize: 10 });
+
   if (!user) return null;
 
   return (
@@ -171,17 +177,18 @@ export default function BiometricPage() {
           ) : !events || events.length === 0 ? (
             <p className="text-sm text-slate-500">No scans logged yet.</p>
           ) : (
+            <>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-slate-500">
                   <th className="py-2 font-medium">Who</th>
-                  <th className="py-2 font-medium">Method</th>
-                  <th className="py-2 font-medium">Direction</th>
-                  <th className="py-2 font-medium">Time</th>
+                  <SortableTh label="Method" active={table.sortKey === 'method'} dir={table.sortDir} onClick={() => table.toggleSort('method')} />
+                  <SortableTh label="Direction" active={table.sortKey === 'direction'} dir={table.sortDir} onClick={() => table.toggleSort('direction')} />
+                  <SortableTh label="Time" active={table.sortKey === 'occurredAt'} dir={table.sortDir} onClick={() => table.toggleSort('occurredAt')} />
                 </tr>
               </thead>
               <tbody>
-                {events.map((e) => (
+                {table.pageItems.map((e) => (
                   <tr key={e.id} className="border-b border-slate-100">
                     <td className="py-2 font-medium text-slate-900">
                       {e.subjectType === 'STUDENT'
@@ -198,6 +205,14 @@ export default function BiometricPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={table.page}
+              pageCount={table.pageCount}
+              totalItems={table.totalItems}
+              pageSize={table.pageSize}
+              onPageChange={table.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

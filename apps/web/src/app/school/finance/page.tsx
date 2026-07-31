@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
+import { cn } from '@/lib/utils';
 
 interface GradeLevel {
   id: string;
@@ -149,6 +152,9 @@ export default function FinancePage() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to confirm M-Pesa payment'),
   });
 
+  const feeStructuresTable = useTableControls(feeStructures ?? [], { pageSize: 8, initialSortKey: 'name' });
+  const invoicesTable = useTableControls(invoices ?? [], { pageSize: 6 });
+
   if (!user) return null;
 
   return (
@@ -204,8 +210,9 @@ export default function FinancePage() {
             {!feeStructures || feeStructures.length === 0 ? (
               <p className="text-sm text-slate-500">No fee structures yet.</p>
             ) : (
+              <>
               <ul className="flex flex-col gap-2">
-                {feeStructures.map((f) => (
+                {feeStructuresTable.pageItems.map((f) => (
                   <li
                     key={f.id}
                     className="flex items-center justify-between rounded-lg border border-slate-200 p-3"
@@ -227,6 +234,14 @@ export default function FinancePage() {
                   </li>
                 ))}
               </ul>
+              <Pagination
+                page={feeStructuresTable.page}
+                pageCount={feeStructuresTable.pageCount}
+                totalItems={feeStructuresTable.totalItems}
+                pageSize={feeStructuresTable.pageSize}
+                onPageChange={feeStructuresTable.setPage}
+              />
+              </>
             )}
             {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
           </CardContent>
@@ -243,8 +258,26 @@ export default function FinancePage() {
           ) : !invoices || invoices.length === 0 ? (
             <p className="text-sm text-slate-500">No invoices yet.</p>
           ) : (
+            <>
+            <div className="mb-3 flex items-center gap-1 text-xs text-slate-500">
+              Sort by:
+              {(['balance', 'amount', 'status'] as const).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => invoicesTable.toggleSort(key)}
+                  className={cn(
+                    'rounded-full border px-2.5 py-1 font-medium capitalize transition-colors',
+                    invoicesTable.sortKey === key
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-300',
+                  )}
+                >
+                  {key} {invoicesTable.sortKey === key && (invoicesTable.sortDir === 'asc' ? '↑' : '↓')}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-col gap-4">
-              {invoices.map((inv) => {
+              {invoicesTable.pageItems.map((inv) => {
                 const pendingStk = inv.mpesaRequests?.find((r) => r.status === 'PENDING');
                 return (
                   <div key={inv.id} className="rounded-lg border border-slate-200 p-4">
@@ -326,6 +359,14 @@ export default function FinancePage() {
                 );
               })}
             </div>
+            <Pagination
+              page={invoicesTable.page}
+              pageCount={invoicesTable.pageCount}
+              totalItems={invoicesTable.totalItems}
+              pageSize={invoicesTable.pageSize}
+              onPageChange={invoicesTable.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

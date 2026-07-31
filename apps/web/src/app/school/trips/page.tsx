@@ -12,6 +12,9 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
+import { cn } from '@/lib/utils';
 
 interface UserRef {
   id: string;
@@ -169,6 +172,8 @@ export default function TripsPage() {
     },
   });
 
+  const table = useTableControls(trips ?? [], { pageSize: 6 });
+
   if (!user) return null;
 
   return (
@@ -226,8 +231,27 @@ export default function TripsPage() {
           ) : !trips || trips.length === 0 ? (
             <p className="text-sm text-slate-500">No trips yet.</p>
           ) : (
+            <>
+            <div className="mb-3 flex items-center gap-1 text-xs text-slate-500">
+              Sort by:
+              {(['tripDate', 'status', 'costPerStudent'] as const).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => table.toggleSort(key)}
+                  className={cn(
+                    'rounded-full border px-2.5 py-1 font-medium transition-colors',
+                    table.sortKey === key
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-300',
+                  )}
+                >
+                  {key === 'tripDate' ? 'Date' : key === 'costPerStudent' ? 'Cost' : 'Status'}{' '}
+                  {table.sortKey === key && (table.sortDir === 'asc' ? '↑' : '↓')}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-col gap-4">
-              {trips.map((trip) => {
+              {table.pageItems.map((trip) => {
                 const myRegsForTrip = (myRegistrations ?? []).filter((r) => r.tripId === trip.id);
                 const registeredStudentIds = new Set(myRegsForTrip.map((r) => r.studentId));
                 const availableStudents = (students ?? []).filter((s) => !registeredStudentIds.has(s.id));
@@ -334,6 +358,14 @@ export default function TripsPage() {
                 );
               })}
             </div>
+            <Pagination
+              page={table.page}
+              pageCount={table.pageCount}
+              totalItems={table.totalItems}
+              pageSize={table.pageSize}
+              onPageChange={table.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

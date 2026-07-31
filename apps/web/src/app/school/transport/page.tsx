@@ -7,6 +7,8 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
 
 interface UserRef {
   id: string;
@@ -113,6 +115,8 @@ export default function TransportPage() {
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to assign student'),
   });
+
+  const table = useTableControls(assignments ?? [], { pageSize: 10 });
 
   if (!user) return null;
 
@@ -248,8 +252,9 @@ export default function TransportPage() {
           {!assignments || assignments.length === 0 ? (
             <p className="text-sm text-slate-500">No assignments yet.</p>
           ) : (
+            <>
             <ul className="flex flex-col gap-1 text-sm">
-              {assignments.map((a) => (
+              {table.pageItems.map((a) => (
                 <li key={a.id}>
                   <span className="font-medium text-slate-900">
                     {a.student.firstName} {a.student.lastName}
@@ -261,6 +266,14 @@ export default function TransportPage() {
                 </li>
               ))}
             </ul>
+            <Pagination
+              page={table.page}
+              pageCount={table.pageCount}
+              totalItems={table.totalItems}
+              pageSize={table.pageSize}
+              onPageChange={table.setPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>

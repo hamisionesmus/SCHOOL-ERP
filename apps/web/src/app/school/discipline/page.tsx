@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
+import { cn } from '@/lib/utils';
 
 interface Student {
   id: string;
@@ -60,6 +63,10 @@ export default function DisciplinePage() {
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to log case'),
   });
+
+  // No initialSortKey: the API already orders newest-first, so leaving sort unset preserves that
+  // default instead of the hook's ascending sort silently flipping it to oldest-first on load.
+  const table = useTableControls(cases ?? [], { pageSize: 8 });
 
   if (!user) return null;
 
@@ -117,21 +124,47 @@ export default function DisciplinePage() {
           ) : !cases || cases.length === 0 ? (
             <p className="text-sm text-slate-500">No discipline cases logged.</p>
           ) : (
-            <ul className="flex flex-col gap-3">
-              {cases.map((c) => (
-                <li key={c.id} className="rounded-lg border border-slate-200 p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-slate-900">
-                      {c.student.firstName} {c.student.lastName}
-                    </span>
-                    <Badge status={c.category} />
-                  </div>
-                  <p className="mt-1 text-sm text-slate-600">{c.description}</p>
-                  {c.actionTaken && <p className="text-xs text-slate-500">Action: {c.actionTaken}</p>}
-                  <p className="text-xs text-slate-400">{new Date(c.createdAt).toLocaleString()}</p>
-                </li>
-              ))}
-            </ul>
+            <>
+              <div className="mb-3 flex items-center gap-1 text-xs text-slate-500">
+                Sort by:
+                {(['createdAt', 'category'] as const).map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => table.toggleSort(key)}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 font-medium transition-colors',
+                      table.sortKey === key
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300',
+                    )}
+                  >
+                    {key === 'createdAt' ? 'Date' : 'Category'} {table.sortKey === key && (table.sortDir === 'asc' ? '↑' : '↓')}
+                  </button>
+                ))}
+              </div>
+              <ul className="flex flex-col gap-3">
+                {table.pageItems.map((c) => (
+                  <li key={c.id} className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-slate-900">
+                        {c.student.firstName} {c.student.lastName}
+                      </span>
+                      <Badge status={c.category} />
+                    </div>
+                    <p className="mt-1 text-sm text-slate-600">{c.description}</p>
+                    {c.actionTaken && <p className="text-xs text-slate-500">Action: {c.actionTaken}</p>}
+                    <p className="text-xs text-slate-400">{new Date(c.createdAt).toLocaleString()}</p>
+                  </li>
+                ))}
+              </ul>
+              <Pagination
+                page={table.page}
+                pageCount={table.pageCount}
+                totalItems={table.totalItems}
+                pageSize={table.pageSize}
+                onPageChange={table.setPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>
