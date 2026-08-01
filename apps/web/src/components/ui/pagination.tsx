@@ -10,7 +10,11 @@ interface PaginationProps {
 }
 
 export function Pagination({ page, pageCount, onPageChange, totalItems, pageSize }: PaginationProps) {
-  if (pageCount <= 1) return null;
+  // Only hide entirely when there's truly nothing to show. A single page of results still renders
+  // the "X of Y" summary (with Prev/Next disabled) rather than disappearing outright — otherwise
+  // there's no way to tell pagination exists at all until a list happens to cross the page-size
+  // threshold, which small/demo datasets may never do.
+  if (totalItems === 0 || (totalItems === undefined && pageCount <= 1)) return null;
 
   const start = totalItems && pageSize ? (page - 1) * pageSize + 1 : undefined;
   const end = totalItems && pageSize ? Math.min(page * pageSize, totalItems) : undefined;

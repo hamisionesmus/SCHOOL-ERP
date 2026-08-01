@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 
 const NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
+  { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
   { href: '/dashboard/backups', label: 'Backups', icon: DatabaseBackup },
 ];
 

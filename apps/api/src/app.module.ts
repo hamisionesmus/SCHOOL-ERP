@@ -33,6 +33,9 @@ import { BillingModule } from './platform/billing/billing.module';
 import { BackupsModule } from './platform/backups/backups.module';
 import { SickSheetsModule } from './sick-sheets/sick-sheets.module';
 import { CalendarModule } from './calendar/calendar.module';
+import { SecurityModule } from './platform/security/security.module';
+import { AnalyticsModule } from './platform/analytics/analytics.module';
+import { AuditLogAccessModule } from './platform/audit-log-access/audit-log-access.module';
 
 @Module({
   imports: [
@@ -69,6 +72,9 @@ import { CalendarModule } from './calendar/calendar.module';
     BackupsModule,
     SickSheetsModule,
     CalendarModule,
+    SecurityModule,
+    AnalyticsModule,
+    AuditLogAccessModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

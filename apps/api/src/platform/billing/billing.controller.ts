@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, StreamableFile, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, StreamableFile, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -47,10 +47,5 @@ export class BillingController {
   @Post('tenants/:id/reset-admin-password')
   resetAdminPassword(@Param('id') id: string) {
     return this.billingService.resetSchoolAdminPassword(id);
-  }
-
-  @Get('tenants/:id/audit-logs')
-  getAuditLogs(@Param('id') id: string, @Query('page') page?: string, @Query('pageSize') pageSize?: string) {
-    return this.billingService.getAuditLogs(id, page ? Number(page) : 1, pageSize ? Number(pageSize) : 20);
   }
 }

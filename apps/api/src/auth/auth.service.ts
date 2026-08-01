@@ -33,18 +33,55 @@ export class AuthService {
     private readonly tenantPrisma: TenantPrismaService,
   ) {}
 
-  async login(dto: LoginDto): Promise<TokenPair & { user: JwtUserPayload }> {
+  async login(dto: LoginDto, ipAddress?: string): Promise<TokenPair & { user: JwtUserPayload }> {
     if (dto.tenantSlug) {
-      return this.loginTenant(dto.tenantSlug, dto.email, dto.password);
+      return this.loginTenant(dto.tenantSlug, dto.email, dto.password, ipAddress);
     }
-    return this.loginPlatform(dto.email, dto.password);
+    return this.loginPlatform(dto.email, dto.password, ipAddress);
   }
 
-  private async loginPlatform(email: string, password: string) {
+  private static readonly FAILED_LOGIN_WINDOW_MS = 15 * 60 * 1000;
+  private static readonly FAILED_LOGIN_THRESHOLD = 5;
+
+  /** Records one failed attempt, then checks whether this (email, realm) has crossed the burst
+   * threshold within the rolling window — if so, raises exactly one SecurityAlert per burst (checked
+   * by seeing if an unacknowledged alert already exists for this key within the window) rather than
+   * one alert per failed attempt, which would just be noise for the Super Admin to wade through. */
+  private async recordFailedAttempt(email: string, tenantSlug: string | null, ipAddress?: string) {
+    const windowStart = new Date(Date.now() - AuthService.FAILED_LOGIN_WINDOW_MS);
+    await this.platformPrisma.failedLoginAttempt.create({
+      data: { email, tenantSlug: tenantSlug ?? undefined, ipAddress },
+    });
+
+    const count = await this.platformPrisma.failedLoginAttempt.count({
+      where: { email, tenantSlug: tenantSlug ?? null, createdAt: { gte: windowStart } },
+    });
+    if (count < AuthService.FAILED_LOGIN_THRESHOLD) return;
+
+    const existingAlert = await this.platformPrisma.securityAlert.findFirst({
+      where: { type: 'REPEATED_FAILED_LOGIN', email, tenantSlug: tenantSlug ?? null, createdAt: { gte: windowStart } },
+    });
+    if (existingAlert) return;
+
+    await this.platformPrisma.securityAlert.create({
+      data: {
+        type: 'REPEATED_FAILED_LOGIN',
+        severity: count >= AuthService.FAILED_LOGIN_THRESHOLD * 2 ? 'HIGH' : 'MEDIUM',
+        email,
+        tenantSlug: tenantSlug ?? undefined,
+        ipAddress,
+        attemptCount: count,
+        details: `${count} failed login attempts for ${email}${tenantSlug ? ` (school: ${tenantSlug})` : ' (Super Admin login)'} within 15 minutes`,
+      },
+    });
+  }
+
+  private async loginPlatform(email: string, password: string, ipAddress?: string) {
     const user = await this.platformPrisma.platformUser.findFirst({
       where: { email, deletedAt: null },
     });
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      await this.recordFailedAttempt(email, null, ipAddress);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -59,7 +96,7 @@ export class AuthService {
     return { ...tokens, user: payload };
   }
 
-  private async loginTenant(tenantSlug: string, email: string, password: string) {
+  private async loginTenant(tenantSlug: string, email: string, password: string, ipAddress?: string) {
     const tenant = await this.platformPrisma.tenant.findFirst({
       where: { slug: tenantSlug, deletedAt: null },
     });
@@ -83,6 +120,7 @@ export class AuthService {
     const db = this.tenantPrisma.forSchema(tenant.schemaName);
     const user = await db.user.findFirst({ where: { email, deletedAt: null } });
     if (!user || !user.isActive || !(await bcrypt.compare(password, user.passwordHash))) {
+      await this.recordFailedAttempt(email, tenantSlug, ipAddress);
       throw new UnauthorizedException('Invalid credentials');
     }
 

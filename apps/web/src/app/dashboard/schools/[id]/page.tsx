@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { ArrowLeft, KeyRound } from 'lucide-react';
-import { apiFetch, API_ORIGIN } from '@/lib/api';
+import { ArrowLeft, KeyRound, Copy, Check } from 'lucide-react';
+import { apiFetch, API_ORIGIN, ApiError } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { daysUntil, formatCountdown, countdownTone } from '@/lib/date';
@@ -58,13 +58,14 @@ interface Invoice {
   dueDate: string;
   payments: Payment[];
 }
-interface AuditLogEntry {
+interface AuditLogAccessRequest {
   id: string;
-  action: string;
-  entityType: string;
-  entityId: string | null;
+  requestedBy: { fullName: string; email: string };
+  confirmedAt: string | null;
+  availableAt: string | null;
+  downloadedAt: string | null;
+  sharedWithSchoolAt: string | null;
   createdAt: string;
-  actor: { fullName: string; email: string } | null;
 }
 
 function kes(n: number) {
@@ -136,6 +137,7 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmStatus, setConfirmStatus] = useState<'suspend' | 'activate' | null>(null);
   const [resetResult, setResetResult] = useState<{ email: string; temporaryPassword: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const { data: usage } = useQuery({
     queryKey: ['tenant-usage', tenant.id],
@@ -312,10 +314,28 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
               Shown once — relay it securely to <strong>{resetResult.email}</strong>. It will not be
               shown again.
             </p>
-            <p className="mt-4 select-all rounded-lg bg-slate-100 px-4 py-3 font-mono text-lg font-semibold tracking-wide text-slate-900">
-              {resetResult.temporaryPassword}
+            <div className="mt-4 flex items-center justify-between gap-2 rounded-lg bg-slate-100 px-4 py-3">
+              <p className="select-all font-mono text-lg font-semibold tracking-wide text-slate-900">
+                {resetResult.temporaryPassword}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(resetResult.temporaryPassword);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="flex-shrink-0 rounded-md p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                aria-label="Copy password"
+                title="Copy to clipboard"
+              >
+                {copied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Copy this exactly — retyping it by hand risks mistaking look-alike characters.
             </p>
-            <Button className="mt-5 w-full" onClick={() => setResetResult(null)}>
+            <Button className="mt-3 w-full" onClick={() => setResetResult(null)}>
               Done
             </Button>
           </div>
@@ -526,38 +546,165 @@ function BillingTab({ tenantId }: { tenantId: string }) {
 }
 
 function AuditLogTab({ tenantId }: { tenantId: string }) {
-  const { data: logs, isLoading } = useQuery({
-    queryKey: ['tenant-audit-logs', tenantId],
-    queryFn: () => apiFetch<AuditLogEntry[]>(`/platform/tenants/${tenantId}/audit-logs`),
+  const queryClient = useQueryClient();
+  const [code, setCode] = useState('');
+  const [devCode, setDevCode] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const { data: requests, isLoading } = useQuery({
+    queryKey: ['audit-log-access-requests', tenantId],
+    queryFn: () => apiFetch<AuditLogAccessRequest[]>(`/platform/tenants/${tenantId}/audit-log-access/requests`),
+    refetchInterval: 30_000,
   });
+
+  const latest = requests?.[0];
+  const ready = latest?.availableAt && new Date(latest.availableAt) <= new Date();
+  const waiting = latest?.confirmedAt && !ready;
+  const awaitingCode = latest && !latest.confirmedAt;
+
+  const requestAccess = useMutation({
+    mutationFn: () =>
+      apiFetch<{ requestId: string; devCode: string }>(`/platform/tenants/${tenantId}/audit-log-access/request`, {
+        method: 'POST',
+      }),
+    onSuccess: (data) => {
+      setDevCode(data.devCode);
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ['audit-log-access-requests', tenantId] });
+      notifySuccess('Confirmation code sent to your email');
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Failed to request access');
+      notifyError(err, 'Failed to request access');
+    },
+  });
+
+  const confirmAccess = useMutation({
+    mutationFn: () =>
+      apiFetch(`/platform/audit-log-access/${latest!.id}/confirm`, {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      }),
+    onSuccess: () => {
+      setError(null);
+      setCode('');
+      setDevCode(null);
+      queryClient.invalidateQueries({ queryKey: ['audit-log-access-requests', tenantId] });
+      notifySuccess('Confirmed — the log will be ready to download in 2 hours');
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : 'Failed to confirm');
+      notifyError(err, 'Failed to confirm');
+    },
+  });
+
+  const shareWithSchool = useMutation({
+    mutationFn: () => apiFetch<{ sharedWith: string }>(`/platform/audit-log-access/${latest!.id}/share`, { method: 'POST' }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['audit-log-access-requests', tenantId] });
+      notifySuccess(`Emailed to ${data.sharedWith}`);
+    },
+    onError: (err) => notifyError(err, 'Failed to share'),
+  });
+
+  async function downloadCsv() {
+    try {
+      const token = getAccessToken();
+      const res = await fetch(`${API_ORIGIN}/platform/audit-log-access/${latest!.id}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? 'Download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'audit-log.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      queryClient.invalidateQueries({ queryKey: ['audit-log-access-requests', tenantId] });
+    } catch (err) {
+      notifyError(err, 'Failed to download');
+    }
+  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Users size={16} />
-          Recent Activity
+          Activity Log Access
         </CardTitle>
       </CardHeader>
       <CardContent>
+        <p className="mb-4 text-xs text-slate-500">
+          This school&apos;s activity log isn&apos;t viewable on the spot — request access, confirm the
+          code emailed to your own account, then wait 2 hours before the log file can be downloaded.
+          It&apos;s always scoped to this one school; nothing is ever bundled across schools.
+        </p>
+
         {isLoading ? (
-          <Skeleton className="h-32 w-full" />
-        ) : !logs || logs.length === 0 ? (
-          <p className="text-sm text-slate-500">No audit log entries yet.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {logs.map((log) => (
-              <li key={log.id} className="flex items-center justify-between border-b border-slate-100 py-2 text-sm">
-                <span>
-                  <span className="font-medium text-slate-900">{log.actor?.fullName ?? 'System'}</span>{' '}
-                  <span className="text-slate-500">
-                    {log.action.replace(/_/g, ' ').toLowerCase()} · {log.entityType}
-                  </span>
-                </span>
-                <span className="text-xs text-slate-400">{new Date(log.createdAt).toLocaleString()}</span>
-              </li>
-            ))}
-          </ul>
+          <Skeleton className="h-24 w-full" />
+        ) : !latest ? (
+          <Button onClick={() => requestAccess.mutate()} disabled={requestAccess.isPending}>
+            {requestAccess.isPending ? 'Sending code...' : 'Request access to activity log'}
+          </Button>
+        ) : awaitingCode ? (
+          <div className="flex flex-col gap-3">
+            {devCode && (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                Dev/test convenience — no real email gateway in this environment: code is{' '}
+                <strong>{devCode}</strong>.
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <Input value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} placeholder="6-digit code" className="w-40" />
+              <Button onClick={() => confirmAccess.mutate()} disabled={code.length !== 6 || confirmAccess.isPending}>
+                {confirmAccess.isPending ? 'Confirming...' : 'Confirm'}
+              </Button>
+            </div>
+          </div>
+        ) : waiting ? (
+          <div className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            Confirmed. Ready to download at{' '}
+            <strong>{new Date(latest.availableAt!).toLocaleString('en-KE')}</strong> — this page
+            refreshes automatically.
+          </div>
+        ) : ready ? (
+          <div className="flex flex-col gap-3">
+            <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              Ready since {new Date(latest.availableAt!).toLocaleString('en-KE')}.
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={downloadCsv}>Download CSV</Button>
+              <Button variant="outline" onClick={() => shareWithSchool.mutate()} disabled={shareWithSchool.isPending}>
+                {shareWithSchool.isPending ? 'Sending...' : "Email to school's admin"}
+              </Button>
+              <Button variant="outline" onClick={() => requestAccess.mutate()} disabled={requestAccess.isPending}>
+                Start a new request
+              </Button>
+            </div>
+            {latest.sharedWithSchoolAt && (
+              <p className="text-xs text-slate-400">
+                Shared with the school admin on {new Date(latest.sharedWithSchoolAt).toLocaleString('en-KE')}.
+              </p>
+            )}
+          </div>
+        ) : null}
+
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+
+        {requests && requests.length > 0 && (
+          <div className="mt-6 border-t border-slate-100 pt-4">
+            <p className="mb-2 text-xs font-medium uppercase text-slate-400">Request history</p>
+            <ul className="flex flex-col gap-1.5 text-xs text-slate-500">
+              {requests.map((r) => (
+                <li key={r.id}>
+                  {new Date(r.createdAt).toLocaleString('en-KE')} by {r.requestedBy.fullName} —{' '}
+                  {r.downloadedAt ? 'downloaded' : r.availableAt && new Date(r.availableAt) <= new Date() ? 'ready' : r.confirmedAt ? 'waiting' : 'awaiting code'}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </CardContent>
     </Card>

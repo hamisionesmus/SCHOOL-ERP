@@ -20,6 +20,7 @@ enum PlatformRole {
 
 enum BillingCycle {
   MONTHLY
+  HALF_YEARLY
   YEARLY
 }
 
@@ -103,6 +104,7 @@ model Tenant {
   deletedAt              DateTime?
 
   invoices PlatformInvoice[]
+  auditLogAccessRequests AuditLogAccessRequest[]
 }
 
 // Two-step tenant creation: the Super Admin submits the school details, a 6-digit code is sent to
@@ -144,6 +146,7 @@ model PlatformUser {
 
   refreshTokens    PlatformRefreshToken[]
   paymentsRecorded PlatformPayment[]
+  auditLogAccessRequests AuditLogAccessRequest[]
 }
 
 model PlatformRefreshToken {
@@ -202,4 +205,61 @@ model PlatformPayment {
   recordedByUserId String
   recordedBy       PlatformUser           @relation(fields: [recordedByUserId], references: [id])
   createdAt        DateTime               @default(now())
+}
+
+// Every failed login attempt, both realms — a school's own login (tenantSlug set) and the Super
+// Admin's own login (tenantSlug null). Kept as individual rows (not just a counter) so a burst can be
+// windowed by createdAt without extra bookkeeping, and so the raw attempts are themselves an audit
+// trail if ever needed.
+model FailedLoginAttempt {
+  id         String   @id @default(uuid())
+  email      String
+  tenantSlug String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([email, tenantSlug, createdAt])
+}
+
+enum SecurityAlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// Raised once a burst of failed logins for the same (email, realm) crosses a threshold within a
+// rolling window (see AuthService) — not one alert per failed attempt, which would just be noise.
+// Super-Admin-visible only; there is no tenant-side view of this.
+model SecurityAlert {
+  id            String                 @id @default(uuid())
+  type          String
+  severity      SecurityAlertSeverity  @default(MEDIUM)
+  email         String?
+  tenantSlug    String?
+  ipAddress     String?
+  attemptCount  Int?
+  details       String?
+  acknowledged  Boolean                @default(false)
+  createdAt     DateTime               @default(now())
+}
+
+// Time-delayed, per-school audit-log access. A Super Admin can't just click into a school's raw
+// activity log — they request it, a 6-digit code is emailed to *their own* account (same consent
+// pattern as TenantCreationRequest), and only once confirmed does a mandatory delay start; the log
+// file itself isn't assembled/downloadable until availableAt passes. This is a deliberate friction —
+// even a compromised or unattended Super Admin session can't pull a school's full activity history
+// on the spot. Always scoped to exactly one tenant; there is no "all schools" export.
+model AuditLogAccessRequest {
+  id             String    @id @default(uuid())
+  tenantId       String
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  requestedById  String
+  requestedBy    PlatformUser @relation(fields: [requestedById], references: [id])
+  code           String
+  codeExpiresAt  DateTime
+  confirmedAt    DateTime?
+  availableAt    DateTime?
+  downloadedAt   DateTime?
+  sharedWithSchoolAt DateTime?
+  createdAt      DateTime  @default(now())
 }

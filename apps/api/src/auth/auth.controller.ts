@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
@@ -11,9 +13,12 @@ import { CurrentUser, JwtUserPayload } from '../common/decorators/current-user.d
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // Stricter than the app-wide default (120/min) — login is the one endpoint worth slowing down
+  // hard against brute-force, even though genuine users almost never hit 8 attempts/min themselves.
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  login(@Body() dto: LoginDto, @Req() req: Request) {
+    return this.authService.login(dto, req.ip);
   }
 
   @Post('refresh')

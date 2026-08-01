@@ -1,8 +1,8 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { School, CheckCircle2, PauseCircle, Clock } from 'lucide-react';
+import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { School, CheckCircle2, PauseCircle, Clock, Wallet, AlertTriangle, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
@@ -61,7 +61,30 @@ function RenewalCell({ currentPeriodEnd }: { currentPeriodEnd: string | null }) 
   return <span className={toneClass}>{formatCountdown(days)}</span>;
 }
 
+interface RevenueOverview {
+  totalRevenue: number;
+  outstanding: number;
+  totalSchools: number;
+  activeSchools: number;
+  suspendedSchools: number;
+  trialSchools: number;
+  demoSchools: number;
+  revenueByBillingCycle: Record<'MONTHLY' | 'HALF_YEARLY' | 'YEARLY', number>;
+  monthlyRevenue: { month: string; amount: number }[];
+}
+
 const STATUS_COLORS: Record<string, string> = { ACTIVE: '#10b981', TRIAL: '#f59e0b', SUSPENDED: '#f43f5e' };
+const CYCLE_COLORS: Record<string, string> = { MONTHLY: '#3b82f6', HALF_YEARLY: '#8b5cf6', YEARLY: '#0ea5e9' };
+const CYCLE_LABELS: Record<string, string> = { MONTHLY: 'Monthly', HALF_YEARLY: 'Half-yearly', YEARLY: 'Yearly' };
+
+function formatKes(amount: number) {
+  return `KES ${amount.toLocaleString()}`;
+}
+
+function formatMonthLabel(month: string) {
+  const [year, m] = month.split('-');
+  return new Date(Number(year), Number(m) - 1, 1).toLocaleDateString('en-KE', { month: 'short', year: '2-digit' });
+}
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
@@ -72,6 +95,11 @@ export default function DashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['tenants'],
     queryFn: () => apiFetch<{ data: Tenant[] }>('/platform/tenants'),
+  });
+
+  const { data: revenue, isLoading: revenueLoading } = useQuery({
+    queryKey: ['analytics-revenue'],
+    queryFn: () => apiFetch<RevenueOverview>('/platform/analytics/revenue'),
   });
 
   const toggleStatus = useMutation({
@@ -141,6 +169,81 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      <section className="mb-8">
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">Revenue &amp; Subscriptions</h2>
+
+        {revenueLoading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : revenue ? (
+          <>
+            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard label="Total revenue collected" value={revenue.totalRevenue} formatValue={formatKes} icon={Wallet} accent="emerald" />
+              <StatCard label="Outstanding balance" value={revenue.outstanding} formatValue={formatKes} icon={AlertTriangle} accent="amber" />
+              <StatCard label="Active subscriptions" value={revenue.activeSchools} icon={CheckCircle2} accent="blue" />
+              <StatCard label="Demo schools" value={revenue.demoSchools} icon={Sparkles} accent="rose" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Monthly revenue (last 12 months)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={revenue.monthlyRevenue.map((m) => ({ ...m, label: formatMonthLabel(m.month) }))}>
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                      <Tooltip formatter={(v) => formatKes(Number(v))} />
+                      <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Revenue by billing cycle</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {Object.values(revenue.revenueByBillingCycle).every((v) => v === 0) ? (
+                    <p className="flex h-[220px] items-center justify-center text-sm text-slate-400">No paid invoices yet.</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Pie
+                          data={Object.entries(revenue.revenueByBillingCycle).map(([cycle, amount]) => ({ cycle, amount }))}
+                          dataKey="amount"
+                          nameKey="cycle"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={45}
+                          outerRadius={70}
+                          paddingAngle={3}
+                        >
+                          {Object.keys(revenue.revenueByBillingCycle).map((cycle) => (
+                            <Cell key={cycle} fill={CYCLE_COLORS[cycle]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(v, _n, p) => [
+                            formatKes(Number(v)),
+                            CYCLE_LABELS[p.payload.cycle] ?? p.payload.cycle,
+                          ]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        ) : null}
+      </section>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

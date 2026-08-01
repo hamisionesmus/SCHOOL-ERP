@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
@@ -9,7 +9,17 @@ import { RecordPaymentDto } from './dto/record-payment.dto';
 import { generateInvoiceNumber, generatePlatformReceiptNumber } from './invoice-number.util';
 import { renderPlatformInvoicePdf } from './invoice-pdf.util';
 
-const CYCLE_DAYS = { MONTHLY: 30, YEARLY: 365 } as const;
+const CYCLE_DAYS = { MONTHLY: 30, HALF_YEARLY: 182, YEARLY: 365 } as const;
+
+// Excludes visually ambiguous characters (0/O, 1/l/I, etc.) — a temp password shown once on screen
+// and hand-relayed/retyped by someone else is exactly the case where a look-alike character causes a
+// silent, hard-to-diagnose login failure. See docs/SRS.md §4.1.
+const UNAMBIGUOUS_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+function generateTempPassword(length = 12): string {
+  let out = '';
+  for (let i = 0; i < length; i++) out += UNAMBIGUOUS_CHARS[randomInt(UNAMBIGUOUS_CHARS.length)];
+  return out;
+}
 
 @Injectable()
 export class BillingService {
@@ -162,26 +172,11 @@ export class BillingService {
     const admin = await this.getSchoolAdmin(tenant.schemaName);
     if (!admin) throw new NotFoundException('No School Administrator user found for this school');
 
-    const tempPassword = randomBytes(9).toString('base64').replace(/[+/=]/g, '').slice(0, 12);
+    const tempPassword = generateTempPassword();
     const passwordHash = await bcrypt.hash(tempPassword, 12);
     const db = this.tenantPrisma.forSchema(tenant.schemaName);
     await db.user.update({ where: { id: admin.id }, data: { passwordHash } });
 
     return { email: admin.email, fullName: admin.fullName, temporaryPassword: tempPassword };
-  }
-
-  async getAuditLogs(tenantId: string, page = 1, pageSize = 20) {
-    const tenant = await this.findTenant(tenantId);
-    const db = this.tenantPrisma.forSchema(tenant.schemaName);
-    const [data, total] = await Promise.all([
-      db.auditLog.findMany({
-        include: { actor: { select: { id: true, fullName: true, email: true } } },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      db.auditLog.count(),
-    ]);
-    return { data, meta: { page, pageSize, total } };
   }
 }
