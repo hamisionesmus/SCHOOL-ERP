@@ -38,7 +38,7 @@ jobs:
         run: npm run build
 
   deploy:
-    name: Deploy to Truehost
+    name: Deploy to VPS
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -51,25 +51,7 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script_stop: true
           script: |
-            set -e
             cd ~/school-erp
             git pull origin main
-
-            # --- API ---
-            source ${{ secrets.API_VENV_ACTIVATE }}
-            cd ~/school-erp/apps/api
-            npm install
-            npm run prisma:generate
-            npx prisma migrate deploy --schema=prisma/platform/schema.prisma
-            npm run prisma:tenant:migrate:all
-            npm run build
-            mkdir -p tmp && touch tmp/restart.txt
-            deactivate
-
-            # --- Web ---
-            source ${{ secrets.WEB_VENV_ACTIVATE }}
-            cd ~/school-erp/apps/web
-            npm install
-            npm run build
-            mkdir -p tmp && touch tmp/restart.txt
-            deactivate
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker image prune -f

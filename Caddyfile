@@ -1,0 +1,7 @@
+myschoolapp.xyz {
+	reverse_proxy web:3000
+}
+
+api.myschoolapp.xyz {
+	reverse_proxy api:4000
+}
