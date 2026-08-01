@@ -40,9 +40,9 @@ export function ConfirmDialog({
   const { icon: Icon, iconBg, iconColor, button } = TONE_STYLES[tone];
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 animate-fade-in bg-slate-900/40 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative w-full max-w-sm animate-scale-in rounded-2xl bg-white p-6 text-center shadow-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto p-4">
+      <div className="fixed inset-0 animate-fade-in bg-slate-900/40 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative my-8 w-full max-w-sm animate-scale-in rounded-2xl bg-white p-6 text-center shadow-2xl">
         <div className={cn('mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full', iconBg)}>
           <Icon size={28} className={iconColor} />
         </div>

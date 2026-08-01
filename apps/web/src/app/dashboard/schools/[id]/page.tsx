@@ -304,8 +304,8 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
       />
 
       {resetResult && (
-        <div className="fixed inset-0 z-[100] flex animate-fade-in items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm animate-scale-in rounded-2xl bg-white p-6 text-center shadow-2xl">
+        <div className="fixed inset-0 z-[100] flex animate-fade-in items-center justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="my-8 w-full max-w-sm animate-scale-in rounded-2xl bg-white p-6 text-center shadow-2xl">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50">
               <KeyRound size={28} className="text-blue-600" />
             </div>
@@ -509,8 +509,8 @@ function BillingTab({ tenantId }: { tenantId: string }) {
       </CardContent>
 
       {payTarget && (
-        <div className="fixed inset-0 z-[100] flex animate-fade-in items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm animate-scale-in rounded-xl bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-[100] flex animate-fade-in items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="my-8 w-full max-w-sm animate-scale-in rounded-xl bg-white p-6 shadow-2xl">
             <h3 className="mb-1 text-lg font-semibold text-slate-900">Record payment</h3>
             <p className="mb-4 text-sm text-slate-500">
               {payTarget.invoiceNumber} — {kes(payTarget.amount)} due
