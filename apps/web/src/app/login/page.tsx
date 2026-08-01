@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { GraduationCap, ChevronDown } from 'lucide-react';
+import { GraduationCap, ChevronDown, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -51,40 +51,60 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 px-4">
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-slate-950 to-indigo-950" />
-      <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-blue-600/30 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-violet-600/30 blur-3xl" />
-      <div className="pointer-events-none absolute left-1/2 top-1/3 h-64 w-64 -translate-x-1/2 rounded-full bg-emerald-500/10 blur-3xl" />
+    <main className="flex min-h-screen bg-[#07130f]">
+      {/* Hero panel — hidden on small screens */}
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden p-12 lg:flex">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_#123324_0%,_#07130f_60%)]" />
+        <div className="absolute inset-0 opacity-[0.04] [background-image:linear-gradient(#fff_1px,transparent_1px),linear-gradient(90deg,#fff_1px,transparent_1px)] [background-size:36px_36px]" />
+        <div className="pointer-events-none absolute -left-24 top-1/3 h-80 w-80 rounded-full bg-emerald-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 rounded-full bg-amber-400/10 blur-3xl" />
 
-      <div className="relative w-full max-w-sm animate-float-up">
-        <div className="mb-6 flex flex-col items-center gap-3 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-900/40">
-            <GraduationCap size={28} className="text-white" />
+        <div className="relative flex items-center gap-2.5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
+            <GraduationCap size={20} className="text-emerald-950" />
           </div>
-          <div>
-            <h1 className="text-xl font-semibold text-white">School ERP</h1>
-            <p className="text-sm text-slate-400">Kenyan CBC School Management Platform</p>
-          </div>
+          <span className="text-lg font-semibold text-white">School ERP</span>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-6 shadow-2xl backdrop-blur-xl">
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">Email</label>
+        <div className="relative">
+          <h1 className="max-w-md text-4xl font-semibold leading-tight text-white">
+            One place for every register, rubric and receipt.
+          </h1>
+          <p className="mt-6 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-emerald-300/70">
+            Kenyan CBC · PP1 — Grade 9
+          </p>
+        </div>
+      </div>
+
+      {/* Sign-in panel */}
+      <div className="flex w-full flex-col justify-center px-6 py-12 lg:w-1/2 lg:px-16 xl:px-24">
+        <div className="mx-auto w-full max-w-sm">
+          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
+              <GraduationCap size={20} className="text-emerald-950" />
+            </div>
+            <span className="text-lg font-semibold text-white">School ERP</span>
+          </div>
+
+          <h2 className="text-2xl font-semibold text-white">Sign in</h2>
+          <p className="mt-1.5 text-sm text-slate-400">Enter your details to access your dashboard.</p>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="mt-8 flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-400">Email</label>
               <Input
                 type="email"
-                placeholder="you@example.com"
-                className="border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus-visible:ring-blue-500"
+                placeholder="you@school.ac.ke"
+                className="h-11 border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus-visible:ring-emerald-500"
                 {...register('email')}
               />
               {errors.email && <p className="text-xs text-rose-400">{errors.email.message}</p>}
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-300">Password</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-400">Password</label>
               <Input
                 type="password"
-                className="border-white/10 bg-white/5 text-white focus-visible:ring-blue-500"
+                className="h-11 border-white/10 bg-white/5 text-white focus-visible:ring-emerald-500"
                 {...register('password')}
               />
               {errors.password && <p className="text-xs text-rose-400">{errors.password.message}</p>}
@@ -99,11 +119,11 @@ export default function LoginPage() {
               Signing in to a specific school?
             </button>
             {showSchoolField && (
-              <div className="flex flex-col gap-1 animate-fade-in">
-                <label className="text-xs font-medium text-slate-300">School slug</label>
+              <div className="flex flex-col gap-1.5 animate-fade-in">
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-400">School slug</label>
                 <Input
                   placeholder="greenfield-academy"
-                  className="border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus-visible:ring-blue-500"
+                  className="h-11 border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus-visible:ring-emerald-500"
                   {...register('tenantSlug')}
                 />
               </div>
@@ -115,15 +135,17 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500"
+              className="h-11 bg-gradient-to-r from-emerald-500 to-amber-400 font-medium text-emerald-950 hover:from-emerald-400 hover:to-amber-300"
             >
               {isSubmitting ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
+
+          <div className="mt-8 flex items-center justify-center gap-1.5 text-xs text-slate-500">
+            <ShieldCheck size={13} className="text-emerald-500/70" />
+            Multi-tenant SaaS for CBC schools — PP1 to Grade 9
+          </div>
         </div>
-        <p className="mt-5 text-center text-xs text-slate-500">
-          Multi-tenant SaaS for CBC schools — PP1 to Grade 9
-        </p>
       </div>
     </main>
   );
