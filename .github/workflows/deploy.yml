@@ -1,0 +1,75 @@
+name: Build, check, and deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install API deps
+        working-directory: apps/api
+        run: npm install
+
+      - name: Generate Prisma clients
+        working-directory: apps/api
+        run: npm run prisma:generate
+
+      - name: Build API
+        working-directory: apps/api
+        run: npm run build
+
+      - name: Install Web deps
+        working-directory: apps/web
+        run: npm install
+
+      - name: Build Web
+        working-directory: apps/web
+        env:
+          NEXT_PUBLIC_API_URL: https://api.myschoolapp.xyz
+        run: npm run build
+
+  deploy:
+    name: Deploy to Truehost
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd ~/school-erp
+            git pull origin main
+
+            # --- API ---
+            source ${{ secrets.API_VENV_ACTIVATE }}
+            cd ~/school-erp/apps/api
+            npm install
+            npm run prisma:generate
+            npx prisma migrate deploy --schema=prisma/platform/schema.prisma
+            npm run prisma:tenant:migrate:all
+            npm run build
+            mkdir -p tmp && touch tmp/restart.txt
+            deactivate
+
+            # --- Web ---
+            source ${{ secrets.WEB_VENV_ACTIVATE }}
+            cd ~/school-erp/apps/web
+            npm install
+            npm run build
+            mkdir -p tmp && touch tmp/restart.txt
+            deactivate

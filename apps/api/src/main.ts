@@ -28,7 +28,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = config.get<number>('API_PORT') ?? 4000;
+  // cPanel/Passenger assigns the listening port via process.env.PORT at runtime; API_PORT is the
+  // local-dev fallback.
+  const port = process.env.PORT ?? config.get<number>('API_PORT') ?? 4000;
   await app.listen(port);
   // eslint-disable-next-line no-console
   console.log(`API listening on http://localhost:${port} (docs at /api/docs)`);
