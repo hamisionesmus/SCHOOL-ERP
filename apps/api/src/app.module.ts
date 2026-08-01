@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { UserDirectoryModule } from './common/user-directory/user-directory.module';
 import { AuthModule } from './auth/auth.module';
 import { TenantsModule } from './platform/tenants/tenants.module';
 import { SubscriptionPlansModule } from './platform/subscription-plans/subscription-plans.module';
@@ -42,6 +43,7 @@ import { AuditLogAccessModule } from './platform/audit-log-access/audit-log-acce
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }]),
     PrismaModule,
+    UserDirectoryModule,
     AuthModule,
     TenantsModule,
     SubscriptionPlansModule,

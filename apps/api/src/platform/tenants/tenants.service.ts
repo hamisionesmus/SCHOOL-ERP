@@ -10,6 +10,7 @@ import { RequestTenantDto } from './dto/request-tenant.dto';
 import { ConfirmTenantDto } from './dto/confirm-tenant.dto';
 import { UpdatePaymentConfigDto } from './dto/update-payment-config.dto';
 import { seedTenantCore } from '../../common/tenant-seed/seed-data';
+import { UserDirectoryService } from '../../common/user-directory/user-directory.service';
 import { EMAIL_PROVIDER, EmailProvider } from '../email/email-provider.interface';
 import { SMS_PROVIDER, SmsProvider } from '../../communications/providers/sms-provider.interface';
 
@@ -37,6 +38,7 @@ export class TenantsService {
     private readonly platformPrisma: PlatformPrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly provisioning: TenantProvisioningService,
+    private readonly userDirectory: UserDirectoryService,
     @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
     @Inject(SMS_PROVIDER) private readonly smsProvider: SmsProvider,
   ) {}
@@ -134,6 +136,7 @@ export class TenantsService {
     });
 
     await this.provisioning.provisionSchema(schemaName);
+    await this.userDirectory.reserveForSchema(request.adminEmail, schemaName);
 
     const db = this.tenantPrisma.forSchema(schemaName);
     await seedTenantCore(db, {

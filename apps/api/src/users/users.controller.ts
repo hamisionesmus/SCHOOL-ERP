@@ -6,6 +6,7 @@ import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser, JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
+import { UserDirectoryService } from '../common/user-directory/user-directory.service';
 import { CreateUserDto } from './dto/create-user.dto';
 
 @ApiTags('users')
@@ -14,7 +15,10 @@ import { CreateUserDto } from './dto/create-user.dto';
 @RequirePermission('TENANT:MANAGE_USERS')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly userDirectory: UserDirectoryService,
+  ) {}
 
   @Get()
   async list(@CurrentUser() user: JwtUserPayload) {
@@ -35,6 +39,7 @@ export class UsersController {
 
   @Post()
   async create(@CurrentUser() user: JwtUserPayload, @Body() dto: CreateUserDto) {
+    await this.userDirectory.reserveForSchema(dto.email, user.tenantSchema!);
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
     const passwordHash = await bcrypt.hash(dto.password, 12);
     return db.user.create({

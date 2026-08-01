@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
+import { UserDirectoryService } from '../common/user-directory/user-directory.service';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
@@ -10,7 +11,10 @@ import { randomUUID } from 'node:crypto';
 
 @Injectable()
 export class StudentsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly userDirectory: UserDirectoryService,
+  ) {}
 
   /**
    * A student's own record, a parent's children, or (with STUDENT:VIEW) the full roster —
@@ -116,6 +120,7 @@ export class StudentsService {
       if (!dto.guardianEmail || !dto.guardianFullName) {
         throw new ForbiddenException('Provide either guardianUserId or guardianEmail + guardianFullName');
       }
+      await this.userDirectory.reserveForSchema(dto.guardianEmail, user.tenantSchema!);
       // Temp password: the guardian portal's own password-reset flow (Phase 3+) is how they'll first
       // sign in; this just satisfies the not-null constraint without anyone knowing this value.
       const passwordHash = await bcrypt.hash(randomUUID(), 12);

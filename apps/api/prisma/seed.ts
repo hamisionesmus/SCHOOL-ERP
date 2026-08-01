@@ -63,10 +63,17 @@ async function main() {
   const existingDemo = await platformPrisma.tenant.findUnique({ where: { slug: demoSlug } });
   if (!existingDemo) {
     console.log('Provisioning demo tenant "Demo Academy"...');
-    await platformPrisma.tenant.create({
+    const demoTenant = await platformPrisma.tenant.create({
       data: { name: 'Demo Academy', slug: demoSlug, schemaName: demoSchema, status: 'ACTIVE' },
     });
     await provisionSchema(demoSchema);
+    // See UserDirectoryService — every tenant User needs an entry here so login can resolve which
+    // school an email belongs to without asking for a school slug.
+    await platformPrisma.userDirectoryEntry.upsert({
+      where: { email: 'admin@demo-academy.local' },
+      update: {},
+      create: { email: 'admin@demo-academy.local', tenantId: demoTenant.id },
+    });
     const db = tenantClientFor(demoSchema);
     await seedTenantCore(db, {
       email: 'admin@demo-academy.local',

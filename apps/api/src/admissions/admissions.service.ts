@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
+import { UserDirectoryService } from '../common/user-directory/user-directory.service';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { generateAdmissionNumber } from '../students/admission-number.util';
 import { CreateApplicationDto } from './dto/create-application.dto';
@@ -9,7 +10,10 @@ import { UpdateApplicationStatusDto } from './dto/update-application-status.dto'
 
 @Injectable()
 export class AdmissionsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly userDirectory: UserDirectoryService,
+  ) {}
 
   async create(user: JwtUserPayload, dto: CreateApplicationDto) {
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
@@ -55,6 +59,7 @@ export class AdmissionsService {
       throw new BadRequestException('This application has already been admitted');
     }
 
+    await this.userDirectory.reserveForSchema(application.guardianEmail, user.tenantSchema!);
     const passwordHash = await bcrypt.hash(randomUUID(), 12);
     const guardianUser = await db.user.upsert({
       where: { email: application.guardianEmail },

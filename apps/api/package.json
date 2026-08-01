@@ -15,6 +15,7 @@
     "prisma:tenant:migrate:all": "ts-node -r tsconfig-paths/register prisma/migrate-all-tenants.ts",
     "prisma:tenant:reseed:all": "ts-node -r tsconfig-paths/register prisma/reseed-all-tenants.ts",
     "prisma:seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
+    "prisma:backfill:user-directory": "ts-node -r tsconfig-paths/register prisma/backfill-user-directory.ts",
     "backup": "ts-node -r tsconfig-paths/register prisma/backup-database.ts"
   },
   "dependencies": {

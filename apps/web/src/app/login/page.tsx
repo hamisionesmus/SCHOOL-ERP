@@ -5,27 +5,24 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { GraduationCap, ChevronDown, ShieldCheck } from 'lucide-react';
+import { GraduationCap, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiFetch, ApiError } from '@/lib/api';
 import { notifyError } from '@/lib/notify';
 import { storeSession, type SessionUser } from '@/lib/auth';
-import { cn } from '@/lib/utils';
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
-  tenantSlug: z.string().optional(),
 });
 type LoginForm = z.infer<typeof loginSchema>;
 
-// One login form for everyone — the backend already resolves realm from what's submitted (a
-// tenantSlug routes to that school's tenant schema, its absence tries the platform account), so the
-// UI doesn't need to ask "which kind of account are you" up front. See AuthService.login().
+// One login form for everyone — the backend resolves which school (if any) an email belongs to via
+// the platform-wide user directory, so the UI never needs to ask for a school slug. See
+// AuthService.login().
 export default function LoginPage() {
   const router = useRouter();
-  const [showSchoolField, setShowSchoolField] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const {
     register,
@@ -36,7 +33,7 @@ export default function LoginPage() {
   async function onSubmit(values: LoginForm) {
     setError(null);
     try {
-      const payload = { email: values.email, password: values.password, tenantSlug: values.tenantSlug || undefined };
+      const payload = { email: values.email, password: values.password };
       const data = await apiFetch<{ accessToken: string; refreshToken: string; user: SessionUser }>(
         '/auth/login',
         { method: 'POST', body: JSON.stringify(payload) },
@@ -109,25 +106,6 @@ export default function LoginPage() {
               />
               {errors.password && <p className="text-xs text-rose-400">{errors.password.message}</p>}
             </div>
-
-            <button
-              type="button"
-              onClick={() => setShowSchoolField((v) => !v)}
-              className="flex items-center gap-1 self-start text-xs text-slate-400 hover:text-slate-200"
-            >
-              <ChevronDown size={13} className={cn('transition-transform', showSchoolField && 'rotate-180')} />
-              Signing in to a specific school?
-            </button>
-            {showSchoolField && (
-              <div className="flex flex-col gap-1.5 animate-fade-in">
-                <label className="text-xs font-medium uppercase tracking-wide text-slate-400">School slug</label>
-                <Input
-                  placeholder="greenfield-academy"
-                  className="h-11 border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus-visible:ring-emerald-500"
-                  {...register('tenantSlug')}
-                />
-              </div>
-            )}
 
             {error && (
               <p className="animate-fade-in rounded-md bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{error}</p>

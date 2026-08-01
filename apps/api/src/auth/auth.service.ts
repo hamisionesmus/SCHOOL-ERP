@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { PlatformPrismaService } from '../common/prisma/platform-prisma.service';
 import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
+import { UserDirectoryService } from '../common/user-directory/user-directory.service';
 import { LoginDto } from './dto/login.dto';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 
@@ -31,13 +32,36 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly platformPrisma: PlatformPrismaService,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly userDirectory: UserDirectoryService,
   ) {}
 
+  /** No school slug needed from the user: the email decides where to look. A PlatformUser match
+   * means a Super Admin login; otherwise the cross-school directory (see UserDirectoryService)
+   * resolves which school's schema to check instead. Routing this way — checking *which account
+   * exists* first, rather than "try platform, fall back on failure" — matters so a normal tenant
+   * user's login doesn't record a bogus failed-platform-login attempt on every single sign-in (that
+   * would pollute the failed-login burst detector below). The tenantSlug DTO field still works too,
+   * kept for the rare case a directory lookup can't resolve (e.g. data older than the backfill) —
+   * it just no longer needs to be surfaced in the UI. */
   async login(dto: LoginDto, ipAddress?: string): Promise<TokenPair & { user: JwtUserPayload }> {
     if (dto.tenantSlug) {
       return this.loginTenant(dto.tenantSlug, dto.email, dto.password, ipAddress);
     }
-    return this.loginPlatform(dto.email, dto.password, ipAddress);
+
+    const platformUser = await this.platformPrisma.platformUser.findFirst({
+      where: { email: dto.email, deletedAt: null },
+    });
+    if (platformUser) {
+      return this.loginPlatform(dto.email, dto.password, ipAddress, platformUser);
+    }
+
+    const resolvedSlug = await this.userDirectory.findTenantSlugByEmail(dto.email);
+    if (resolvedSlug) {
+      return this.loginTenant(resolvedSlug, dto.email, dto.password, ipAddress);
+    }
+
+    await this.recordFailedAttempt(dto.email, null, ipAddress);
+    throw new UnauthorizedException('Invalid credentials');
   }
 
   private static readonly FAILED_LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -76,11 +100,13 @@ export class AuthService {
     });
   }
 
-  private async loginPlatform(email: string, password: string, ipAddress?: string) {
-    const user = await this.platformPrisma.platformUser.findFirst({
-      where: { email, deletedAt: null },
-    });
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+  private async loginPlatform(
+    email: string,
+    password: string,
+    ipAddress: string | undefined,
+    user: { id: string; email: string; fullName: string; passwordHash: string },
+  ) {
+    if (!(await bcrypt.compare(password, user.passwordHash))) {
       await this.recordFailedAttempt(email, null, ipAddress);
       throw new UnauthorizedException('Invalid credentials');
     }

@@ -13,6 +13,7 @@
     "prisma/seed-phase4-demo.ts",
     "prisma/seed-phase5-demo.ts",
     "prisma/seed-phase6-demo.ts",
-    "prisma/backup-database.ts"
+    "prisma/backup-database.ts",
+    "prisma/backfill-user-directory.ts"
   ]
 }

@@ -105,6 +105,22 @@ model Tenant {
 
   invoices PlatformInvoice[]
   auditLogAccessRequests AuditLogAccessRequest[]
+  userDirectoryEntries UserDirectoryEntry[]
+}
+
+// Global email → school lookup, kept in sync whenever a tenant-side User is created (see
+// UserDirectoryService). Lets login resolve which school an email belongs to without the user
+// having to type a school slug — see AuthService.login(). Enforces email uniqueness across the
+// whole platform (not just within one school) as a side effect: two schools can never register the
+// same person's email independently.
+model UserDirectoryEntry {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
 }
 
 // Two-step tenant creation: the Super Admin submits the school details, a 6-digit code is sent to
