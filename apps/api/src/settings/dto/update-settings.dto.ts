@@ -17,6 +17,16 @@ export class UpdateSettingsDto {
   @IsString()
   primaryColor?: string;
 
+  @ApiPropertyOptional({ example: '#0f172a', description: 'Sidebar background color — text/hover/active shades are derived automatically for readability' })
+  @IsOptional()
+  @IsString()
+  sidebarColor?: string;
+
+  @ApiPropertyOptional({ example: '#f8fafc', description: 'Main content-pane background color, behind the (always-white) cards' })
+  @IsOptional()
+  @IsString()
+  contentBgColor?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

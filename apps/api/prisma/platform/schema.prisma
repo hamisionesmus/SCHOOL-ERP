@@ -56,6 +56,12 @@ model Tenant {
   schemaName             String            @unique
   logoUrl                String?
   primaryColor           String?           @default("#2563eb")
+  // App reskin: sidebar background + main content-pane background. Text color is never stored —
+  // the frontend derives readable foreground/hover/active/border shades from these at render time
+  // (apps/web/src/lib/theme-color.ts), so a school can't accidentally pick a color that makes its
+  // own sidebar unreadable. Null means "use the app default" (white sidebar, slate-50 content).
+  sidebarColor           String?
+  contentBgColor         String?
   address                String?
   website                String?
   smsSenderId            String?

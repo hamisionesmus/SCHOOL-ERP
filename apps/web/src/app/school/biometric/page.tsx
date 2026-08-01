@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonTable } from '@/components/ui/skeleton';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { Pagination } from '@/components/ui/pagination';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
 
 interface UserRef {
@@ -87,6 +88,7 @@ export default function BiometricPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['biometric-events'] });
       setError(null);
+      setSubjectId('');
       notifySuccess('Scan logged');
     },
     onError: (err) => {
@@ -95,6 +97,7 @@ export default function BiometricPage() {
     },
   });
 
+  const [subjectId, setSubjectId] = useState('');
   // No initialSortKey: the API already orders newest-first.
   const table = useTableControls(events ?? [], { pageSize: 10 });
 
@@ -128,7 +131,10 @@ export default function BiometricPage() {
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setSubjectType(t)}
+                    onClick={() => {
+                      setSubjectType(t);
+                      setSubjectId('');
+                    }}
                     className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                       subjectType === t ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
                     }`}
@@ -137,20 +143,19 @@ export default function BiometricPage() {
                   </button>
                 ))}
               </div>
-              <select name="subjectId" required className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm">
-                <option value="">{subjectType === 'STUDENT' ? 'Select student' : 'Select staff member'}</option>
-                {subjectType === 'STUDENT'
-                  ? students?.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.firstName} {s.lastName}
-                      </option>
-                    ))
-                  : staff.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.fullName} ({s.email})
-                      </option>
-                    ))}
-              </select>
+              <SearchableSelect
+                name="subjectId"
+                value={subjectId}
+                onChange={setSubjectId}
+                required
+                placeholder={subjectType === 'STUDENT' ? 'Select student' : 'Select staff member'}
+                className="col-span-2"
+                options={
+                  subjectType === 'STUDENT'
+                    ? (students ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))
+                    : staff.map((s) => ({ value: s.id, label: s.fullName, sublabel: s.email }))
+                }
+              />
               <select name="direction" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
                 <option value="IN">Arriving (IN)</option>
                 <option value="OUT">Leaving (OUT)</option>

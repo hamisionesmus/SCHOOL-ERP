@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { cn } from '@/lib/utils';
 
@@ -60,9 +61,12 @@ export default function DisciplinePage() {
       queryClient.invalidateQueries({ queryKey: ['discipline-cases'] });
       setShowForm(false);
       setError(null);
+      setStudentId('');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to log case'),
   });
+
+  const [studentId, setStudentId] = useState('');
 
   // No initialSortKey: the API already orders newest-first, so leaving sort unset preserves that
   // default instead of the hook's ascending sort silently flipping it to oldest-first on load.
@@ -90,14 +94,15 @@ export default function DisciplinePage() {
               }}
               className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
             >
-              <select name="studentId" required className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm">
-                <option value="">Student</option>
-                {students?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.firstName} {s.lastName}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                name="studentId"
+                value={studentId}
+                onChange={setStudentId}
+                required
+                placeholder="Select student"
+                className="col-span-2"
+                options={(students ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+              />
               <select name="category" required className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm">
                 <option value="">Category</option>
                 <option value="WARNING">Warning</option>

@@ -170,6 +170,8 @@ model User {
   disciplineCasesReported DisciplineCase[] @relation("DisciplineReportedBy")
   leaveRequests       LeaveRequest[]     @relation("LeaveRequestedBy")
   notificationDismissals NotificationDismissal[]
+  sickSheetsIssued    SickSheet[]   @relation("SickSheetIssuedBy")
+  schoolEventsCreated SchoolEvent[] @relation("SchoolEventCreatedBy")
   leaveRequestsReviewed LeaveRequest[]   @relation("LeaveReviewedBy")
   tripsProposed       Trip[]             @relation("TripProposedBy")
   tripsApproved        Trip[]             @relation("TripApprovedBy")
@@ -315,6 +317,7 @@ model Student {
   disciplineCases   DisciplineCase[]
   tripRegistrations TripRegistration[]
   biometricEvents   BiometricEvent[]
+  sickSheets        SickSheet[]
 
   @@index([currentClassId])
 }
@@ -357,6 +360,49 @@ model NotificationDismissal {
   dismissedAt DateTime @default(now())
 
   @@unique([userId, notifKey])
+}
+
+// Issued by the class teacher of the student's class, or by the School Administrator — never by
+// Health staff exclusively, since a "sick sheet" here is a same-day excuse note, not a clinical
+// record (that's ClinicVisit/MedicalAlert above). Gated on HEALTH:ISSUE_SICK_SHEET, held by both
+// roles; see docs/RBAC.md.
+model SickSheet {
+  id                   String    @id @default(uuid())
+  studentId            String
+  student              Student   @relation(fields: [studentId], references: [id])
+  issuedByUserId       String
+  issuedBy             User      @relation("SickSheetIssuedBy", fields: [issuedByUserId], references: [id])
+  dateIssued           DateTime  @default(now())
+  reason               String
+  recommendedRestUntil DateTime?
+  notes                String?
+  createdAt            DateTime  @default(now())
+}
+
+enum SchoolEventCategory {
+  HOLIDAY
+  TERM
+  EXAM
+  MEETING
+  SPORTS
+  TRIP
+  OTHER
+}
+
+// Custom entries in the school calendar (holidays, meetings, term dates, ...). The calendar view
+// itself (see CalendarService) merges these with Trip and Exam dates that already exist elsewhere —
+// this table only needs to hold what has nowhere else to live.
+model SchoolEvent {
+  id              String              @id @default(uuid())
+  title           String
+  description     String?
+  category        SchoolEventCategory @default(OTHER)
+  startDate       DateTime
+  endDate         DateTime?
+  allDay          Boolean             @default(true)
+  createdByUserId String
+  createdBy       User                @relation("SchoolEventCreatedBy", fields: [createdByUserId], references: [id])
+  createdAt       DateTime            @default(now())
 }
 
 // Per-lesson/per-day register. A (student, class, date) row is created locked; only ATTENDANCE:REOPEN

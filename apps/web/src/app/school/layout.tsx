@@ -12,6 +12,8 @@ interface SchoolBranding {
   name: string;
   logoUrl: string | null;
   primaryColor: string | null;
+  sidebarColor: string | null;
+  contentBgColor: string | null;
   settingsConfigured: boolean;
 }
 
@@ -46,8 +48,11 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
   if (!user) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      <Sidebar user={user} onLogout={logout} />
+    <div
+      className="flex h-screen overflow-hidden"
+      style={{ backgroundColor: branding?.contentBgColor && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(branding.contentBgColor) ? branding.contentBgColor : '#f8fafc' }}
+    >
+      <Sidebar user={user} onLogout={logout} sidebarColor={branding?.sidebarColor} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-6">
           {branding?.logoUrl ? (

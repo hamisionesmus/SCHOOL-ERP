@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { SortableTh } from '@/components/ui/sortable-th';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
 
 interface Book {
@@ -92,9 +93,12 @@ export default function LibraryPage() {
       queryClient.invalidateQueries({ queryKey: ['books'] });
       setShowLoanForm(false);
       setError(null);
+      setLoanStudentId('');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to issue loan'),
   });
+
+  const [loanStudentId, setLoanStudentId] = useState('');
 
   const returnLoan = useMutation({
     mutationFn: (loanId: string) => apiFetch(`/library/loans/${loanId}/return`, { method: 'PATCH' }),
@@ -194,14 +198,14 @@ export default function LibraryPage() {
                   </option>
                 ))}
               </select>
-              <select name="studentId" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
-                <option value="">Student</option>
-                {students?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.firstName} {s.lastName}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                name="studentId"
+                value={loanStudentId}
+                onChange={setLoanStudentId}
+                required
+                placeholder="Select student"
+                options={(students ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+              />
               <Input name="dueDate" type="date" required className="col-span-2" />
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
               <div className="col-span-2">

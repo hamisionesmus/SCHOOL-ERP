@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { SortableTh } from '@/components/ui/sortable-th';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { cn } from '@/lib/utils';
 
@@ -260,6 +261,7 @@ function PayslipsTab({ canReview }: { canReview: boolean }) {
       queryClient.invalidateQueries({ queryKey: ['payslips'] });
       setShowForm(false);
       setError(null);
+      setStaffUserId('');
       notifySuccess('Payslip issued');
     },
     onError: (err) => {
@@ -267,6 +269,8 @@ function PayslipsTab({ canReview }: { canReview: boolean }) {
       notifyError(err, 'Failed to issue payslip');
     },
   });
+
+  const [staffUserId, setStaffUserId] = useState('');
 
   async function downloadPayslip(id: string) {
     setDownloadingId(id);
@@ -314,14 +318,15 @@ function PayslipsTab({ canReview }: { canReview: boolean }) {
             }}
             className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4 animate-float-up"
           >
-            <select name="staffUserId" required className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm">
-              <option value="">Staff member</option>
-              {users?.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.fullName} ({u.email})
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              name="staffUserId"
+              value={staffUserId}
+              onChange={setStaffUserId}
+              required
+              placeholder="Select staff member"
+              className="col-span-2"
+              options={(users ?? []).map((u) => ({ value: u.id, label: u.fullName, sublabel: u.email }))}
+            />
             <select name="periodMonth" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
               <option value="">Month</option>
               {MONTH_NAMES.map((m, i) => (

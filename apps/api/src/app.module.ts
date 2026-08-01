@@ -31,6 +31,8 @@ import { BiometricModule } from './biometric/biometric.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { BillingModule } from './platform/billing/billing.module';
 import { BackupsModule } from './platform/backups/backups.module';
+import { SickSheetsModule } from './sick-sheets/sick-sheets.module';
+import { CalendarModule } from './calendar/calendar.module';
 
 @Module({
   imports: [
@@ -65,6 +67,8 @@ import { BackupsModule } from './platform/backups/backups.module';
     NotificationsModule,
     BillingModule,
     BackupsModule,
+    SickSheetsModule,
+    CalendarModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

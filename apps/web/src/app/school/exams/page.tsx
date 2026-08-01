@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface Subject {
   id: string;
@@ -500,18 +501,13 @@ export default function ExamsPage() {
             )}
           </CardHeader>
           <CardContent>
-            <select
+            <SearchableSelect
               value={reportCardStudentId}
-              onChange={(e) => setReportCardStudentId(e.target.value)}
-              className="mb-4 h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
-            >
-              <option value="">Select student</option>
-              {myStudents.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.firstName} {s.lastName}
-                </option>
-              ))}
-            </select>
+              onChange={setReportCardStudentId}
+              placeholder="Select student"
+              className="mb-4"
+              options={myStudents.map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+            />
 
             {!reportCardStudentId ? (
               <p className="text-sm text-slate-500">Select a student to view their report card for this exam.</p>

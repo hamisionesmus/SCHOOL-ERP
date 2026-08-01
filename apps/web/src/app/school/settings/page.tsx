@@ -17,6 +17,8 @@ interface SchoolSettings {
   name: string;
   logoUrl: string | null;
   primaryColor: string | null;
+  sidebarColor: string | null;
+  contentBgColor: string | null;
   address: string | null;
   website: string | null;
   smsSenderId: string | null;
@@ -76,6 +78,8 @@ export default function SettingsPage() {
         body: JSON.stringify({
           name: fd.get('name'),
           primaryColor: fd.get('primaryColor'),
+          sidebarColor: fd.get('sidebarColor'),
+          contentBgColor: fd.get('contentBgColor'),
           address: fd.get('address') || undefined,
           website: fd.get('website') || undefined,
           smsSenderId: fd.get('smsSenderId') || undefined,
@@ -212,6 +216,29 @@ export default function SettingsPage() {
               <label className="text-sm font-medium text-slate-700">SMS sender ID</label>
               <Input name="smsSenderId" defaultValue={settings.smsSenderId ?? ''} placeholder="SCHOOLNAME" />
             </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-slate-700">Sidebar color</label>
+              <input
+                name="sidebarColor"
+                type="color"
+                defaultValue={settings.sidebarColor ?? '#ffffff'}
+                className="h-10 w-full rounded-md border border-slate-300"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-slate-700">Main background color</label>
+              <input
+                name="contentBgColor"
+                type="color"
+                defaultValue={settings.contentBgColor ?? '#f8fafc'}
+                className="h-10 w-full rounded-md border border-slate-300"
+              />
+            </div>
+            <p className="col-span-2 -mt-1 text-xs text-slate-400">
+              Sidebar/background colors reskin the app shell only — card content stays white with the
+              usual text colors, and sidebar text/hover colors are computed automatically for
+              contrast, so any color you pick here stays readable.
+            </p>
             <div className="col-span-2 flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Address</label>
               <Input name="address" defaultValue={settings.address ?? ''} />

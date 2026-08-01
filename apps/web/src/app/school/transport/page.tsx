@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
 
 interface UserRef {
@@ -112,10 +113,12 @@ export default function TransportPage() {
       queryClient.invalidateQueries({ queryKey: ['transport-assignments'] });
       setShowAssignForm(false);
       setError(null);
+      setAssignStudentId('');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to assign student'),
   });
 
+  const [assignStudentId, setAssignStudentId] = useState('');
   const table = useTableControls(assignments ?? [], { pageSize: 10 });
 
   if (!user) return null;
@@ -225,14 +228,14 @@ export default function TransportPage() {
               }}
               className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
             >
-              <select name="studentId" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
-                <option value="">Student</option>
-                {students?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.firstName} {s.lastName}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                name="studentId"
+                value={assignStudentId}
+                onChange={setAssignStudentId}
+                required
+                placeholder="Select student"
+                options={(students ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
+              />
               <select name="routeId" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
                 <option value="">Route</option>
                 {routes?.map((r) => (

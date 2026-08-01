@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonTable } from '@/components/ui/skeleton';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { Pagination } from '@/components/ui/pagination';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
 
 interface GradeLevel {
@@ -91,6 +92,7 @@ export default function ClassesPage() {
       invalidate();
       setShowForm(false);
       setError(null);
+      setNewClassTeacherId('');
       notifySuccess('Class created');
     },
     onError: (err) => {
@@ -98,6 +100,8 @@ export default function ClassesPage() {
       notifyError(err, 'Failed to create class');
     },
   });
+
+  const [newClassTeacherId, setNewClassTeacherId] = useState('');
 
   const assignTeacher = useMutation({
     mutationFn: ({ classId, classTeacherId }: { classId: string; classTeacherId: string | null }) =>
@@ -150,14 +154,14 @@ export default function ClassesPage() {
                 </option>
               ))}
             </select>
-            <select name="classTeacherId" className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm">
-              <option value="">Class teacher (optional — can assign later)</option>
-              {staff.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.email})
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              name="classTeacherId"
+              value={newClassTeacherId}
+              onChange={setNewClassTeacherId}
+              placeholder="Class teacher (optional — can assign later)"
+              className="col-span-2"
+              options={staff.map((s) => ({ value: s.id, label: s.fullName, sublabel: s.email }))}
+            />
             {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
             <div className="col-span-2">
               <Button type="submit" disabled={createClass.isPending}>
@@ -190,21 +194,14 @@ export default function ClassesPage() {
                   <td className="py-2 text-slate-500">{c.academicYear?.name}</td>
                   <td className="py-2">
                     {canManage ? (
-                      <select
-                        className="h-8 rounded-md border border-slate-300 px-2 text-xs"
+                      <SearchableSelect
+                        className="w-48"
                         value={c.classTeacher?.id ?? ''}
                         disabled={assignTeacher.isPending}
-                        onChange={(e) =>
-                          assignTeacher.mutate({ classId: c.id, classTeacherId: e.target.value || null })
-                        }
-                      >
-                        <option value="">Unassigned</option>
-                        {staff.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.fullName}
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="Unassigned"
+                        onChange={(v) => assignTeacher.mutate({ classId: c.id, classTeacherId: v || null })}
+                        options={staff.map((s) => ({ value: s.id, label: s.fullName }))}
+                      />
                     ) : c.classTeacher ? (
                       <span className="text-slate-700">{c.classTeacher.fullName}</span>
                     ) : (
