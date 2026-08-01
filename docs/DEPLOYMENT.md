@@ -4,6 +4,9 @@ Target: a plain Ubuntu 22.04 VPS with root access (no shared-hosting control pan
 runs in Docker: PostgreSQL, the NestJS API, the Next.js web app, and Caddy as a reverse proxy that
 also handles HTTPS automatically (Let's Encrypt, zero manual certbot config).
 
+**Status:** live in production at https://myschoolapp.xyz (verified 2026-08-01). Auto-deploy on
+push to `main` via GitHub Actions is configured — see "Ongoing deploys" below.
+
 ## One-time server setup
 
 Run these once over SSH as root (or a sudo user).
