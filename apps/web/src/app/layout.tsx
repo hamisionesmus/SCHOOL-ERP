@@ -24,6 +24,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50`}>
         <Providers>{children}</Providers>
+        <p className="pointer-events-none fixed bottom-2 left-2 z-[200] select-none text-[11px] font-medium text-slate-400/80">
+          Built by Hamzone Technologies
+        </p>
       </body>
     </html>
   );
