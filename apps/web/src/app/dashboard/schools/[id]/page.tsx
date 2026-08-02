@@ -58,6 +58,26 @@ interface Invoice {
   dueDate: string;
   payments: Payment[];
 }
+interface MpesaAttempt {
+  id: string;
+  phone: string;
+  amount: number;
+  status: 'PENDING' | 'SUCCESS' | 'FAILED';
+  resultDesc: string | null;
+  mpesaReceiptNumber: string | null;
+  createdAt: string;
+}
+interface PaymentProof {
+  id: string;
+  method: 'BANK' | 'PAYBILL';
+  rawMessage: string;
+  extractedAmount: number | null;
+  extractedReference: string | null;
+  status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
+  reviewedBy: { fullName: string; email: string } | null;
+  reviewNote: string | null;
+  createdAt: string;
+}
 interface AuditLogAccessRequest {
   id: string;
   requestedBy: { fullName: string; email: string };
@@ -465,6 +485,7 @@ function BillingTab({ tenantId }: { tenantId: string }) {
   }
 
   return (
+    <div className="flex flex-col gap-6">
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Billing</CardTitle>
@@ -580,6 +601,173 @@ function BillingTab({ tenantId }: { tenantId: string }) {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+    </Card>
+
+    <MpesaAttemptsCard tenantId={tenantId} />
+    <PaymentProofsCard tenantId={tenantId} />
+    </div>
+  );
+}
+
+function MpesaAttemptsCard({ tenantId }: { tenantId: string }) {
+  const { data: attempts, isLoading } = useQuery({
+    queryKey: ['mpesa-attempts', tenantId],
+    queryFn: () => apiFetch<MpesaAttempt[]>(`/platform/tenants/${tenantId}/mpesa-attempts`),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>M-Pesa Attempts</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : !attempts || attempts.length === 0 ? (
+          <p className="text-sm text-slate-500">No M-Pesa STK attempts yet.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-slate-500">
+                <th className="py-2 font-medium">Phone</th>
+                <th className="py-2 font-medium">Amount</th>
+                <th className="py-2 font-medium">Status</th>
+                <th className="py-2 font-medium">Detail</th>
+                <th className="py-2 font-medium">When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {attempts.map((a) => (
+                <tr key={a.id} className="border-b border-slate-100">
+                  <td className="py-2 text-slate-700">{a.phone}</td>
+                  <td className="py-2 text-slate-700">{kes(a.amount)}</td>
+                  <td className="py-2">
+                    <Badge status={a.status} />
+                  </td>
+                  <td className="py-2 text-slate-500">{a.mpesaReceiptNumber ?? a.resultDesc ?? '—'}</td>
+                  <td className="py-2 text-slate-400">{new Date(a.createdAt).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PaymentProofsCard({ tenantId }: { tenantId: string }) {
+  const queryClient = useQueryClient();
+  const [reviewing, setReviewing] = useState<{ proof: PaymentProof; action: 'approve' | 'reject' } | null>(null);
+  const [reviewNote, setReviewNote] = useState('');
+
+  const { data: proofs, isLoading } = useQuery({
+    queryKey: ['payment-proofs', tenantId],
+    queryFn: () => apiFetch<PaymentProof[]>(`/platform/tenants/${tenantId}/payment-proofs`),
+  });
+
+  const review = useMutation({
+    mutationFn: () =>
+      apiFetch(`/platform/payment-proofs/${reviewing!.proof.id}/${reviewing!.action}`, {
+        method: 'POST',
+        body: JSON.stringify({ reviewNote: reviewNote || undefined }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payment-proofs', tenantId] });
+      queryClient.invalidateQueries({ queryKey: ['tenant', tenantId] });
+      queryClient.invalidateQueries({ queryKey: ['tenant-invoices', tenantId] });
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      notifySuccess(reviewing?.action === 'approve' ? 'Payment approved — school activated' : 'Proof rejected');
+      setReviewing(null);
+      setReviewNote('');
+    },
+    onError: (err) => notifyError(err, 'Failed to review payment proof'),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Payment Proofs (Bank/Paybill)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : !proofs || proofs.length === 0 ? (
+          <p className="text-sm text-slate-500">No payment proofs submitted yet.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {proofs.map((p) => (
+              <div key={p.id} className="rounded-lg border border-slate-200 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">
+                      {p.method === 'BANK' ? 'Bank transfer' : 'Paybill'}
+                      {p.extractedAmount && <span className="ml-2 text-slate-500">{kes(p.extractedAmount)}</span>}
+                    </p>
+                    {p.extractedReference && <p className="text-xs text-slate-500">Ref: {p.extractedReference}</p>}
+                    <p className="mt-1 whitespace-pre-wrap text-xs text-slate-600">{p.rawMessage}</p>
+                    <p className="mt-1 text-xs text-slate-400">{new Date(p.createdAt).toLocaleString()}</p>
+                    {p.reviewedBy && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Reviewed by {p.reviewedBy.fullName}
+                        {p.reviewNote ? ` — ${p.reviewNote}` : ''}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-shrink-0 flex-col items-end gap-2">
+                    <Badge status={p.status} />
+                    {p.status === 'PENDING_REVIEW' && (
+                      <div className="flex gap-1.5">
+                        <Button size="sm" variant="outline" onClick={() => setReviewing({ proof: p, action: 'reject' })}>
+                          Reject
+                        </Button>
+                        <Button size="sm" onClick={() => setReviewing({ proof: p, action: 'approve' })}>
+                          Approve
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      {reviewing && (
+        <div className="fixed inset-0 z-[100] flex animate-fade-in items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="my-8 w-full max-w-sm animate-scale-in rounded-xl bg-white p-6 shadow-2xl">
+            <h3 className="mb-1 text-lg font-semibold text-slate-900">
+              {reviewing.action === 'approve' ? 'Approve payment proof' : 'Reject payment proof'}
+            </h3>
+            <p className="mb-4 text-sm text-slate-500">
+              {reviewing.action === 'approve'
+                ? 'This will mark the invoice paid and activate the school.'
+                : 'The school stays locked and can resubmit proof.'}
+            </p>
+            <textarea
+              value={reviewNote}
+              onChange={(e) => setReviewNote(e.target.value)}
+              rows={3}
+              placeholder="Note (optional)"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setReviewing(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant={reviewing.action === 'reject' ? 'destructive' : 'default'}
+                disabled={review.isPending}
+                onClick={() => review.mutate()}
+              >
+                {review.isPending ? 'Saving...' : reviewing.action === 'approve' ? 'Approve & activate' : 'Reject'}
+              </Button>
+            </div>
           </div>
         </div>
       )}

@@ -41,10 +41,9 @@ export class RequestTenantDto {
   @MinLength(8)
   adminPassword!: string;
 
-  @ApiPropertyOptional({ description: 'For the demo welcome SMS, if provided (E.164 or local format)' })
-  @IsOptional()
+  @ApiProperty({ description: "The new admin's phone (E.164 or local format) — required, an OTP is sent here to verify the number/consent before the school is created" })
   @IsString()
-  adminPhone?: string;
+  adminPhone!: string;
 
   @ApiPropertyOptional()
   @IsOptional()

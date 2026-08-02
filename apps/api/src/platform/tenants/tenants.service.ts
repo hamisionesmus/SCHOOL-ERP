@@ -66,12 +66,13 @@ export class TenantsService {
     return tenant;
   }
 
-  /** Step 1 of tenant creation: stores the request with a 6-digit confirmation code (15-minute
-   * expiry) and emails the code to the *requesting Super Admin's own* registered email — not the new
-   * school's admin. Nothing is provisioned yet. This exists so a compromised or unattended Super
-   * Admin session can't silently spin up a school; see docs/SRS.md §4.1. The code is also returned in
-   * the response (`devCode`) as a testing convenience, the same way the password-reset flow surfaces
-   * its one-time temp password — there is no real email/SMS gateway in this environment to rely on. */
+  /** Step 1 of tenant creation: stores the request with two independent 6-digit codes (15-minute
+   * expiry) — one emailed+texted to the *requesting Super Admin's own* registered contact (proves
+   * it's really them, not a compromised/unattended session — see docs/SRS.md §4.1), the other texted
+   * to the *new school's admin phone* (proves that number is real and they consent). Nothing is
+   * provisioned until both codes are confirmed together. Both codes are also returned in the response
+   * (`devCode`/`devAdminOtp`) as a testing convenience, same as the password-reset flow's one-time
+   * temp password — harmless, and still useful until real email is configured (RESEND_API_KEY). */
   async requestCreate(dto: RequestTenantDto, requestedByUserId: string) {
     const existing = await this.platformPrisma.tenant.findUnique({ where: { slug: dto.slug } });
     if (existing) throw new BadRequestException('A school with this slug already exists');
@@ -86,6 +87,7 @@ export class TenantsService {
     if (!requester) throw new UnauthorizedException();
 
     const code = String(randomInt(100_000, 1_000_000));
+    const adminOtpCode = String(randomInt(100_000, 1_000_000));
     const adminPasswordHash = await bcrypt.hash(dto.adminPassword, 12);
 
     const request = await this.platformPrisma.tenantCreationRequest.create({
@@ -93,6 +95,7 @@ export class TenantsService {
         name: dto.name,
         slug: dto.slug,
         code,
+        adminOtpCode,
         requestedById: requestedByUserId,
         adminFullName: dto.adminFullName,
         adminEmail: dto.adminEmail,
@@ -106,23 +109,28 @@ export class TenantsService {
       },
     });
 
-    await this.emailProvider.send(
-      requester.email,
-      `Confirm school creation: ${dto.name}`,
-      `Someone requested to create "${dto.name}" (${dto.slug})${dto.isDemo ? ` as a ${dto.demoDurationHours}-hour demo account` : ''} on your Super Admin account. If this was you, enter code ${code} to confirm. It expires in 15 minutes. If you didn't request this, ignore this message — nothing is created until the code is confirmed.`,
+    const superAdminMessage = `Someone requested to create "${dto.name}" (${dto.slug})${dto.isDemo ? ` as a ${dto.demoDurationHours}-hour demo account` : ''} on your Super Admin account. If this was you, enter code ${code} to confirm. It expires in 15 minutes. If you didn't request this, ignore this message — nothing is created until the code is confirmed.`;
+    await this.emailProvider.send(requester.email, `Confirm school creation: ${dto.name}`, superAdminMessage);
+    if (requester.phone) {
+      await this.smsProvider.send(requester.phone, superAdminMessage);
+    }
+    await this.smsProvider.send(
+      dto.adminPhone,
+      `School ERP: someone is setting you up as the administrator for "${dto.name}". Your verification code is ${adminOtpCode}. Give this to them to confirm it's really you — it expires in 15 minutes. Ignore if you didn't expect this.`,
     );
 
-    return { requestId: request.id, expiresAt: request.expiresAt, devCode: code };
+    return { requestId: request.id, expiresAt: request.expiresAt, devCode: code, devAdminOtp: adminOtpCode };
   }
 
-  /** Step 2: validates the code and actually provisions the school. Only now does the schema get
+  /** Step 2: validates both codes and actually provisions the school. Only now does the schema get
    * created and the admin user get seeded. */
   async confirmCreate(dto: ConfirmTenantDto) {
     const request = await this.platformPrisma.tenantCreationRequest.findUnique({ where: { id: dto.requestId } });
     if (!request) throw new NotFoundException('Creation request not found');
     if (request.consumedAt) throw new BadRequestException('This request has already been used');
     if (request.expiresAt < new Date()) throw new BadRequestException('This code has expired — start over');
-    if (request.code !== dto.code) throw new BadRequestException('Incorrect code');
+    if (request.code !== dto.code) throw new BadRequestException('Incorrect confirmation code');
+    if (request.adminOtpCode !== dto.adminOtpCode) throw new BadRequestException("Incorrect admin OTP code");
 
     const schemaName = `tenant_${request.slug.replace(/-/g, '_')}`;
     const demoExpiresAt = request.isDemo
@@ -159,7 +167,7 @@ export class TenantsService {
 
     await this.platformPrisma.tenantCreationRequest.update({
       where: { id: request.id },
-      data: { consumedAt: new Date() },
+      data: { consumedAt: new Date(), adminOtpVerifiedAt: new Date() },
     });
 
     const loginUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/login`;

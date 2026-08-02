@@ -44,6 +44,18 @@ enum PlatformPaymentMethod {
   BANK
   MPESA
   CASH
+  PAYBILL
+}
+
+enum PaymentProofMethod {
+  BANK
+  PAYBILL
+}
+
+enum PaymentProofStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
 }
 
 model SubscriptionPlan {
@@ -121,6 +133,7 @@ model Tenant {
   auditLogAccessRequests AuditLogAccessRequest[]
   userDirectoryEntries UserDirectoryEntry[]
   mpesaStkRequests PlatformMpesaStkRequest[]
+  paymentProofs PlatformPaymentProof[]
 }
 
 // Global email → school lookup, kept in sync whenever a tenant-side User is created (see
@@ -148,10 +161,15 @@ model TenantCreationRequest {
   name           String
   slug           String
   code           String
+  // Second, independent verification: proves the phone number given for the new admin is real and
+  // that person consents, alongside (not instead of) the Super Admin's own code above. Sent via SMS
+  // to adminPhone at request time — see TenantsService.requestCreate()/confirmCreate().
+  adminOtpCode      String
+  adminOtpVerifiedAt DateTime?
   requestedById  String
   adminFullName     String
   adminEmail        String
-  adminPhone        String?
+  adminPhone        String
   adminPasswordHash String
   planId            String?
   // Demo/trial requests: isDemo + demoDurationHours (from the Super Admin's day/hour picker) get
@@ -170,6 +188,9 @@ model TenantCreationRequest {
 model PlatformUser {
   id               String    @id @default(uuid())
   email            String    @unique
+  // Used to SMS the school-creation confirmation code (alongside email) and other admin alerts.
+  // Seeded from SUPER_ADMIN_PHONE — see prisma/seed.ts.
+  phone            String?
   passwordHash     String
   fullName         String
   role             PlatformRole @default(SUPER_ADMIN)
@@ -182,6 +203,7 @@ model PlatformUser {
   refreshTokens    PlatformRefreshToken[]
   paymentsRecorded PlatformPayment[]
   auditLogAccessRequests AuditLogAccessRequest[]
+  paymentProofsReviewed PlatformPaymentProof[]
 }
 
 model PlatformRefreshToken {
@@ -225,6 +247,7 @@ model PlatformInvoice {
 
   payments     PlatformPayment[]
   stkRequests  PlatformMpesaStkRequest[]
+  paymentProofs PlatformPaymentProof[]
 }
 
 // Recording a payment that reaches the invoice amount marks it PAID, pushes the tenant's
@@ -265,6 +288,43 @@ model PlatformMpesaStkRequest {
   resultDesc        String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+}
+
+// Singleton (always id="platform") — the platform's own bank/paybill details for receiving
+// activation payments, shown on the public activation page when a school picks Bank/Paybill
+// instead of STK push. Distinct from Tenant.bankName/mpesaPaybill, which is a school's own
+// fee-collection config for its parents, not the platform's own receiving account.
+model PlatformSettings {
+  id                String   @id @default("platform")
+  bankName          String?
+  bankAccountName   String?
+  bankAccountNumber String?
+  paybillNumber     String?
+  paybillAccountName String?
+  updatedAt         DateTime @updatedAt
+}
+
+// A school's claim of having paid by Bank/Paybill (no automatic API confirmation exists for
+// these methods, unlike M-Pesa STK's webhook) — pasted from the activation page. Never
+// auto-trusted: a Super Admin must approve before the invoice/tenant change, exactly like the
+// pre-existing manual "Record payment" action. extractedAmount/extractedReference are a
+// best-effort regex read of the pasted message, shown to the reviewer as a convenience only.
+model PlatformPaymentProof {
+  id                 String              @id @default(uuid())
+  invoiceId          String
+  invoice            PlatformInvoice     @relation(fields: [invoiceId], references: [id])
+  tenantId           String
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
+  method             PaymentProofMethod
+  rawMessage         String
+  extractedAmount    Int?
+  extractedReference String?
+  status             PaymentProofStatus  @default(PENDING_REVIEW)
+  reviewedByUserId   String?
+  reviewedBy         PlatformUser?       @relation(fields: [reviewedByUserId], references: [id])
+  reviewNote         String?
+  createdAt          DateTime            @default(now())
+  reviewedAt         DateTime?
 }
 
 // Every failed login attempt, both realms — a school's own login (tenantSlug set) and the Super

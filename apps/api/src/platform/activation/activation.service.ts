@@ -171,12 +171,26 @@ export class ActivationService {
       }),
     ]);
 
+    await this.sendActivatedNotification(tenant, receiptNumber, amount, `M-Pesa ${mpesaReceiptNumber}`);
+
+    return { ResultCode: 0, ResultDesc: 'Accepted' };
+  }
+
+  /** Same "you're active" messaging regardless of which payment method got the school there — the
+   * M-Pesa webhook above and a Super Admin approving a Bank/Paybill proof (see approveProof) both
+   * end here, so the school gets a consistent notification either way. */
+  private async sendActivatedNotification(
+    tenant: { name: string; contactEmail: string | null; contactPhone: string | null },
+    receiptNumber: string,
+    amount: number,
+    methodNote: string,
+  ) {
     const loginUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/login`;
     if (tenant.contactEmail) {
       await this.emailProvider.send(
         tenant.contactEmail,
         `${tenant.name} is now active — you can sign in`,
-        `Payment received! "${tenant.name}" is now active.\n\nSign in at ${loginUrl}\n\nReceipt: ${receiptNumber} (M-Pesa ${mpesaReceiptNumber})\nAmount: KES ${amount.toLocaleString()}\n\nThis is an automated message from a no-reply address — please don't reply to it.`,
+        `Payment received! "${tenant.name}" is now active.\n\nSign in at ${loginUrl}\n\nReceipt: ${receiptNumber} (${methodNote})\nAmount: KES ${amount.toLocaleString()}\n\nThis is an automated message from a no-reply address — please don't reply to it.`,
       );
     }
     if (tenant.contactPhone) {
@@ -185,7 +199,126 @@ export class ActivationService {
         `Payment received! "${tenant.name}" is now active on School ERP. Sign in at ${loginUrl}. Receipt ${receiptNumber}.`,
       );
     }
+  }
 
-    return { ResultCode: 0, ResultDesc: 'Accepted' };
+  /** Best-effort read of a pasted M-Pesa/bank confirmation message — assistive only for the
+   * reviewer, never trusted to auto-activate anything (see class comment on the hard line here). */
+  private extractProofDetails(message: string): { amount: number | null; reference: string | null } {
+    const amountMatch = message.match(/(?:KES|Ksh)\.?\s?([\d,]+(?:\.\d{2})?)/i);
+    const amount = amountMatch ? Math.round(Number(amountMatch[1].replace(/,/g, ''))) : null;
+    // M-Pesa confirmation codes are ~10 uppercase-alphanumeric characters (e.g. QGH7XXXX01).
+    const refMatch = message.match(/\b([A-Z0-9]{10})\b/);
+    return { amount, reference: refMatch ? refMatch[1] : null };
+  }
+
+  private async notifySuperAdmins(subject: string, body: string) {
+    const admins = await this.platformPrisma.platformUser.findMany({ where: { deletedAt: null } });
+    for (const admin of admins) {
+      await this.emailProvider.send(admin.email, subject, body);
+      if (admin.phone) await this.smsProvider.send(admin.phone, body);
+    }
+  }
+
+  async submitPaymentProof(token: string, method: 'BANK' | 'PAYBILL', message: string) {
+    const { tenantId, invoiceId } = await this.verifyToken(token);
+    const { tenant, invoice } = await this.loadTenantAndInvoice(tenantId, invoiceId);
+    if (invoice.status === 'PAID') {
+      throw new BadRequestException('This school has already been activated.');
+    }
+
+    const { amount, reference } = this.extractProofDetails(message);
+    await this.platformPrisma.platformPaymentProof.create({
+      data: {
+        invoiceId,
+        tenantId,
+        method,
+        rawMessage: message,
+        extractedAmount: amount,
+        extractedReference: reference,
+      },
+    });
+
+    await this.notifySuperAdmins(
+      `Payment proof submitted — ${tenant.name}`,
+      `"${tenant.name}" submitted a ${method === 'BANK' ? 'bank transfer' : 'paybill'} payment confirmation for review.\n\n${reference ? `Reference: ${reference}\n` : ''}${amount ? `Amount: KES ${amount.toLocaleString()}\n` : ''}\nReview and approve/reject it from the school's Billing tab in the Super Admin dashboard.`,
+    );
+
+    return {
+      status: 'submitted' as const,
+      message:
+        "We've received your payment confirmation and will verify it shortly. You'll be notified once your payment is confirmed and the school unlocked. If you don't hear back or run into an issue, contact support.",
+    };
+  }
+
+  async listMpesaAttempts(tenantId: string) {
+    return this.platformPrisma.platformMpesaStkRequest.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async listPaymentProofs(tenantId: string) {
+    return this.platformPrisma.platformPaymentProof.findMany({
+      where: { tenantId },
+      include: { reviewedBy: { select: { fullName: true, email: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async approveProof(proofId: string, reviewerId: string, reviewNote?: string) {
+    const proof = await this.platformPrisma.platformPaymentProof.findUnique({
+      where: { id: proofId },
+      include: { invoice: { include: { tenant: true } } },
+    });
+    if (!proof) throw new NotFoundException('Payment proof not found');
+    if (proof.status !== 'PENDING_REVIEW') throw new BadRequestException(`This proof was already ${proof.status.toLowerCase().replace('_', ' ')}`);
+    const { invoice } = proof;
+    const { tenant } = invoice;
+    if (invoice.status === 'PAID') throw new BadRequestException('This invoice is already paid');
+
+    const receiptNumber = await generatePlatformReceiptNumber(this.platformPrisma);
+    const amount = proof.extractedAmount ?? invoice.amount;
+
+    await this.platformPrisma.$transaction([
+      this.platformPrisma.platformPaymentProof.update({
+        where: { id: proofId },
+        data: { status: 'APPROVED', reviewedByUserId: reviewerId, reviewNote, reviewedAt: new Date() },
+      }),
+      this.platformPrisma.platformPayment.create({
+        data: {
+          invoiceId: invoice.id,
+          amount,
+          method: proof.method === 'BANK' ? 'BANK' : 'PAYBILL',
+          reference: proof.extractedReference,
+          receiptNumber,
+          recordedByUserId: reviewerId,
+        },
+      }),
+      this.platformPrisma.platformInvoice.update({ where: { id: invoice.id }, data: { status: 'PAID' } }),
+      this.platformPrisma.tenant.update({
+        where: { id: tenant.id },
+        data: { status: 'ACTIVE', currentPeriodEnd: invoice.periodEnd },
+      }),
+    ]);
+
+    await this.sendActivatedNotification(
+      tenant,
+      receiptNumber,
+      amount,
+      proof.method === 'BANK' ? 'Bank transfer' : 'Paybill',
+    );
+
+    return { success: true };
+  }
+
+  async rejectProof(proofId: string, reviewerId: string, reviewNote: string) {
+    const proof = await this.platformPrisma.platformPaymentProof.findUnique({ where: { id: proofId } });
+    if (!proof) throw new NotFoundException('Payment proof not found');
+    if (proof.status !== 'PENDING_REVIEW') throw new BadRequestException(`This proof was already ${proof.status.toLowerCase().replace('_', ' ')}`);
+
+    return this.platformPrisma.platformPaymentProof.update({
+      where: { id: proofId },
+      data: { status: 'REJECTED', reviewedByUserId: reviewerId, reviewNote, reviewedAt: new Date() },
+    });
   }
 }

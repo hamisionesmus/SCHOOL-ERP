@@ -38,6 +38,7 @@ import { SecurityModule } from './platform/security/security.module';
 import { AnalyticsModule } from './platform/analytics/analytics.module';
 import { AuditLogAccessModule } from './platform/audit-log-access/audit-log-access.module';
 import { ActivationModule } from './platform/activation/activation.module';
+import { PlatformSettingsModule } from './platform/platform-settings/platform-settings.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { ActivationModule } from './platform/activation/activation.module';
     AnalyticsModule,
     AuditLogAccessModule,
     ActivationModule,
+    PlatformSettingsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

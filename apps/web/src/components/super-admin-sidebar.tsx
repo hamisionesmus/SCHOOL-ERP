@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, DatabaseBackup, LogOut, Menu, X, ChevronsLeft, ChevronsRight, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, DatabaseBackup, LogOut, Menu, X, ChevronsLeft, ChevronsRight, ShieldCheck, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 const NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
+  { href: '/dashboard/payment-settings', label: 'Payment Settings', icon: Wallet },
   { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
   { href: '/dashboard/backups', label: 'Backups', icon: DatabaseBackup },
 ];

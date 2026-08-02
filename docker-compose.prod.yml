@@ -26,6 +26,7 @@ services:
       JWT_REFRESH_TTL: 7d
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
+      SUPER_ADMIN_PHONE: ${SUPER_ADMIN_PHONE}
       API_PORT: 4000
       # Used to build links in outbound emails/SMS (activation link, login link) — without this,
       # they fall back to http://localhost:3000 and are broken for real recipients.

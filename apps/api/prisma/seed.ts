@@ -50,12 +50,13 @@ async function main() {
 
   const superAdminEmail = process.env.SUPER_ADMIN_EMAIL ?? 'superadmin@school-erp.local';
   const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD ?? 'ChangeMe123!';
+  const superAdminPhone = process.env.SUPER_ADMIN_PHONE;
   console.log(`Seeding Super Admin (${superAdminEmail})...`);
   const passwordHash = await bcrypt.hash(superAdminPassword, 12);
   await platformPrisma.platformUser.upsert({
     where: { email: superAdminEmail },
-    update: {},
-    create: { email: superAdminEmail, fullName: 'Platform Super Admin', passwordHash },
+    update: superAdminPhone ? { phone: superAdminPhone } : {},
+    create: { email: superAdminEmail, fullName: 'Platform Super Admin', passwordHash, phone: superAdminPhone },
   });
 
   const demoSlug = 'demo-academy';

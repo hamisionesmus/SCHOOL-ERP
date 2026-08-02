@@ -10,6 +10,15 @@ import { Input } from '@/components/ui/input';
 import { apiFetch, ApiError } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
 
+const DEMO_DURATION_OPTIONS = [
+  { label: '4 hours', hours: 4 },
+  { label: '24 hours (1 day)', hours: 24 },
+  { label: '3 days', hours: 72 },
+  { label: '7 days', hours: 168 },
+  { label: '14 days', hours: 336 },
+  { label: '30 days', hours: 720 },
+];
+
 const detailsSchema = z.object({
   name: z.string().min(2),
   slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'lowercase, hyphenated'),
@@ -17,12 +26,9 @@ const detailsSchema = z.object({
   adminEmail: z.string().email(),
   adminFullName: z.string().min(2),
   adminPassword: z.string().min(8),
-  adminPhone: z.string().optional(),
-  isDemo: z.boolean().optional(),
-  demoDurationHours: z
-    .string()
-    .optional()
-    .refine((v) => !v || (Number.isInteger(Number(v)) && Number(v) >= 1), 'Must be a whole number of hours'),
+  adminPhone: z.string().min(9, 'Required — an OTP is sent here to verify the admin'),
+  accountType: z.enum(['demo', 'real']),
+  demoDurationHours: z.string().optional(),
   activationFeeKes: z
     .string()
     .optional()
@@ -34,6 +40,7 @@ interface RequestResult {
   requestId: string;
   expiresAt: string;
   devCode: string;
+  devAdminOtp: string;
 }
 
 export function CreateSchoolDialog() {
@@ -41,6 +48,7 @@ export function CreateSchoolDialog() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ result: RequestResult; name: string } | null>(null);
   const [code, setCode] = useState('');
+  const [adminOtpCode, setAdminOtpCode] = useState('');
   const queryClient = useQueryClient();
   const {
     register,
@@ -48,27 +56,31 @@ export function CreateSchoolDialog() {
     reset,
     watch,
     formState: { errors },
-  } = useForm<DetailsValues>({ resolver: zodResolver(detailsSchema) });
-  const isDemo = watch('isDemo');
+  } = useForm<DetailsValues>({ resolver: zodResolver(detailsSchema), defaultValues: { accountType: 'real' } });
+  const accountType = watch('accountType');
+  const isDemo = accountType === 'demo';
 
   const requestCreate = useMutation({
     mutationFn: (values: DetailsValues) =>
       apiFetch<RequestResult>('/platform/tenants/request', {
         method: 'POST',
         body: JSON.stringify({
-          ...values,
-          demoDurationHours: values.demoDurationHours ? Number(values.demoDurationHours) : undefined,
-          activationFeeKes: values.isDemo
-            ? undefined
-            : values.activationFeeKes
-              ? Number(values.activationFeeKes)
-              : undefined,
+          name: values.name,
+          slug: values.slug,
+          address: values.address,
+          adminEmail: values.adminEmail,
+          adminFullName: values.adminFullName,
+          adminPassword: values.adminPassword,
+          adminPhone: values.adminPhone,
+          isDemo,
+          demoDurationHours: isDemo && values.demoDurationHours ? Number(values.demoDurationHours) : undefined,
+          activationFeeKes: isDemo ? undefined : values.activationFeeKes ? Number(values.activationFeeKes) : undefined,
         }),
       }),
     onSuccess: (result, values) => {
       setPending({ result, name: values.name });
       setError(null);
-      notifySuccess('Confirmation code sent to your email');
+      notifySuccess('Confirmation codes sent');
     },
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : 'Failed to start school creation');
@@ -80,13 +92,14 @@ export function CreateSchoolDialog() {
     mutationFn: () =>
       apiFetch('/platform/tenants/confirm', {
         method: 'POST',
-        body: JSON.stringify({ requestId: pending!.result.requestId, code }),
+        body: JSON.stringify({ requestId: pending!.result.requestId, code, adminOtpCode }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
       reset();
       setPending(null);
       setCode('');
+      setAdminOtpCode('');
       setOpen(false);
       notifySuccess(`${pending!.name} created`);
     },
@@ -100,6 +113,7 @@ export function CreateSchoolDialog() {
     setOpen(false);
     setPending(null);
     setCode('');
+    setAdminOtpCode('');
     setError(null);
     reset();
   }
@@ -109,107 +123,156 @@ export function CreateSchoolDialog() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="my-8 w-full max-w-md animate-scale-in rounded-xl bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[85vh] w-full max-w-2xl animate-scale-in flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
         {!pending ? (
-          <>
-            <h2 className="mb-4 text-lg font-semibold text-slate-900">Create a new school</h2>
-            <form
-              onSubmit={handleSubmit((v) => {
-                if (!v.isDemo && !v.activationFeeKes) {
-                  setError('Activation fee is required for a non-demo school');
-                  return;
-                }
-                setError(null);
-                requestCreate.mutate(v);
-              })}
-              className="flex flex-col gap-3"
-            >
-              <Field label="School name" error={errors.name?.message}>
-                <Input placeholder="Greenfield Academy" {...register('name')} />
-              </Field>
-              <Field label="Slug" error={errors.slug?.message}>
-                <Input placeholder="greenfield-academy" {...register('slug')} />
-              </Field>
-              <Field label="Address (optional)">
-                <Input {...register('address')} />
-              </Field>
-              <hr className="my-1 border-slate-200" />
-              <p className="text-xs font-medium uppercase text-slate-400">First School Administrator</p>
-              <Field label="Admin full name" error={errors.adminFullName?.message}>
-                <Input {...register('adminFullName')} />
-              </Field>
-              <Field label="Admin email" error={errors.adminEmail?.message}>
-                <Input type="email" {...register('adminEmail')} />
-              </Field>
-              <Field label="Admin phone (optional, for demo SMS)">
-                <Input placeholder="+2547..." {...register('adminPhone')} />
-              </Field>
-              <Field label="Admin password" error={errors.adminPassword?.message}>
-                <Input type="password" {...register('adminPassword')} />
-              </Field>
-              <hr className="my-1 border-slate-200" />
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <input type="checkbox" className="h-4 w-4 rounded border-slate-300" {...register('isDemo')} />
-                Create as a demo account
-              </label>
-              {isDemo ? (
-                <Field label="Demo duration (hours)" error={errors.demoDurationHours?.message}>
-                  <Input type="number" min={1} placeholder="24" {...register('demoDurationHours')} />
+          <form
+            onSubmit={handleSubmit((v) => {
+              if (!isDemo && !v.activationFeeKes) {
+                setError('Activation fee is required for a real account');
+                return;
+              }
+              if (isDemo && !v.demoDurationHours) {
+                setError('Demo duration is required');
+                return;
+              }
+              setError(null);
+              requestCreate.mutate(v);
+            })}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="flex-shrink-0 border-b border-slate-200 px-6 py-4">
+              <h2 className="text-lg font-semibold text-slate-900">Create a new school</h2>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="School name" error={errors.name?.message}>
+                  <Input placeholder="Greenfield Academy" {...register('name')} />
                 </Field>
-              ) : (
-                <Field label="Activation fee (KES)" error={errors.activationFeeKes?.message}>
-                  <Input type="number" min={1} placeholder="5000" {...register('activationFeeKes')} />
-                  <p className="text-xs text-slate-500">
-                    The school pays this via M-Pesa STK push before sign-in is unlocked.
-                  </p>
+                <Field label="Slug" error={errors.slug?.message}>
+                  <Input placeholder="greenfield-academy" {...register('slug')} />
                 </Field>
-              )}
-              {error && <p className="text-sm text-red-600">{error}</p>}
-              <div className="mt-2 flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={closeAll}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={requestCreate.isPending}>
-                  {requestCreate.isPending ? 'Sending code...' : 'Send confirmation code'}
-                </Button>
               </div>
-            </form>
-          </>
+              <div className="mt-3">
+                <Field label="Address (optional)">
+                  <Input {...register('address')} />
+                </Field>
+              </div>
+
+              <hr className="my-4 border-slate-200" />
+              <p className="mb-3 text-xs font-medium uppercase text-slate-400">First School Administrator</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Admin full name" error={errors.adminFullName?.message}>
+                  <Input {...register('adminFullName')} />
+                </Field>
+                <Field label="Admin email" error={errors.adminEmail?.message}>
+                  <Input type="email" {...register('adminEmail')} />
+                </Field>
+                <Field label="Admin phone" error={errors.adminPhone?.message}>
+                  <Input placeholder="0712345678" {...register('adminPhone')} />
+                </Field>
+                <Field label="Admin password" error={errors.adminPassword?.message}>
+                  <Input type="password" {...register('adminPassword')} />
+                </Field>
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500">
+                An OTP is sent to the admin phone above to verify the number and their consent.
+              </p>
+
+              <hr className="my-4 border-slate-200" />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Account type">
+                  <select
+                    className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                    {...register('accountType')}
+                  >
+                    <option value="real">Real account</option>
+                    <option value="demo">Demo account</option>
+                  </select>
+                </Field>
+                {isDemo ? (
+                  <Field label="Demo duration" error={errors.demoDurationHours?.message}>
+                    <select
+                      className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                      {...register('demoDurationHours')}
+                    >
+                      <option value="">Select duration…</option>
+                      {DEMO_DURATION_OPTIONS.map((o) => (
+                        <option key={o.hours} value={o.hours}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : (
+                  <Field label="Activation fee (KES)" error={errors.activationFeeKes?.message}>
+                    <Input type="number" min={1} placeholder="5000" {...register('activationFeeKes')} />
+                  </Field>
+                )}
+              </div>
+              {!isDemo && (
+                <p className="mt-1.5 text-xs text-slate-500">
+                  The school pays this via M-Pesa, bank, or paybill before sign-in is unlocked.
+                </p>
+              )}
+
+              {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+            </div>
+
+            <div className="flex flex-shrink-0 justify-end gap-2 border-t border-slate-200 px-6 py-4">
+              <Button type="button" variant="outline" onClick={closeAll}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={requestCreate.isPending}>
+                {requestCreate.isPending ? 'Sending codes...' : 'Send confirmation codes'}
+              </Button>
+            </div>
+          </form>
         ) : (
-          <>
-            <h2 className="mb-2 text-lg font-semibold text-slate-900">Confirm creation</h2>
-            <p className="mb-4 text-sm text-slate-500">
-              A 6-digit code was emailed to your Super Admin account — enter it below to actually create{' '}
-              <strong>{pending.name}</strong>. This exists so nobody can create a school on your account
-              without you confirming.
-            </p>
-            <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              Dev/test convenience: since this environment has no real email gateway, the code is also
-              shown here — <strong>{pending.result.devCode}</strong>.
-            </p>
-            <Field label="6-digit code">
-              <Input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                maxLength={6}
-                placeholder="482913"
-              />
-            </Field>
-            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-            <div className="mt-4 flex justify-end gap-2">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex-shrink-0 border-b border-slate-200 px-6 py-4">
+              <h2 className="text-lg font-semibold text-slate-900">Confirm creation</h2>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <p className="mb-4 text-sm text-slate-500">
+                Two codes were sent — your own confirmation code (email + SMS), and a separate OTP
+                texted to <strong>{pending.name}</strong>&apos;s admin phone. Enter both to create the
+                school.
+              </p>
+              <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                Dev/test convenience: since real email isn&apos;t configured yet, both codes are also
+                shown here — your code <strong>{pending.result.devCode}</strong>, admin OTP{' '}
+                <strong>{pending.result.devAdminOtp}</strong>.
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Your confirmation code">
+                  <Input value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} placeholder="482913" />
+                </Field>
+                <Field label="Admin's OTP code">
+                  <Input
+                    value={adminOtpCode}
+                    onChange={(e) => setAdminOtpCode(e.target.value)}
+                    maxLength={6}
+                    placeholder="193742"
+                  />
+                </Field>
+              </div>
+              {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+            </div>
+            <div className="flex flex-shrink-0 justify-end gap-2 border-t border-slate-200 px-6 py-4">
               <Button type="button" variant="outline" onClick={closeAll}>
                 Cancel
               </Button>
               <Button
                 type="button"
-                disabled={code.length !== 6 || confirmCreate.isPending}
+                disabled={code.length !== 6 || adminOtpCode.length !== 6 || confirmCreate.isPending}
                 onClick={() => confirmCreate.mutate()}
               >
                 {confirmCreate.isPending ? 'Creating...' : 'Confirm & create'}
               </Button>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
