@@ -32,6 +32,11 @@ export class TenantsController {
     return this.tenantsService.getUsage(id);
   }
 
+  @Get(':id/activation-link')
+  getActivationLink(@Param('id') id: string) {
+    return this.tenantsService.getActivationLink(id);
+  }
+
   @Post('request')
   requestCreate(@Body() dto: RequestTenantDto, @CurrentUser() user: JwtUserPayload) {
     return this.tenantsService.requestCreate(dto, user.sub);

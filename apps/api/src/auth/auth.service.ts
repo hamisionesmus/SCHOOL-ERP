@@ -143,6 +143,15 @@ export class AuthService {
       );
     }
 
+    // Real (non-demo) schools are created locked until the activation fee is paid via M-Pesa STK
+    // push (see TenantsService.confirmCreate / ActivationService) — a routing/state check, not a
+    // credential failure, so no recordFailedAttempt here either.
+    if (tenant.status === 'PENDING_PAYMENT') {
+      throw new UnauthorizedException(
+        'This school account is awaiting payment activation — check your email for the payment link.',
+      );
+    }
+
     const db = this.tenantPrisma.forSchema(tenant.schemaName);
     const user = await db.user.findFirst({ where: { email, deletedAt: null } });
     if (!user || !user.isActive || !(await bcrypt.compare(password, user.passwordHash))) {

@@ -23,6 +23,10 @@ const detailsSchema = z.object({
     .string()
     .optional()
     .refine((v) => !v || (Number.isInteger(Number(v)) && Number(v) >= 1), 'Must be a whole number of hours'),
+  activationFeeKes: z
+    .string()
+    .optional()
+    .refine((v) => !v || Number(v) > 0, 'Must be a positive amount'),
 });
 type DetailsValues = z.infer<typeof detailsSchema>;
 
@@ -54,6 +58,11 @@ export function CreateSchoolDialog() {
         body: JSON.stringify({
           ...values,
           demoDurationHours: values.demoDurationHours ? Number(values.demoDurationHours) : undefined,
+          activationFeeKes: values.isDemo
+            ? undefined
+            : values.activationFeeKes
+              ? Number(values.activationFeeKes)
+              : undefined,
         }),
       }),
     onSuccess: (result, values) => {
@@ -107,6 +116,10 @@ export function CreateSchoolDialog() {
             <h2 className="mb-4 text-lg font-semibold text-slate-900">Create a new school</h2>
             <form
               onSubmit={handleSubmit((v) => {
+                if (!v.isDemo && !v.activationFeeKes) {
+                  setError('Activation fee is required for a non-demo school');
+                  return;
+                }
                 setError(null);
                 requestCreate.mutate(v);
               })}
@@ -140,9 +153,16 @@ export function CreateSchoolDialog() {
                 <input type="checkbox" className="h-4 w-4 rounded border-slate-300" {...register('isDemo')} />
                 Create as a demo account
               </label>
-              {isDemo && (
+              {isDemo ? (
                 <Field label="Demo duration (hours)" error={errors.demoDurationHours?.message}>
                   <Input type="number" min={1} placeholder="24" {...register('demoDurationHours')} />
+                </Field>
+              ) : (
+                <Field label="Activation fee (KES)" error={errors.activationFeeKes?.message}>
+                  <Input type="number" min={1} placeholder="5000" {...register('activationFeeKes')} />
+                  <p className="text-xs text-slate-500">
+                    The school pays this via M-Pesa STK push before sign-in is unlocked.
+                  </p>
                 </Field>
               )}
               {error && <p className="text-sm text-red-600">{error}</p>}

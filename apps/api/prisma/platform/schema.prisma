@@ -10,8 +10,17 @@ datasource db {
 
 enum TenantStatus {
   TRIAL
+  // Real (non-demo) school created but not yet paid for — login is blocked until the activation
+  // fee is paid via M-Pesa STK push. See TenantsService.confirmCreate() and AuthService.login().
+  PENDING_PAYMENT
   ACTIVE
   SUSPENDED
+}
+
+enum MpesaStkStatus {
+  PENDING
+  SUCCESS
+  FAILED
 }
 
 enum PlatformRole {
@@ -66,6 +75,11 @@ model Tenant {
   address                String?
   website                String?
   smsSenderId            String?
+  // Captured from the creation request so the platform can reach the school directly (activation
+  // link, "you're now active" notice, future billing reminders) without depending on the tenant's
+  // own schema — which doesn't exist yet, or isn't queryable, before activation.
+  contactEmail           String?
+  contactPhone           String?
   // Editable by the School Administrator via the tenant-scoped Settings module — pure branding,
   // no financial/PII sensitivity, so no reason to route it through the Super Admin.
   mission                String?
@@ -106,6 +120,7 @@ model Tenant {
   invoices PlatformInvoice[]
   auditLogAccessRequests AuditLogAccessRequest[]
   userDirectoryEntries UserDirectoryEntry[]
+  mpesaStkRequests PlatformMpesaStkRequest[]
 }
 
 // Global email → school lookup, kept in sync whenever a tenant-side User is created (see
@@ -143,6 +158,10 @@ model TenantCreationRequest {
   // applied to the resulting Tenant on confirmation — see TenantsService.confirmCreate().
   isDemo            Boolean   @default(false)
   demoDurationHours Int?
+  // One-time activation fee the Super Admin sets for this specific school (not tied to the
+  // recurring subscriptionPlan price) — required for non-demo requests. Becomes the amount on the
+  // first PlatformInvoice, paid via M-Pesa STK push before the school can log in.
+  activationFeeKes  Decimal?
   expiresAt         DateTime
   consumedAt        DateTime?
   createdAt         DateTime  @default(now())
@@ -204,12 +223,15 @@ model PlatformInvoice {
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
-  payments PlatformPayment[]
+  payments     PlatformPayment[]
+  stkRequests  PlatformMpesaStkRequest[]
 }
 
 // Recording a payment that reaches the invoice amount marks it PAID, pushes the tenant's
 // currentPeriodEnd out to the invoice's periodEnd, and reactivates the tenant if it had been
-// SUSPENDED for non-payment — see TenantsService.recordPayment().
+// SUSPENDED for non-payment — see TenantsService.recordPayment(). recordedByUserId is null for
+// payments applied automatically by the M-Pesa STK callback (no Super Admin "recorded" those) —
+// see ActivationService; the UI shows "via M-Pesa (self-service)" in that case.
 model PlatformPayment {
   id               String                 @id @default(uuid())
   invoiceId        String
@@ -218,9 +240,31 @@ model PlatformPayment {
   method           PlatformPaymentMethod
   reference        String?
   receiptNumber    String                 @unique
-  recordedByUserId String
-  recordedBy       PlatformUser           @relation(fields: [recordedByUserId], references: [id])
+  recordedByUserId String?
+  recordedBy       PlatformUser?          @relation(fields: [recordedByUserId], references: [id])
   createdAt        DateTime               @default(now())
+}
+
+// One M-Pesa STK push attempt against an activation invoice (see ActivationService). Tracked
+// separately from PlatformPayment so a failed/cancelled/timed-out push (common with STK — the
+// user closes the prompt, has insufficient funds, etc.) doesn't need a payment row at all; only a
+// successful callback creates one. checkoutRequestId is how Safaricom's async callback is matched
+// back to the original request.
+model PlatformMpesaStkRequest {
+  id                String          @id @default(uuid())
+  invoiceId         String
+  invoice           PlatformInvoice @relation(fields: [invoiceId], references: [id])
+  tenantId          String
+  tenant            Tenant          @relation(fields: [tenantId], references: [id])
+  phone             String
+  amount            Int
+  checkoutRequestId String          @unique
+  merchantRequestId String?
+  status            MpesaStkStatus  @default(PENDING)
+  mpesaReceiptNumber String?
+  resultDesc        String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }
 
 // Every failed login attempt, both realms — a school's own login (tenantSlug set) and the Super

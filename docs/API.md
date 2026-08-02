@@ -95,6 +95,8 @@ in Swagger (`/api/docs`), not repeated here.
   `/platform/invoices/:id/pdf`, `/platform/tenants/:id/reset-admin-password`,
   `/platform/tenants/:id/audit-logs`, `/platform/backups`, `/platform/backups/run`,
   `/settings/billing`, `/settings/billing/:invoiceId/pdf` — Phase 9 (see table below)
+- `/public/activation/*`, `/platform/tenants/:id/activation-link` — Phase 10, payment-gated
+  activation (see table below)
 
 ### Tenant-scoped: Notifications (Phase 9)
 | Method | Path | Notes |
@@ -118,6 +120,19 @@ in Swagger (`/api/docs`), not repeated here.
 |---|---|---|
 | GET | `/settings/billing` | `SETTINGS:MANAGE` — the School Administrator's own read-only view of `billingCycle`/`currentPeriodEnd`/invoices/payments |
 | GET | `/settings/billing/:invoiceId/pdf` | `SETTINGS:MANAGE` — same PDF renderer as the Super Admin route, with a cross-tenant-access check |
+
+### Public: School activation payment (Phase 10)
+No auth — identity is carried entirely by the signed `:token` (tenantId + invoiceId, HMAC'd with
+`JWT_ACCESS_SECRET`, `purpose: 'activation'` claim). Reached from the link in a non-demo school's
+welcome email; nothing else in the app is reachable without logging in, but the school can't log in
+until this flow completes.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/public/activation/:token` | `{ schoolName, amountKes, status: 'PENDING'\|'PAID' }` |
+| POST | `/public/activation/:token/pay` | `{ phone }` → triggers a real Safaricom Daraja STK Push, persists a `PlatformMpesaStkRequest`; throttled (5/min) |
+| POST | `/public/activation/mpesa-callback` | Safaricom's async result webhook — on success, records a `PlatformPayment` (`recordedByUserId: null`), marks the invoice PAID, flips the tenant `ACTIVE`, and sends the "you're active" email + SMS |
+| GET | `/platform/tenants/:id/activation-link` | Super Admin only — re-derives a fresh activation link/amount for a `PENDING_PAYMENT` tenant, to copy/resend manually |
 
 ## Planned endpoint groups (by phase — see `docs/ARCHITECTURE.md`)
 

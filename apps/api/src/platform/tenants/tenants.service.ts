@@ -13,6 +13,8 @@ import { seedTenantCore } from '../../common/tenant-seed/seed-data';
 import { UserDirectoryService } from '../../common/user-directory/user-directory.service';
 import { EMAIL_PROVIDER, EmailProvider } from '../email/email-provider.interface';
 import { SMS_PROVIDER, SmsProvider } from '../../communications/providers/sms-provider.interface';
+import { ActivationService } from '../activation/activation.service';
+import { generateInvoiceNumber } from '../billing/invoice-number.util';
 
 const CREATION_CODE_TTL_MS = 15 * 60 * 1000;
 
@@ -39,6 +41,7 @@ export class TenantsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly provisioning: TenantProvisioningService,
     private readonly userDirectory: UserDirectoryService,
+    private readonly activationService: ActivationService,
     @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
     @Inject(SMS_PROVIDER) private readonly smsProvider: SmsProvider,
   ) {}
@@ -75,6 +78,9 @@ export class TenantsService {
     if (dto.isDemo && !dto.demoDurationHours) {
       throw new BadRequestException('demoDurationHours is required for a demo account');
     }
+    if (!dto.isDemo && !dto.activationFeeKes) {
+      throw new BadRequestException('activationFeeKes is required for a non-demo school');
+    }
 
     const requester = await this.platformPrisma.platformUser.findUnique({ where: { id: requestedByUserId } });
     if (!requester) throw new UnauthorizedException();
@@ -95,6 +101,7 @@ export class TenantsService {
         planId: dto.planId,
         isDemo: !!dto.isDemo,
         demoDurationHours: dto.demoDurationHours,
+        activationFeeKes: dto.isDemo ? undefined : dto.activationFeeKes,
         expiresAt: new Date(Date.now() + CREATION_CODE_TTL_MS),
       },
     });
@@ -122,16 +129,21 @@ export class TenantsService {
       ? new Date(Date.now() + (request.demoDurationHours ?? 24) * 3_600_000)
       : null;
 
+    // Demo accounts stay free/expiry-based and are usable immediately (ACTIVE). Real accounts are
+    // created locked (PENDING_PAYMENT) — login is blocked (see AuthService.login) until the school
+    // pays the activation fee via M-Pesa STK push from the link in the welcome email below.
     const tenant = await this.platformPrisma.tenant.create({
       data: {
         name: request.name,
         slug: request.slug,
         schemaName,
-        status: 'ACTIVE',
+        status: request.isDemo ? 'ACTIVE' : 'PENDING_PAYMENT',
         subscriptionPlanId: request.planId ?? undefined,
-        currentPeriodEnd: new Date(Date.now() + 30 * 86_400_000),
+        currentPeriodEnd: request.isDemo ? new Date(Date.now() + 30 * 86_400_000) : null,
         isDemo: request.isDemo,
         demoExpiresAt,
+        contactEmail: request.adminEmail,
+        contactPhone: request.adminPhone,
       },
     });
 
@@ -162,14 +174,54 @@ export class TenantsService {
         );
       }
     } else {
+      const periodStart = new Date();
+      const periodEnd = new Date(periodStart.getTime() + 30 * 86_400_000);
+      const amountKes = Math.round(Number(request.activationFeeKes ?? 0));
+      const invoiceNumber = await generateInvoiceNumber(this.platformPrisma);
+      const invoice = await this.platformPrisma.platformInvoice.create({
+        data: {
+          tenantId: tenant.id,
+          billingCycle: 'MONTHLY',
+          periodStart,
+          periodEnd,
+          amount: amountKes,
+          dueDate: new Date(periodStart.getTime() + 7 * 86_400_000),
+          invoiceNumber,
+        },
+      });
+      const activationToken = await this.activationService.signActivationToken(tenant.id, invoice.id);
+      const activationUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/activate/${activationToken}`;
+
       await this.emailProvider.send(
         request.adminEmail,
-        `Welcome to School ERP — ${request.name} is ready`,
-        `Welcome to School ERP! "${request.name}" has been created.\n\nSign in at ${loginUrl}\nSchool code: ${request.slug}\nEmail: ${request.adminEmail}\n\nYou'll be asked to review your school's settings the first time you sign in.`,
+        `Activate School ERP — ${request.name}`,
+        `Welcome to School ERP! "${request.name}" has been created, but sign-in is locked until the one-time activation fee is paid.\n\nActivate now: ${activationUrl}\nAmount due: KES ${amountKes.toLocaleString()}\n\nOnce payment is confirmed you'll get another message and be able to sign in at ${loginUrl}\nSchool code: ${request.slug}\nEmail: ${request.adminEmail}\n\nThis is an automated message from a no-reply address — please don't reply to it.`,
       );
     }
 
     return tenant;
+  }
+
+  /** Re-derives a fresh activation link for a PENDING_PAYMENT tenant — for the Super Admin to copy
+   * and manually resend if the original welcome email didn't arrive. Signing is deterministic given
+   * the same tenantId+invoiceId (see ActivationService), so this doesn't need to persist anything;
+   * both the original and any freshly-derived link work until they expire (30 days). */
+  async getActivationLink(id: string) {
+    const tenant = await this.findOne(id);
+    if (tenant.status !== 'PENDING_PAYMENT') {
+      throw new BadRequestException('This school is already active — no activation link needed');
+    }
+    const invoice = await this.platformPrisma.platformInvoice.findFirst({
+      where: { tenantId: id, status: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!invoice) throw new NotFoundException('No pending activation invoice found for this school');
+
+    const token = await this.activationService.signActivationToken(tenant.id, invoice.id);
+    return {
+      url: `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/activate/${token}`,
+      amountKes: invoice.amount,
+    };
   }
 
   async suspend(id: string) {

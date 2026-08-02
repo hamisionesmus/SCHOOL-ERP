@@ -37,6 +37,7 @@ import { CalendarModule } from './calendar/calendar.module';
 import { SecurityModule } from './platform/security/security.module';
 import { AnalyticsModule } from './platform/analytics/analytics.module';
 import { AuditLogAccessModule } from './platform/audit-log-access/audit-log-access.module';
+import { ActivationModule } from './platform/activation/activation.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { AuditLogAccessModule } from './platform/audit-log-access/audit-log-acce
     SecurityModule,
     AnalyticsModule,
     AuditLogAccessModule,
+    ActivationModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

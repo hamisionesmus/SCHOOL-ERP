@@ -23,7 +23,7 @@ interface Tenant {
   id: string;
   name: string;
   slug: string;
-  status: 'TRIAL' | 'ACTIVE' | 'SUSPENDED';
+  status: 'TRIAL' | 'PENDING_PAYMENT' | 'ACTIVE' | 'SUSPENDED';
   address: string | null;
   currentPeriodEnd: string | null;
   createdAt: string;
@@ -73,7 +73,12 @@ interface RevenueOverview {
   monthlyRevenue: { month: string; amount: number }[];
 }
 
-const STATUS_COLORS: Record<string, string> = { ACTIVE: '#10b981', TRIAL: '#f59e0b', SUSPENDED: '#f43f5e' };
+const STATUS_COLORS: Record<string, string> = {
+  ACTIVE: '#10b981',
+  TRIAL: '#f59e0b',
+  PENDING_PAYMENT: '#3b82f6',
+  SUSPENDED: '#f43f5e',
+};
 const CYCLE_COLORS: Record<string, string> = { MONTHLY: '#3b82f6', HALF_YEARLY: '#8b5cf6', YEARLY: '#0ea5e9' };
 const CYCLE_LABELS: Record<string, string> = { MONTHLY: 'Monthly', HALF_YEARLY: 'Half-yearly', YEARLY: 'Yearly' };
 
@@ -119,10 +124,12 @@ export default function DashboardPage() {
   const tenants = data?.data ?? [];
   const activeCount = tenants.filter((t) => t.status === 'ACTIVE').length;
   const trialCount = tenants.filter((t) => t.status === 'TRIAL').length;
+  const pendingPaymentCount = tenants.filter((t) => t.status === 'PENDING_PAYMENT').length;
   const suspendedCount = tenants.filter((t) => t.status === 'SUSPENDED').length;
   const statusBreakdown = [
     { status: 'ACTIVE', count: activeCount },
     { status: 'TRIAL', count: trialCount },
+    { status: 'PENDING_PAYMENT', count: pendingPaymentCount },
     { status: 'SUSPENDED', count: suspendedCount },
   ].filter((s) => s.count > 0);
 

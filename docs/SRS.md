@@ -57,10 +57,24 @@ displayed anywhere, to the Super Admin or anyone else, since they're one-way bcr
 cross-schema audit-log view (GET /platform/tenants/:id/audit-logs, reads the tenant's own AuditLog
 table by schema name); a backups list + trigger (GET/POST /platform/backups, background-runs
 prisma/backup-database.ts, which shells out to `docker compose exec` for pg_dump since Postgres runs
-in Docker, not on the host, in this environment); PLANNED: subscription plan assignment UI, usage
-analytics beyond storage, impersonation, push updates, payment-config UI, live M-Pesa/bank
-payment-gateway webhooks (Phase 9 payment confirmation is a manual Super-Admin action, not an
-automatic callback — see Finance §4.18 for the identical caveat on the tenant-side M-Pesa stub)]`
+in Docker, not on the host, in this environment); **payment-gated account activation**: a non-demo
+school is created locked (`PENDING_PAYMENT`, login blocked — see §4.3-adjacent auth gate in
+AuthService.login) with a first `PlatformInvoice` for a Super-Admin-set one-time activation fee; the
+welcome email carries a public, token-signed `/activate/:token` link (no login required — the school
+can't log in yet) where the school triggers a real Safaricom Daraja STK Push, and Safaricom's async
+callback (`POST /public/activation/mpesa-callback`) records the `PlatformPayment` (method MPESA,
+unattributed to any Super Admin — see `PlatformPayment.recordedByUserId` nullability), marks the
+invoice PAID, flips the tenant to `ACTIVE`, and sends a second email + SMS confirming the account is
+live; the Super Admin can also manually activate a `PENDING_PAYMENT` school (e.g. paid by bank/cash)
+from the same Activate control used for `SUSPENDED`, and can copy/resend the activation link from the
+school detail page. Demo accounts are unaffected — still free, expiry-gated, no payment step. Real
+outbound email (Resend) and SMS (Advanta SMS) replace the logging-only stubs when their API keys are
+configured, with automatic fallback to the stub when not (see `platform-email.module.ts`/
+`communications/sms-provider.module.ts`); PLANNED: subscription plan assignment UI, usage analytics
+beyond storage, impersonation, push updates, payment-config UI, an M-Pesa/bank webhook for the
+*recurring renewal* invoice flow specifically (that one is still a manual Super-Admin action — see
+Finance §4.18 for the identical caveat on the tenant-side M-Pesa stub; only the one-time activation
+payment is now a real automated STK Push)]`
 
 ### 4.2 Multi-Tenancy
 Each school: own isolated data (schema-per-tenant), logo/colors/branding, name/address/website, SMS

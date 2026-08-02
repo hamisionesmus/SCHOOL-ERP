@@ -27,6 +27,20 @@ services:
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
       API_PORT: 4000
+      # Used to build links in outbound emails/SMS (activation link, login link) — without this,
+      # they fall back to http://localhost:3000 and are broken for real recipients.
+      WEB_ORIGIN: ${WEB_ORIGIN}
+      MPESA_ENV: ${MPESA_ENV}
+      MPESA_CONSUMER_KEY: ${MPESA_CONSUMER_KEY}
+      MPESA_CONSUMER_SECRET: ${MPESA_CONSUMER_SECRET}
+      MPESA_SHORTCODE: ${MPESA_SHORTCODE}
+      MPESA_PASSKEY: ${MPESA_PASSKEY}
+      MPESA_CALLBACK_URL: ${MPESA_CALLBACK_URL}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_FROM_ADDRESS: ${RESEND_FROM_ADDRESS}
+      ADVANTA_API_KEY: ${ADVANTA_API_KEY}
+      ADVANTA_PARTNER_ID: ${ADVANTA_PARTNER_ID}
+      ADVANTA_SENDER_ID: ${ADVANTA_SENDER_ID}
     volumes:
       - api_uploads:/app/uploads
       - api_backups:/app/backups

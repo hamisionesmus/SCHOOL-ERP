@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsInt, IsNumber, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
 
 export class RequestTenantDto {
   @ApiProperty({ example: 'Greenfield Academy' })
@@ -61,4 +61,14 @@ export class RequestTenantDto {
   @IsInt()
   @Min(1)
   demoDurationHours?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'One-time activation fee in KES the school must pay via M-Pesa STK push before login works — required for non-demo requests, ignored for demo requests.',
+    example: 5000,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  activationFeeKes?: number;
 }

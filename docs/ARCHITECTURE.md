@@ -230,10 +230,31 @@ sequenceDiagram
    Finally, the login page dropped its explicit "Super Admin / School" tab UI — one form (email,
    password, an optional collapsed "School slug" field) now covers both, exactly mirroring what
    `AuthService.login()` already did server-side (route by whether a `tenantSlug` was submitted).
-10. **Phase 10** — Mobile apps, AI features, full biometric hardware/ML integration (the honest-stub
-    version landed in Phase 8; this is the part that needs real devices), live payment-gateway
-    webhooks for platform billing (Phase 9 shipped manual confirm, not M-Pesa/bank callbacks), test
-    suites, CI/CD, Kubernetes, manuals, security hardening pass.
+10. **Phase 10** — Payment-gated account activation + real outbound email/SMS. Non-demo schools are
+    now created locked (`TenantStatus.PENDING_PAYMENT` — login blocked, same style of check as
+    `SUSPENDED`) with a Super-Admin-set one-time activation fee on a first `PlatformInvoice`. The
+    welcome email carries a public `/activate/:token` link — no login needed, since the school can't
+    log in yet; the token is a signed JWT (`{ tenantId, invoiceId, purpose: 'activation' }`, 30-day
+    expiry) rather than a stored row, so nothing new needed persisting just to hand out a link. That
+    page triggers a **real** Safaricom Daraja STK Push (`PlatformMpesaService` — OAuth token cached
+    in-memory, sandbox/production switched by `MPESA_ENV`), and Safaricom's async callback
+    (`POST /public/activation/mpesa-callback`) is the one place in this codebase that turns a webhook
+    into a state change: it records a `PlatformPayment` (`recordedByUserId: null` — the schema now
+    allows this, since an automated payment has no Super Admin behind it, shown in the UI as "via
+    M-Pesa (self-service)"), marks the invoice PAID, flips the tenant `ACTIVE`, and sends a second
+    email + SMS. The Super Admin can also manually activate a `PENDING_PAYMENT` school (paid another
+    way) from the same control used for `SUSPENDED`, and can copy/resend the activation link from the
+    school detail page (re-derived on demand from the same deterministic signing, not stored). This
+    is the one payment flow in the app that's now a live webhook, not a manual confirm — the
+    *recurring renewal* flow from Phase 9 is unchanged and still manual. Alongside this, `EmailProvider`
+    and `SmsProvider` gained real implementations (Resend; Advanta SMS) selected by a
+    `useFactory` provider that checks for an API key at boot and falls back to the original
+    logging-only stub when absent, so every environment without credentials configured keeps working
+    exactly as before.
+11. **Phase 11** — Mobile apps, AI features, full biometric hardware/ML integration (the honest-stub
+    version landed in Phase 8; this is the part that needs real devices), a live payment-gateway
+    webhook for the *recurring renewal* billing flow specifically (Phase 10 only covered one-time
+    activation), test suites, CI/CD, Kubernetes, manuals, security hardening pass.
 
 ## 7. Security posture at each phase
 

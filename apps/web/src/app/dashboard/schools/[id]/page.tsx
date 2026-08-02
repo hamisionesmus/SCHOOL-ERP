@@ -23,7 +23,7 @@ interface Tenant {
   id: string;
   name: string;
   slug: string;
-  status: 'TRIAL' | 'ACTIVE' | 'SUSPENDED';
+  status: 'TRIAL' | 'PENDING_PAYMENT' | 'ACTIVE' | 'SUSPENDED';
   address: string | null;
   website: string | null;
   billingCycle: 'MONTHLY' | 'YEARLY';
@@ -144,6 +144,13 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
     queryFn: () => apiFetch<TenantUsage>(`/platform/tenants/${tenant.id}/usage`),
   });
 
+  const { data: activationLink } = useQuery({
+    queryKey: ['activation-link', tenant.id],
+    queryFn: () => apiFetch<{ url: string; amountKes: number }>(`/platform/tenants/${tenant.id}/activation-link`),
+    enabled: tenant.status === 'PENDING_PAYMENT',
+  });
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const resetPassword = useMutation({
     mutationFn: () => apiFetch<{ email: string; fullName: string; temporaryPassword: string }>(`/platform/tenants/${tenant.id}/reset-admin-password`, { method: 'POST' }),
     onSuccess: (data) => {
@@ -173,9 +180,37 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
 
   const days = tenant.currentPeriodEnd ? daysUntil(tenant.currentPeriodEnd) : null;
   const tone = days !== null ? countdownTone(days) : 'upcoming';
+  const canManuallyActivate = tenant.status === 'SUSPENDED' || tenant.status === 'PENDING_PAYMENT';
 
   return (
     <div className="flex flex-col gap-6">
+      {tenant.status === 'PENDING_PAYMENT' && activationLink && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-sm font-medium text-blue-900">
+            Awaiting activation payment — KES {activationLink.amountKes.toLocaleString()}
+          </p>
+          <p className="mt-1 text-xs text-blue-700">
+            Sent to the school in the welcome email. Copy it below to resend manually if needed.
+          </p>
+          <div className="mt-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2">
+            <p className="flex-1 truncate text-xs text-slate-600">{activationLink.url}</p>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(activationLink.url);
+                setLinkCopied(true);
+                setTimeout(() => setLinkCopied(false), 2000);
+              }}
+              className="flex-shrink-0 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              aria-label="Copy activation link"
+              title="Copy to clipboard"
+            >
+              {linkCopied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           label="Storage Used"
@@ -259,20 +294,22 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
           <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
             <div>
               <p className="text-sm font-medium text-slate-900">
-                {tenant.status === 'SUSPENDED' ? 'Activate this school' : 'Suspend this school'}
+                {canManuallyActivate ? 'Activate this school' : 'Suspend this school'}
               </p>
               <p className="text-xs text-slate-500">
-                {tenant.status === 'SUSPENDED'
-                  ? 'Restores access for all staff and parents.'
+                {canManuallyActivate
+                  ? tenant.status === 'PENDING_PAYMENT'
+                    ? 'Grants access without waiting for the M-Pesa payment — use if paid another way (bank, cash).'
+                    : 'Restores access for all staff and parents.'
                   : 'Immediately blocks all staff and parent logins until reactivated.'}
               </p>
             </div>
             <Button
               size="sm"
-              variant={tenant.status === 'SUSPENDED' ? 'outline' : 'destructive'}
-              onClick={() => setConfirmStatus(tenant.status === 'SUSPENDED' ? 'activate' : 'suspend')}
+              variant={canManuallyActivate ? 'outline' : 'destructive'}
+              onClick={() => setConfirmStatus(canManuallyActivate ? 'activate' : 'suspend')}
             >
-              {tenant.status === 'SUSPENDED' ? 'Activate' : 'Suspend'}
+              {canManuallyActivate ? 'Activate' : 'Suspend'}
             </Button>
           </div>
         </CardContent>
@@ -483,6 +520,11 @@ function BillingTab({ tenantId }: { tenantId: string }) {
                   <td className="py-2 text-slate-700">{kes(inv.amount)}</td>
                   <td className="py-2">
                     <Badge status={inv.status} />
+                    {inv.status === 'PAID' && inv.payments[0] && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        {inv.payments[0].method === 'MPESA' ? 'via M-Pesa' : inv.payments[0].method === 'BANK' ? 'via bank' : 'via cash'}
+                      </p>
+                    )}
                   </td>
                   <td className="py-2 text-right">
                     <div className="flex justify-end gap-2">

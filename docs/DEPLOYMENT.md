@@ -39,7 +39,20 @@ cp .env.production.example .env
 nano .env
 ```
 
-Fill in: a Postgres password, two JWT secrets (`node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` run twice), and the Super Admin seed email/password. `NEXT_PUBLIC_API_URL` is already correct in the template.
+Fill in: a Postgres password, two JWT secrets (`node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` run twice), and the Super Admin seed email/password. `NEXT_PUBLIC_API_URL` and `WEB_ORIGIN` are already correct in the template — `WEB_ORIGIN` matters even without the rest of this section filled in, since it's what builds the login link in every outbound email.
+
+The M-Pesa/Resend/Advanta block is optional at first boot — leave any of those blank and the app
+falls back to logging instead of sending (see `StubEmailProvider`/`StubSmsProvider`), so the app
+still runs. Fill them in to make school-activation payments and notifications real:
+
+- **M-Pesa (Daraja)** — from a Safaricom Daraja app's "Lipa Na M-Pesa Online" credentials.
+  `MPESA_CALLBACK_URL` must be reachable from the internet — the template value
+  (`https://api.myschoolapp.xyz/public/activation/mpesa-callback`) is already correct as long as
+  that domain resolves to this server. Register the same callback URL in the Daraja app config on
+  Safaricom's developer portal.
+- **Resend** — an API key from [resend.com](https://resend.com), with `myschoolapp.xyz` added and
+  verified as a sending domain (Resend gives you a DNS record to add).
+- **Advanta SMS** — partner ID + API key from [developers.advantasms.com](https://developers.advantasms.com) (Partners page → toggle API → generate key).
 
 ### 5. Bring everything up
 
