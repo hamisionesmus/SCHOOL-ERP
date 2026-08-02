@@ -479,7 +479,7 @@ function SecretInput({
 
 function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onRequested: OnRequested }) {
   const [form, setForm] = useState({
-    mpesaEnv: 'sandbox',
+    mpesaEnv: '',
     mpesaConsumerKey: '',
     mpesaShortcode: '',
     mpesaCallbackUrl: '',
@@ -497,7 +497,7 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
   useEffect(() => {
     if (data) {
       setForm({
-        mpesaEnv: data.mpesaEnv ?? 'sandbox',
+        mpesaEnv: data.mpesaEnv ?? '',
         mpesaConsumerKey: data.mpesaConsumerKey ?? '',
         mpesaShortcode: data.mpesaShortcode ?? '',
         mpesaCallbackUrl: data.mpesaCallbackUrl ?? '',
@@ -512,6 +512,7 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
   const requestSave = useMutation({
     mutationFn: () => {
       const payload: Record<string, string> = { ...form };
+      if (!payload.mpesaEnv) delete payload.mpesaEnv;
       for (const [key, value] of Object.entries(secrets)) {
         if (value) payload[key] = value;
       }
@@ -542,6 +543,7 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
               value={form.mpesaEnv}
               onChange={(e) => setForm((f) => ({ ...f, mpesaEnv: e.target.value }))}
             >
+              <option value="">Use server default (MPESA_ENV env var)</option>
               <option value="sandbox">Sandbox</option>
               <option value="production">Production</option>
             </select>

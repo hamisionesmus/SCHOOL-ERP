@@ -336,7 +336,7 @@ model PlatformSettings {
   // provider resolves `dbValue ?? envValue` at call time, so env vars remain a working fallback for
   // local dev / initial setup. Secret-bearing fields are never returned in full by GET
   // /platform/settings — see PlatformSettingsService.getMaskedForClient().
-  mpesaEnv            String? @default("sandbox")
+  mpesaEnv            String?
   mpesaConsumerKey    String?
   mpesaConsumerSecret String?
   mpesaShortcode      String?
