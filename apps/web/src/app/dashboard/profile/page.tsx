@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -193,15 +194,15 @@ function ChangePasswordCard() {
       <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-slate-700">Current password</label>
-          <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+          <PasswordInput value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-slate-700">New password</label>
-          <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          <PasswordInput value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-slate-700">Confirm new password</label>
-          <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          <PasswordInput value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
           {mismatch && <p className="text-xs text-red-600">Passwords don&apos;t match</p>}
         </div>
       </CardContent>

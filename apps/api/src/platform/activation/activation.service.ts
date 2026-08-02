@@ -8,6 +8,8 @@ import { generatePlatformReceiptNumber } from '../billing/invoice-number.util';
 import { PlatformNotifierService } from '../messaging/platform-notifier.service';
 import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 import { findSchoolAdmin } from '../../common/tenant-admin.util';
+import { generateTempPassword } from '../../common/password.util';
+import * as bcrypt from 'bcryptjs';
 
 interface ActivationTokenPayload {
   purpose: 'activation';
@@ -97,6 +99,33 @@ export class ActivationService {
   async initiatePayment(token: string, phone: string) {
     const { tenantId, invoiceId } = await this.verifyToken(token);
     const { tenant, invoice } = await this.loadTenantAndInvoice(tenantId, invoiceId);
+    return this.pushStkForInvoice(tenant.id, tenant.slug, invoice, phone);
+  }
+
+  /** Authenticated counterpart to initiatePayment() — lets a Super/Sub Admin trigger the STK push
+   * directly from the dashboard instead of relying on the school opening the activation link
+   * themselves (the public flow above still works too; this is a second way in, not a replacement).
+   * Finds the tenant's own pending activation invoice rather than trusting a signed token. */
+  async initiatePaymentForTenant(tenantId: string, phone: string) {
+    const tenant = await this.platformPrisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null } });
+    if (!tenant) throw new NotFoundException('School not found');
+    if (tenant.status !== 'PENDING_PAYMENT') {
+      throw new BadRequestException('This school is not awaiting activation payment.');
+    }
+    const invoice = await this.platformPrisma.platformInvoice.findFirst({
+      where: { tenantId, status: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!invoice) throw new NotFoundException('No pending activation invoice found for this school');
+    return this.pushStkForInvoice(tenant.id, tenant.slug, invoice, phone);
+  }
+
+  private async pushStkForInvoice(
+    tenantId: string,
+    tenantSlug: string,
+    invoice: { id: string; status: string; amount: number },
+    phone: string,
+  ) {
     if (invoice.status === 'PAID') {
       throw new BadRequestException('This school has already been activated.');
     }
@@ -108,12 +137,12 @@ export class ActivationService {
     const { merchantRequestId, checkoutRequestId } = await this.mpesa.stkPush({
       phone,
       amount: invoice.amount,
-      accountReference: tenant.slug,
+      accountReference: tenantSlug,
       description: 'Activation',
     });
 
     await this.platformPrisma.platformMpesaStkRequest.create({
-      data: { invoiceId, tenantId, phone, amount: invoice.amount, checkoutRequestId, merchantRequestId },
+      data: { invoiceId: invoice.id, tenantId, phone, amount: invoice.amount, checkoutRequestId, merchantRequestId },
     });
 
     return { checkoutRequestId };
@@ -185,11 +214,10 @@ export class ActivationService {
 
   /** Same "you're active" messaging regardless of which payment method got the school there — the
    * M-Pesa webhook above and a Super Admin approving a Bank/Paybill proof (see approveProof) both
-   * end here. Deliberately does NOT touch the admin's password: it was already set to whatever they
-   * typed into the create-school dialog back at TenantsService.requestCreate(), and there's no
-   * plaintext left to re-communicate by this point anyway (it was hashed immediately on submission
-   * and never stored). Regenerating one here would just discard a password the admin may already be
-   * using. Instead the message reminds them to use what they set and change it after signing in. */
+   * end here. Generates a fresh password and states it explicitly in the message: activation can
+   * happen days or weeks after the admin typed their original password into the create-school
+   * dialog, and by then there's a real chance they've forgotten it — a vague "use the password you
+   * set" is useless in that case. The message tells them to change it as soon as they sign in. */
   private async sendActivatedNotification(
     tenant: { name: string; schemaName: string; contactEmail: string | null; contactPhone: string | null },
     receiptNumber: string,
@@ -199,12 +227,25 @@ export class ActivationService {
     const loginUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/login`;
     const admin = await findSchoolAdmin(this.tenantPrisma, tenant.schemaName);
 
+    let tempPassword = '';
+    if (admin) {
+      tempPassword = generateTempPassword();
+      const passwordHash = await bcrypt.hash(tempPassword, 12);
+      await this.tenantPrisma.forSchema(tenant.schemaName).user.update({
+        where: { id: admin.id },
+        data: { passwordHash },
+      });
+    } else {
+      this.logger.warn(`No School Administrator found for ${tenant.schemaName} — ACTIVATED message will have no password`);
+    }
+
     await this.notifier.notify('ACTIVATED', {
       to: { email: tenant.contactEmail, phone: tenant.contactPhone },
       vars: {
         schoolName: tenant.name,
         loginUrl,
         email: tenant.contactEmail ?? admin?.email ?? '',
+        tempPassword,
         receiptNumber,
         methodNote,
         amountKes: amount.toLocaleString(),

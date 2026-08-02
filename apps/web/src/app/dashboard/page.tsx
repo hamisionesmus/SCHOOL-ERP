@@ -100,6 +100,9 @@ export default function DashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['tenants'],
     queryFn: () => apiFetch<{ data: Tenant[] }>('/platform/tenants'),
+    // Quiet background refresh so a school's status (e.g. PENDING_PAYMENT -> ACTIVE) shows up here
+    // without anyone needing to reload the page — isLoading above only gates the very first render.
+    refetchInterval: 20_000,
   });
 
   const { data: revenue, isLoading: revenueLoading } = useQuery({

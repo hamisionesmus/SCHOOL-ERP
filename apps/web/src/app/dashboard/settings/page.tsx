@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -466,8 +467,7 @@ function SecretInput({
   return (
     <div className="flex flex-col gap-1">
       <label className="text-sm font-medium text-slate-700">{label}</label>
-      <Input
-        type="password"
+      <PasswordInput
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field?.set ? `•••• set (ending ${field.preview})` : 'Not set'}

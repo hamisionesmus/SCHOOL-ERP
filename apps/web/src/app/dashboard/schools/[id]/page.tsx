@@ -103,6 +103,10 @@ export default function SchoolDetailPage() {
   const { data: tenant, isLoading } = useQuery({
     queryKey: ['tenant', id],
     queryFn: () => apiFetch<Tenant>(`/platform/tenants/${id}`),
+    // Poll quietly while a payment might land any second — React Query only shows a loading state
+    // on the very first fetch (isLoading above), so these background refetches never flash/blink,
+    // they just swap in fresh data once it arrives.
+    refetchInterval: (query) => (query.state.data?.status === 'PENDING_PAYMENT' ? 5_000 : 30_000),
   });
 
   if (isLoading || !tenant) {
@@ -170,6 +174,21 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
     enabled: tenant.status === 'PENDING_PAYMENT',
   });
   const [linkCopied, setLinkCopied] = useState(false);
+  const [stkPhone, setStkPhone] = useState('');
+
+  const initiateStk = useMutation({
+    mutationFn: () =>
+      apiFetch<{ checkoutRequestId: string }>(`/platform/tenants/${tenant.id}/initiate-stk`, {
+        method: 'POST',
+        body: JSON.stringify({ phone: stkPhone }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mpesa-attempts', tenant.id] });
+      notifySuccess(`STK push sent to ${stkPhone} — ask them to enter their M-Pesa PIN`);
+      setStkPhone('');
+    },
+    onError: (err) => notifyError(err, 'Failed to send STK push'),
+  });
 
   const resetPassword = useMutation({
     mutationFn: () => apiFetch<{ email: string; fullName: string; temporaryPassword: string }>(`/platform/tenants/${tenant.id}/reset-admin-password`, { method: 'POST' }),
@@ -210,7 +229,8 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
             Awaiting activation payment — KES {activationLink.amountKes.toLocaleString()}
           </p>
           <p className="mt-1 text-xs text-blue-700">
-            Sent to the school in the welcome email. Copy it below to resend manually if needed.
+            Already sent to the school by email and SMS, with a link they can open themselves to pay.
+            You can also copy the link below, or push an M-Pesa STK prompt directly from here.
           </p>
           <div className="mt-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2">
             <p className="flex-1 truncate text-xs text-slate-600">{activationLink.url}</p>
@@ -227,6 +247,21 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
             >
               {linkCopied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
             </button>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <Input
+              placeholder="Phone to push STK to, e.g. 0712345678"
+              value={stkPhone}
+              onChange={(e) => setStkPhone(e.target.value)}
+              className="h-9 bg-white text-xs"
+            />
+            <Button
+              size="sm"
+              disabled={stkPhone.length < 9 || initiateStk.isPending}
+              onClick={() => initiateStk.mutate()}
+            >
+              {initiateStk.isPending ? 'Sending...' : 'Send STK Push'}
+            </Button>
           </div>
         </div>
       )}
@@ -412,6 +447,7 @@ function BillingTab({ tenantId }: { tenantId: string }) {
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['tenant-invoices', tenantId],
     queryFn: () => apiFetch<Invoice[]>(`/platform/tenants/${tenantId}/invoices`),
+    refetchInterval: (query) => (query.state.data?.some((inv) => inv.status === 'PENDING') ? 5_000 : 30_000),
   });
 
   const invalidate = () => {
@@ -616,6 +652,7 @@ function MpesaAttemptsCard({ tenantId }: { tenantId: string }) {
   const { data: attempts, isLoading } = useQuery({
     queryKey: ['mpesa-attempts', tenantId],
     queryFn: () => apiFetch<MpesaAttempt[]>(`/platform/tenants/${tenantId}/mpesa-attempts`),
+    refetchInterval: (query) => (query.state.data?.some((a) => a.status === 'PENDING') ? 5_000 : 30_000),
   });
 
   return (
@@ -667,6 +704,7 @@ function PaymentProofsCard({ tenantId }: { tenantId: string }) {
   const { data: proofs, isLoading } = useQuery({
     queryKey: ['payment-proofs', tenantId],
     queryFn: () => apiFetch<PaymentProof[]>(`/platform/tenants/${tenantId}/payment-proofs`),
+    refetchInterval: 15_000,
   });
 
   const review = useMutation({

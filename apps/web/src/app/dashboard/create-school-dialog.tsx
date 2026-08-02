@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { apiFetch, ApiError } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { getSessionUser } from '@/lib/auth';
@@ -180,7 +181,7 @@ export function CreateSchoolDialog() {
                   <Input placeholder="0712345678" {...register('adminPhone')} />
                 </Field>
                 <Field label="Admin password" error={errors.adminPassword?.message}>
-                  <Input type="password" {...register('adminPassword')} />
+                  <PasswordInput {...register('adminPassword')} />
                 </Field>
               </div>
               <p className="mt-1.5 text-xs text-slate-500">

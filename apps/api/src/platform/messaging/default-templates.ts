@@ -54,14 +54,16 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
     subject: 'Welcome to School ERP — activate {{schoolName}}',
     emailBody:
       'Welcome to School ERP! "{{schoolName}}" has been created — one step left before you can sign in.\n\nActivate now: {{activationUrl}}\nAmount due: KES {{amountKes}}\n\nYou can pay instantly by M-Pesa STK Push, or by Bank transfer / Paybill — bank and paybill payments take a little longer to confirm, so after paying that way just paste the confirmation message you receive on the activation page and we\'ll verify it and unlock your account.\n\nOnce payment is confirmed you\'ll get another message with your login details.\nSchool code: {{slug}}\nAdmin email: {{email}}\n\nThis is an automated message from a no-reply address — please don\'t reply to it.',
+    smsBody:
+      'Welcome to School ERP! "{{schoolName}}" has been created. Activate now (KES {{amountKes}}): {{activationUrl}} — pay by M-Pesa, bank, or paybill. Your login details follow once payment is confirmed.',
   },
   ACTIVATED: {
-    variables: ['schoolName', 'loginUrl', 'email', 'receiptNumber', 'methodNote', 'amountKes'],
+    variables: ['schoolName', 'loginUrl', 'email', 'tempPassword', 'receiptNumber', 'methodNote', 'amountKes'],
     subject: '{{schoolName}} is now active — you can sign in',
     emailBody:
-      'Thank you for trusting us! Your payment has been received and "{{schoolName}}" is now active.\n\nSign in at {{loginUrl}} with the email and password you set when the account was created: {{email}}\n\nFor your security, please change your password as soon as you sign in.\n\nReceipt: {{receiptNumber}} ({{methodNote}})\nAmount: KES {{amountKes}}\n\nThis is an automated message from a no-reply address — please don\'t reply to it.',
+      'Thank you for choosing us! Your payment has been received and "{{schoolName}}" is now active.\n\nHere are your logins:\nSign in at {{loginUrl}}\nEmail: {{email}}\nPassword: {{tempPassword}}\n\nPlease change this password as soon as you sign in — write it down or save it somewhere safe until then.\n\nReceipt: {{receiptNumber}} ({{methodNote}})\nAmount: KES {{amountKes}}\n\nThis is an automated message from a no-reply address — please don\'t reply to it.',
     smsBody:
-      'Payment received! "{{schoolName}}" is now active. Sign in at {{loginUrl}} with {{email}} and the password you set at signup (please change it once in). Receipt {{receiptNumber}}.',
+      'Payment received! "{{schoolName}}" is now active. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in). Receipt {{receiptNumber}}. Thank you for choosing us!',
   },
   PROOF_SUBMITTED_SUPERADMIN: {
     variables: ['schoolName', 'methodLabel', 'reference', 'amountKes'],

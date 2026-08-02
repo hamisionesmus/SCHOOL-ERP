@@ -236,7 +236,7 @@ export class TenantsService {
       const activationUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/activate/${activationToken}`;
 
       await this.notifier.notify('WELCOME_REAL', {
-        to: { email: request.adminEmail },
+        to: { email: request.adminEmail, phone: request.adminPhone },
         vars: {
           schoolName: request.name,
           activationUrl,
