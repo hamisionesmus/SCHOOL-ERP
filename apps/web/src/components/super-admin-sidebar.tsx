@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Wallet,
   Users,
-  UserCircle,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -133,18 +132,6 @@ export function SuperAdminSidebar({
               <p className="truncate text-xs text-slate-400">{email}</p>
             </div>
           )}
-          <Link
-            href="/dashboard/profile"
-            title={collapsed ? 'My Profile' : undefined}
-            className={cn(
-              'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white',
-              collapsed && 'lg:justify-center',
-              pathname === '/dashboard/profile' && 'bg-blue-600 text-white',
-            )}
-          >
-            <UserCircle size={16} className="flex-shrink-0" />
-            <span className={collapsed ? 'lg:hidden' : undefined}>My Profile</span>
-          </Link>
           <button
             onClick={onLogout}
             title={collapsed ? 'Log out' : undefined}

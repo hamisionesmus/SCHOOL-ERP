@@ -134,4 +134,9 @@ export class UpdatePlatformSettingsDto {
   @IsOptional()
   @IsString()
   loginTagline?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  loginSubtitle?: string;
 }

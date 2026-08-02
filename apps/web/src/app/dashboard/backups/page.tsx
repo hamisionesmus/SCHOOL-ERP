@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Database, Archive, Download } from 'lucide-react';
+import { Database, Archive, Download, HardDrive, Clock, FolderArchive } from 'lucide-react';
 import { apiFetch, API_ORIGIN } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SkeletonTable } from '@/components/ui/skeleton';
+import { StatCard } from '@/components/ui/stat-card';
+import { SkeletonCard, SkeletonTable } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/ui/pagination';
 import { useRequireSuperAdmin } from '@/lib/require-super-admin';
 
@@ -44,6 +45,12 @@ async function downloadBackup(name: string) {
   URL.revokeObjectURL(url);
 }
 
+interface BackupStats {
+  totalCount: number;
+  totalSizeBytes: number;
+  lastBackupAt: string | null;
+}
+
 export default function BackupsPage() {
   useRequireSuperAdmin();
   const queryClient = useQueryClient();
@@ -53,6 +60,12 @@ export default function BackupsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['backups', page],
     queryFn: () => apiFetch<BackupsPage>(`/platform/backups?page=${page}&pageSize=${pageSize}`),
+    refetchInterval: 10_000,
+  });
+
+  const statsQuery = useQuery({
+    queryKey: ['backups-stats'],
+    queryFn: () => apiFetch<BackupStats>('/platform/backups/stats'),
     refetchInterval: 10_000,
   });
 
@@ -75,79 +88,119 @@ export default function BackupsPage() {
         }
         setPage(1);
         queryClient.invalidateQueries({ queryKey: ['backups'] });
+        queryClient.invalidateQueries({ queryKey: ['backups-stats'] });
       }, 8000);
     },
     onError: (err) => notifyError(err, 'Failed to start backup'),
   });
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Backups</CardTitle>
-        <Button size="sm" onClick={() => trigger.mutate()} disabled={trigger.isPending}>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Backups</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            A database dump covers every school (schema-per-tenant means one Postgres database for
+            all of them), plus an archive of the local-disk uploads folder.
+          </p>
+        </div>
+        <Button onClick={() => trigger.mutate()} disabled={trigger.isPending}>
           {trigger.isPending ? 'Starting...' : 'Run backup now'}
         </Button>
-      </CardHeader>
-      <CardContent>
-        <p className="mb-4 text-xs text-slate-500">
-          A single database dump covers every school (schema-per-tenant means all schools live in one
-          Postgres database), plus an archive of the local-disk uploads folder. Files are written
-          locally under <code className="rounded bg-slate-100 px-1">apps/api/backups/</code> and are
-          auto-downloaded to your browser after a manual run — copy them off-box regularly, this page
-          doesn&apos;t upload anywhere itself.
-        </p>
-        {isLoading ? (
-          <SkeletonTable rows={3} cols={4} />
-        ) : !data || data.data.length === 0 ? (
-          <p className="text-sm text-slate-500">No backups yet. Run one to get started.</p>
-        ) : (
-          <>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="py-2 font-medium">File</th>
-                  <th className="py-2 font-medium">Size</th>
-                  <th className="py-2 font-medium">Created</th>
-                  <th className="py-2 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.data.map((b) => (
-                  <tr key={b.name} className="border-b border-slate-100">
-                    <td className="py-2 font-medium text-slate-900">
-                      <span className="flex items-center gap-2">
-                        {b.kind === 'database' ? (
-                          <Database size={14} className="text-blue-500" />
-                        ) : (
-                          <Archive size={14} className="text-violet-500" />
-                        )}
-                        {b.name}
-                      </span>
-                    </td>
-                    <td className="py-2 text-slate-500">{formatBytes(b.sizeBytes)}</td>
-                    <td className="py-2 text-slate-500">{new Date(b.createdAt).toLocaleString()}</td>
-                    <td className="py-2 text-right">
-                      <button
-                        onClick={() => downloadBackup(b.name).catch((e) => notifyError(e, 'Download failed'))}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
-                      >
-                        <Download size={13} /> Download
-                      </button>
-                    </td>
+      </div>
+
+      {statsQuery.isLoading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <StatCard label="Total backups" value={statsQuery.data?.totalCount ?? 0} icon={FolderArchive} accent="blue" />
+          <StatCard
+            label="Total size"
+            value={statsQuery.data?.totalSizeBytes ?? 0}
+            formatValue={formatBytes}
+            icon={HardDrive}
+            accent="violet"
+          />
+          <StatCard
+            label="Last backup"
+            value={0}
+            formatValue={() =>
+              statsQuery.data?.lastBackupAt ? new Date(statsQuery.data.lastBackupAt).toLocaleString() : 'Never'
+            }
+            icon={Clock}
+            accent="emerald"
+          />
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Backup files</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-4 text-xs text-slate-500">
+            Files are written locally under{' '}
+            <code className="rounded bg-slate-100 px-1">apps/api/backups/</code> and are
+            auto-downloaded to your browser after a manual run — copy them off-box regularly, this
+            page doesn&apos;t upload anywhere itself.
+          </p>
+          {isLoading ? (
+            <SkeletonTable rows={3} cols={4} />
+          ) : !data || data.data.length === 0 ? (
+            <p className="text-sm text-slate-500">No backups yet. Run one to get started.</p>
+          ) : (
+            <>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                    <th className="py-2 font-medium">File</th>
+                    <th className="py-2 font-medium">Size</th>
+                    <th className="py-2 font-medium">Created</th>
+                    <th className="py-2 font-medium"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <Pagination
-              page={data.meta.page}
-              pageCount={Math.max(1, Math.ceil(data.meta.total / data.meta.pageSize))}
-              totalItems={data.meta.total}
-              pageSize={data.meta.pageSize}
-              onPageChange={setPage}
-            />
-          </>
-        )}
-      </CardContent>
-    </Card>
+                </thead>
+                <tbody>
+                  {data.data.map((b) => (
+                    <tr key={b.name} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="py-2 font-medium text-slate-900">
+                        <span className="flex items-center gap-2">
+                          {b.kind === 'database' ? (
+                            <Database size={14} className="text-blue-500" />
+                          ) : (
+                            <Archive size={14} className="text-violet-500" />
+                          )}
+                          {b.name}
+                        </span>
+                      </td>
+                      <td className="py-2 text-slate-500">{formatBytes(b.sizeBytes)}</td>
+                      <td className="py-2 text-slate-500">{new Date(b.createdAt).toLocaleString()}</td>
+                      <td className="py-2 text-right">
+                        <button
+                          onClick={() => downloadBackup(b.name).catch((e) => notifyError(e, 'Download failed'))}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+                        >
+                          <Download size={13} /> Download
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Pagination
+                page={data.meta.page}
+                pageCount={Math.max(1, Math.ceil(data.meta.total / data.meta.pageSize))}
+                totalItems={data.meta.total}
+                pageSize={data.meta.pageSize}
+                onPageChange={setPage}
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

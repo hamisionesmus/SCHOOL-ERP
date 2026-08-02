@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiUpload, API_ORIGIN } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ interface Profile {
   fullName: string;
   phone: string | null;
   role: 'SUPER_ADMIN' | 'SUB_ADMIN';
+  avatarUrl: string | null;
 }
 
 interface OtpRequestResult {
@@ -83,6 +84,8 @@ export default function ProfilePage() {
           your current contact details.
         </p>
       </div>
+
+      {profileQuery.data && <AvatarCard profile={profileQuery.data} />}
 
       {profileQuery.isLoading ? (
         <Skeleton className="h-64 w-full" />
@@ -160,6 +163,76 @@ export default function ProfilePage() {
         </div>
       )}
     </div>
+  );
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
+}
+
+function AvatarCard({ profile }: { profile: Profile }) {
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const uploadAvatar = useMutation({
+    mutationFn: async (file: File) => {
+      setUploading(true);
+      const { url } = await apiUpload(file);
+      return apiFetch('/platform/me/avatar', { method: 'POST', body: JSON.stringify({ avatarUrl: url }) });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-me'] });
+      setUploading(false);
+      notifySuccess('Profile photo updated');
+    },
+    onError: (err) => {
+      setUploading(false);
+      notifyError(err, 'Failed to upload photo');
+    },
+  });
+
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-4 pt-6">
+        {profile.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`${API_ORIGIN}${profile.avatarUrl}`}
+            alt="Profile photo"
+            className="h-16 w-16 rounded-full border border-slate-200 object-cover"
+          />
+        ) : (
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-900 text-lg font-semibold text-white">
+            {initials(profile.fullName)}
+          </span>
+        )}
+        <div className="flex flex-col gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? 'Uploading...' : 'Change photo'}
+          </Button>
+          <p className="text-xs text-slate-500">JPG, PNG, or WEBP. Up to 5MB.</p>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) uploadAvatar.mutate(file);
+            e.target.value = '';
+          }}
+        />
+      </CardContent>
+    </Card>
   );
 }
 

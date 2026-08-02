@@ -37,6 +37,15 @@ export class BackupsService {
     return { data, meta: { page, pageSize, total: all.length } };
   }
 
+  stats() {
+    const all = this.allFiles();
+    return {
+      totalCount: all.length,
+      totalSizeBytes: all.reduce((sum, f) => sum + f.sizeBytes, 0),
+      lastBackupAt: all[0]?.createdAt ?? null,
+    };
+  }
+
   /** Resolves a backup filename to an absolute path for download, rejecting anything that isn't a
    * plain filename already present in the backups directory — blocks path traversal (`../`) and
    * absolute-path injection outright rather than trying to sanitize them. */

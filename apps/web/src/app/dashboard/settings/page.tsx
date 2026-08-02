@@ -52,6 +52,7 @@ interface PlatformSettings {
   advantaSenderId: string | null;
   systemName: string | null;
   loginTagline: string | null;
+  loginSubtitle: string | null;
 }
 
 interface EffectiveTemplate {
@@ -644,11 +645,15 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
 }
 
 function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequested: OnRequested }) {
-  const [form, setForm] = useState({ systemName: '', loginTagline: '' });
+  const [form, setForm] = useState({ systemName: '', loginTagline: '', loginSubtitle: '' });
 
   useEffect(() => {
     if (data) {
-      setForm({ systemName: data.systemName ?? '', loginTagline: data.loginTagline ?? '' });
+      setForm({
+        systemName: data.systemName ?? '',
+        loginTagline: data.loginTagline ?? '',
+        loginSubtitle: data.loginSubtitle ?? '',
+      });
     }
   }, [data]);
 
@@ -688,6 +693,18 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
               value={form.loginTagline}
               onChange={(e) => setForm((f) => ({ ...f, loginTagline: e.target.value }))}
             />
+          </div>
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <label className="text-sm font-medium text-slate-700">Login subtitle</label>
+            <Input
+              placeholder="Kenyan CBC · PP1 — Grade 9"
+              value={form.loginSubtitle}
+              onChange={(e) => setForm((f) => ({ ...f, loginSubtitle: e.target.value }))}
+            />
+            <p className="text-xs text-slate-500">
+              Small caps line under the tagline — e.g. &quot;Feel the difference&quot; or &quot;Value
+              for your money&quot;.
+            </p>
           </div>
         </CardContent>
       </Card>

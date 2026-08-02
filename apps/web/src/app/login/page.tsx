@@ -22,8 +22,13 @@ type LoginForm = z.infer<typeof loginSchema>;
 interface Branding {
   systemName: string;
   loginTagline: string | null;
+  loginSubtitle: string | null;
 }
-const DEFAULT_BRANDING: Branding = { systemName: 'School ERP', loginTagline: null };
+const DEFAULT_BRANDING: Branding = {
+  systemName: 'School ERP',
+  loginTagline: null,
+  loginSubtitle: 'Kenyan CBC · PP1 — Grade 9',
+};
 
 // One login form for everyone — the backend resolves which school (if any) an email belongs to via
 // the platform-wide user directory, so the UI never needs to ask for a school slug. See
@@ -102,7 +107,7 @@ export default function LoginPage() {
             {branding.loginTagline || 'One place for every register, rubric and receipt.'}
           </h1>
           <p className="mt-6 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-emerald-300/70">
-            Kenyan CBC · PP1 — Grade 9
+            {branding.loginSubtitle || 'Kenyan CBC · PP1 — Grade 9'}
           </p>
         </div>
       </div>

@@ -8,6 +8,7 @@ import { MeService } from './me.service';
 import { SettingsOtpService } from '../settings-otp/settings-otp.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateAvatarDto } from './dto/update-avatar.dto';
 import { ConfirmSettingsChangeDto } from '../settings-otp/dto/confirm-settings-change.dto';
 
 // Self-service profile management — both SUPER_ADMIN and SUB_ADMIN manage their own account here,
@@ -42,5 +43,10 @@ export class MeController {
   @Post('change-password')
   changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: JwtUserPayload) {
     return this.meService.changePassword(user.sub, dto.currentPassword, dto.newPassword);
+  }
+
+  @Post('avatar')
+  updateAvatar(@Body() dto: UpdateAvatarDto, @CurrentUser() user: JwtUserPayload) {
+    return this.meService.updateAvatar(user.sub, dto.avatarUrl);
   }
 }

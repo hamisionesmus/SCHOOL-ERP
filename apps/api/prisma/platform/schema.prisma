@@ -209,6 +209,7 @@ model PlatformUser {
   phone            String?
   passwordHash     String
   fullName         String
+  avatarUrl        String?
   role             PlatformRole @default(SUPER_ADMIN)
   twoFactorEnabled Boolean   @default(false)
   twoFactorSecret  String?
@@ -351,6 +352,7 @@ model PlatformSettings {
   // own branding is on Tenant.logoUrl/primaryColor etc., untouched by this).
   systemName          String?
   loginTagline        String?
+  loginSubtitle       String?
   updatedAt         DateTime @updatedAt
 }
 

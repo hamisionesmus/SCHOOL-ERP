@@ -5,6 +5,7 @@ import { UpdatePlatformSettingsDto } from './dto/update-platform-settings.dto';
 
 const SETTINGS_ID = 'platform';
 const DEFAULT_SYSTEM_NAME = 'School ERP';
+const DEFAULT_LOGIN_SUBTITLE = 'Kenyan CBC · PP1 — Grade 9';
 
 /** Fields whose value must never be echoed back once set — only a "configured" boolean and a short
  * preview of the last few characters, same principle as passwords never being displayed again (see
@@ -79,6 +80,7 @@ export class PlatformSettingsService {
     return {
       systemName: s.systemName ?? DEFAULT_SYSTEM_NAME,
       loginTagline: s.loginTagline ?? null,
+      loginSubtitle: s.loginSubtitle ?? DEFAULT_LOGIN_SUBTITLE,
     };
   }
 

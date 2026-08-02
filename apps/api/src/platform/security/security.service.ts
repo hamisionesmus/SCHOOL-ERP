@@ -6,7 +6,7 @@ export class SecurityService {
   constructor(private readonly platformPrisma: PlatformPrismaService) {}
 
   async listAlerts(page = 1, pageSize = 20) {
-    const [data, total, unacknowledgedCount] = await Promise.all([
+    const [data, total, unacknowledgedCount, highSeverityUnacknowledgedCount] = await Promise.all([
       this.platformPrisma.securityAlert.findMany({
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
@@ -14,8 +14,9 @@ export class SecurityService {
       }),
       this.platformPrisma.securityAlert.count(),
       this.platformPrisma.securityAlert.count({ where: { acknowledged: false } }),
+      this.platformPrisma.securityAlert.count({ where: { acknowledged: false, severity: 'HIGH' } }),
     ]);
-    return { data, meta: { page, pageSize, total, unacknowledgedCount } };
+    return { data, meta: { page, pageSize, total, unacknowledgedCount, highSeverityUnacknowledgedCount } };
   }
 
   async acknowledge(id: string) {

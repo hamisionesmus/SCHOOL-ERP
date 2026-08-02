@@ -15,10 +15,18 @@ export class MeService {
   async getProfile(userId: string) {
     const user = await this.platformPrisma.platformUser.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, fullName: true, phone: true, role: true },
+      select: { id: true, email: true, fullName: true, phone: true, role: true, avatarUrl: true },
     });
     if (!user) throw new NotFoundException('User not found');
     return user;
+  }
+
+  // Not OTP-gated like name/phone/email — a profile picture isn't a recovery-relevant field, so
+  // the threat model that justifies SettingsOtpService's 'PROFILE' scope (a hijacked unattended
+  // session silently redirecting where account-recovery codes go) doesn't apply here.
+  async updateAvatar(userId: string, avatarUrl: string) {
+    await this.platformPrisma.platformUser.update({ where: { id: userId }, data: { avatarUrl } });
+    return { success: true };
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {

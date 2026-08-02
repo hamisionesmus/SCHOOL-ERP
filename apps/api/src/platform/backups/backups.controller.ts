@@ -19,6 +19,13 @@ export class BackupsController {
     return this.backupsService.list(page ? Number(page) : 1, pageSize ? Number(pageSize) : 10);
   }
 
+  // Declared before the `:filename` catch-all below so `/platform/backups/stats` doesn't get
+  // swallowed as a download request for a file literally named "stats".
+  @Get('stats')
+  stats() {
+    return this.backupsService.stats();
+  }
+
   @Post('run')
   trigger() {
     return this.backupsService.trigger();
