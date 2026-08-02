@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { ArrowLeft, KeyRound, Copy, Check } from 'lucide-react';
 import { apiFetch, API_ORIGIN, ApiError } from '@/lib/api';
-import { getAccessToken } from '@/lib/auth';
+import { getAccessToken, getSessionUser } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { daysUntil, formatCountdown, countdownTone } from '@/lib/date';
 import { Button } from '@/components/ui/button';
@@ -158,6 +158,10 @@ export default function SchoolDetailPage() {
 
 function OverviewTab({ tenant }: { tenant: Tenant }) {
   const queryClient = useQueryClient();
+  // Reset password / Suspend / Activate are all @RequirePlatformRole('SUPER_ADMIN') server-side
+  // (BillingController, TenantsController) — hide the whole Danger Zone for a Sub-Admin instead of
+  // showing actions that will just 403 when clicked.
+  const isSuperAdmin = getSessionUser()?.role === 'SUPER_ADMIN';
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmStatus, setConfirmStatus] = useState<'suspend' | 'activate' | null>(null);
   const [resetResult, setResetResult] = useState<{ email: string; temporaryPassword: string } | null>(null);
@@ -325,50 +329,52 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base text-rose-700">
-            <ShieldAlert size={16} />
-            Danger Zone
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-            <div>
-              <p className="text-sm font-medium text-slate-900">Reset School Administrator password</p>
-              <p className="text-xs text-slate-500">
-                Generates a fresh temporary password shown once — real passwords are one-way hashed
-                and cannot be retrieved or displayed.
-              </p>
+      {isSuperAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base text-rose-700">
+              <ShieldAlert size={16} />
+              Danger Zone
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+              <div>
+                <p className="text-sm font-medium text-slate-900">Reset School Administrator password</p>
+                <p className="text-xs text-slate-500">
+                  Generates a fresh temporary password shown once — real passwords are one-way hashed
+                  and cannot be retrieved or displayed.
+                </p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setConfirmReset(true)}>
+                <KeyRound size={14} className="mr-1.5" />
+                Reset password
+              </Button>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setConfirmReset(true)}>
-              <KeyRound size={14} className="mr-1.5" />
-              Reset password
-            </Button>
-          </div>
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-            <div>
-              <p className="text-sm font-medium text-slate-900">
-                {canManuallyActivate ? 'Activate this school' : 'Suspend this school'}
-              </p>
-              <p className="text-xs text-slate-500">
-                {canManuallyActivate
-                  ? tenant.status === 'PENDING_PAYMENT'
-                    ? 'Grants access without waiting for the M-Pesa payment — use if paid another way (bank, cash).'
-                    : 'Restores access for all staff and parents.'
-                  : 'Immediately blocks all staff and parent logins until reactivated.'}
-              </p>
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+              <div>
+                <p className="text-sm font-medium text-slate-900">
+                  {canManuallyActivate ? 'Activate this school' : 'Suspend this school'}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {canManuallyActivate
+                    ? tenant.status === 'PENDING_PAYMENT'
+                      ? 'Grants access without waiting for the M-Pesa payment — use if paid another way (bank, cash).'
+                      : 'Restores access for all staff and parents.'
+                    : 'Immediately blocks all staff and parent logins until reactivated.'}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant={canManuallyActivate ? 'outline' : 'destructive'}
+                onClick={() => setConfirmStatus(canManuallyActivate ? 'activate' : 'suspend')}
+              >
+                {canManuallyActivate ? 'Activate' : 'Suspend'}
+              </Button>
             </div>
-            <Button
-              size="sm"
-              variant={canManuallyActivate ? 'outline' : 'destructive'}
-              onClick={() => setConfirmStatus(canManuallyActivate ? 'activate' : 'suspend')}
-            >
-              {canManuallyActivate ? 'Activate' : 'Suspend'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       <ConfirmDialog
         open={confirmReset}

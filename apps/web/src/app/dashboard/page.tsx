@@ -6,6 +6,7 @@ import { School, CheckCircle2, PauseCircle, Clock, Wallet, AlertTriangle, Sparkl
 import { useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import { getSessionUser } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { daysUntil, formatCountdown, countdownTone } from '@/lib/date';
 import { Button } from '@/components/ui/button';
@@ -93,6 +94,9 @@ function formatMonthLabel(month: string) {
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
+  // Suspend/Activate is @RequirePlatformRole('SUPER_ADMIN') server-side — hide the buttons for a
+  // Sub-Admin too, rather than showing an action that will just 403 when clicked.
+  const isSuperAdmin = getSessionUser()?.role === 'SUPER_ADMIN';
   const [confirmTarget, setConfirmTarget] = useState<{ id: string; name: string; action: 'suspend' | 'activate' } | null>(
     null,
   );
@@ -315,23 +319,24 @@ export default function DashboardPage() {
                               Manage
                             </Button>
                           </Link>
-                          {t.status === 'SUSPENDED' ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setConfirmTarget({ id: t.id, name: t.name, action: 'activate' })}
-                            >
-                              Activate
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => setConfirmTarget({ id: t.id, name: t.name, action: 'suspend' })}
-                            >
-                              Suspend
-                            </Button>
-                          )}
+                          {isSuperAdmin &&
+                            (t.status === 'SUSPENDED' ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setConfirmTarget({ id: t.id, name: t.name, action: 'activate' })}
+                              >
+                                Activate
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setConfirmTarget({ id: t.id, name: t.name, action: 'suspend' })}
+                              >
+                                Suspend
+                              </Button>
+                            ))}
                         </div>
                       </td>
                     </tr>
