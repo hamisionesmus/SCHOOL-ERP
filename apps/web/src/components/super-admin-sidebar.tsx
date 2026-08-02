@@ -2,23 +2,50 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, DatabaseBackup, LogOut, Menu, X, ChevronsLeft, ChevronsRight, ShieldCheck, Wallet } from 'lucide-react';
+import {
+  LayoutDashboard,
+  DatabaseBackup,
+  LogOut,
+  Menu,
+  X,
+  ChevronsLeft,
+  ChevronsRight,
+  ShieldCheck,
+  Wallet,
+  Users,
+  UserCircle,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
-const NAV = [
+const SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
+  { href: '/dashboard/admins', label: 'Admins', icon: Users },
   { href: '/dashboard/settings', label: 'Platform Settings', icon: Wallet },
   { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
   { href: '/dashboard/backups', label: 'Backups', icon: DatabaseBackup },
 ];
 
+// A Sub-Admin can create schools and see revenue (both live on the Schools page) but nothing else —
+// Admins/Platform Settings/Security/Backups are all Super-Admin-only, both here and enforced
+// server-side via @RequirePlatformRole('SUPER_ADMIN').
+const SUB_ADMIN_NAV = [{ href: '/dashboard', label: 'Schools', icon: LayoutDashboard }];
+
 const COLLAPSE_STORAGE_KEY = 'school-erp:sa-sidebar-collapsed';
 
-export function SuperAdminSidebar({ email, onLogout }: { email: string; onLogout: () => void }) {
+export function SuperAdminSidebar({
+  email,
+  role,
+  onLogout,
+}: {
+  email: string;
+  role?: string;
+  onLogout: () => void;
+}) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const nav = role === 'SUB_ADMIN' ? SUB_ADMIN_NAV : SUPER_ADMIN_NAV;
 
   useEffect(() => {
     setCollapsed(localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1');
@@ -57,7 +84,9 @@ export function SuperAdminSidebar({ email, onLogout }: { email: string; onLogout
           {!collapsed && (
             <div className="flex items-center gap-2 min-w-0">
               <ShieldCheck size={18} className="flex-shrink-0 text-blue-400" />
-              <p className="truncate text-sm font-semibold text-white">Super Admin</p>
+              <p className="truncate text-sm font-semibold text-white">
+                {role === 'SUB_ADMIN' ? 'Sub-Admin' : 'Super Admin'}
+              </p>
             </div>
           )}
           <button onClick={() => setMobileOpen(false)} className="lg:hidden text-slate-400" aria-label="Close menu">
@@ -75,7 +104,7 @@ export function SuperAdminSidebar({ email, onLogout }: { email: string; onLogout
 
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
           <div className="flex flex-col gap-0.5">
-            {NAV.map((item) => {
+            {nav.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href;
               return (
@@ -104,6 +133,18 @@ export function SuperAdminSidebar({ email, onLogout }: { email: string; onLogout
               <p className="truncate text-xs text-slate-400">{email}</p>
             </div>
           )}
+          <Link
+            href="/dashboard/profile"
+            title={collapsed ? 'My Profile' : undefined}
+            className={cn(
+              'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white',
+              collapsed && 'lg:justify-center',
+              pathname === '/dashboard/profile' && 'bg-blue-600 text-white',
+            )}
+          >
+            <UserCircle size={16} className="flex-shrink-0" />
+            <span className={collapsed ? 'lg:hidden' : undefined}>My Profile</span>
+          </Link>
           <button
             onClick={onLogout}
             title={collapsed ? 'Log out' : undefined}

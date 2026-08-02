@@ -8,14 +8,18 @@ import { UpdatePlatformSettingsDto } from '../platform-settings/dto/update-platf
 
 const CODE_TTL_MS = 15 * 60 * 1000;
 
-export type SettingsChangeScope = 'SETTINGS' | 'TEMPLATES';
+export type SettingsChangeScope = 'SETTINGS' | 'TEMPLATES' | 'PROFILE' | 'ADMINS';
 
 /**
  * Generalizes the two-code tenant-creation gate (see TenantsService.requestCreate/confirmCreate)
- * to platform config changes: propose an edit, a 6-digit code goes to the Super Admin's own
+ * to platform config changes: propose an edit, a 6-digit code goes to the requester's own
  * email/phone, and only confirming it applies the change — so a compromised or unattended session
- * can't silently alter platform-wide payment config or messaging. One shared request/confirm flow
- * backs both PlatformSettings edits and PlatformMessageTemplate edits; `scope` says which.
+ * can't silently alter platform-wide payment config, messaging, someone's own profile, or the
+ * admin roster. `SETTINGS`/`TEMPLATES`/`PROFILE` are applied automatically by `confirm()`;
+ * `ADMINS` (creating a new Sub-Admin — see PlatformAdminsService) needs bespoke side effects
+ * (generating a temp password, sending a welcome message) that don't fit the generic "upsert these
+ * fields" pattern, so callers for that scope use `verifyAndConsume()` instead and apply the change
+ * themselves.
  */
 @Injectable()
 export class SettingsOtpService {
@@ -45,10 +49,14 @@ export class SettingsOtpService {
       vars: { code },
     });
 
-    return { requestId: request.id, expiresAt: request.expiresAt, devCode: code };
+    const emailConfigured = await this.platformSettings.isEmailConfigured();
+    return { requestId: request.id, expiresAt: request.expiresAt, devCode: emailConfigured ? undefined : code };
   }
 
-  async confirm(requestId: string, code: string) {
+  /** Validates the code, marks the request consumed, and returns what was proposed — without
+   * applying it. Used directly by scopes whose "apply" step needs bespoke logic (see class
+   * comment); `confirm()` below calls this too for the scopes it knows how to apply itself. */
+  async verifyAndConsume(requestId: string, code: string) {
     const request = await this.platformPrisma.platformSettingsChangeRequest.findUnique({ where: { id: requestId } });
     if (!request) throw new NotFoundException('Change request not found');
     if (request.consumedAt) throw new BadRequestException('This request has already been used');
@@ -60,11 +68,19 @@ export class SettingsOtpService {
       data: { consumedAt: new Date() },
     });
 
-    const changes = request.changes as Record<string, unknown>;
-    if (request.scope === 'SETTINGS') {
-      return this.platformSettings.update(changes as UpdatePlatformSettingsDto);
+    return { scope: request.scope as SettingsChangeScope, requestedById: request.requestedById, changes: request.changes as Record<string, unknown> };
+  }
+
+  async confirm(requestId: string, code: string) {
+    const { scope, requestedById, changes } = await this.verifyAndConsume(requestId, code);
+
+    if (scope === 'SETTINGS') {
+      await this.platformSettings.update(changes as UpdatePlatformSettingsDto);
+      // Never echo raw secrets back over the wire, even right after the client that just set them
+      // sent them in — same masking as the plain GET (see PlatformSettingsService.getMaskedForClient).
+      return this.platformSettings.getMaskedForClient();
     }
-    if (request.scope === 'TEMPLATES') {
+    if (scope === 'TEMPLATES') {
       const { key, ...fields } = changes as { key: string } & Record<string, unknown>;
       return this.platformPrisma.platformMessageTemplate.upsert({
         where: { key },
@@ -72,6 +88,13 @@ export class SettingsOtpService {
         create: { key, ...fields },
       });
     }
-    throw new BadRequestException('Unknown change scope');
+    if (scope === 'PROFILE') {
+      return this.platformPrisma.platformUser.update({
+        where: { id: requestedById },
+        data: changes,
+        select: { id: true, email: true, phone: true, fullName: true, role: true },
+      });
+    }
+    throw new BadRequestException('This change scope must be confirmed through its own endpoint');
   }
 }

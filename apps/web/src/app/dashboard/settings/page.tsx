@@ -9,13 +9,21 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useRequireSuperAdmin } from '@/lib/require-super-admin';
 
 const TABS = [
   { key: 'payment', label: 'Payment Details' },
   { key: 'notifications', label: 'Notifications' },
   { key: 'templates', label: 'Message Templates' },
+  { key: 'api', label: 'API & Payment Config' },
+  { key: 'branding', label: 'Branding' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
+
+interface SecretField {
+  set: boolean;
+  preview: string | null;
+}
 
 interface PlatformSettings {
   bankName: string | null;
@@ -30,6 +38,19 @@ interface PlatformSettings {
   paybillEnabled: boolean;
   demoReminderDaysBefore: number;
   renewalReminderDaysBefore: number;
+  mpesaEnv: string | null;
+  mpesaConsumerKey: string | null;
+  mpesaConsumerSecret: SecretField;
+  mpesaShortcode: string | null;
+  mpesaPasskey: SecretField;
+  mpesaCallbackUrl: string | null;
+  resendApiKey: SecretField;
+  resendFromAddress: string | null;
+  advantaApiKey: SecretField;
+  advantaPartnerId: string | null;
+  advantaSenderId: string | null;
+  systemName: string | null;
+  loginTagline: string | null;
 }
 
 interface EffectiveTemplate {
@@ -44,7 +65,7 @@ interface EffectiveTemplate {
 interface OtpRequestResult {
   requestId: string;
   expiresAt: string;
-  devCode: string;
+  devCode?: string;
 }
 
 interface PendingChange {
@@ -69,6 +90,7 @@ const TEMPLATE_LABELS: Record<string, string> = {
 };
 
 export default function PlatformSettingsPage() {
+  useRequireSuperAdmin();
   const [tab, setTab] = useState<TabKey>('payment');
   const [pending, setPending] = useState<PendingChange | null>(null);
   const [code, setCode] = useState('');
@@ -138,6 +160,8 @@ export default function PlatformSettingsPage() {
         <>
           {tab === 'payment' && <PaymentDetailsTab data={settingsQuery.data} onRequested={onRequested} />}
           {tab === 'notifications' && <NotificationsTab data={settingsQuery.data} onRequested={onRequested} />}
+          {tab === 'api' && <ApiConfigTab data={settingsQuery.data} onRequested={onRequested} />}
+          {tab === 'branding' && <BrandingTab data={settingsQuery.data} onRequested={onRequested} />}
         </>
       )}
       {tab === 'templates' && (
@@ -190,10 +214,12 @@ function ConfirmDialog({
           <p className="mb-4 text-sm text-slate-500">
             A 6-digit confirmation code was sent to your email and phone. Enter it to apply this change.
           </p>
-          <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            Dev/test convenience: since real email isn&apos;t configured yet, the code is also shown here —{' '}
-            <strong>{pending.result.devCode}</strong>.
-          </p>
+          {pending.result.devCode && (
+            <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              Dev/test convenience: since real email isn&apos;t configured yet, the code is also shown here —{' '}
+              <strong>{pending.result.devCode}</strong>.
+            </p>
+          )}
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-slate-700">Confirmation code</label>
             <Input value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} placeholder="482913" />
@@ -420,6 +446,253 @@ function NotificationsTab({ data, onRequested }: { data?: PlatformSettings; onRe
       <div>
         <Button onClick={() => requestSave.mutate()} disabled={requestSave.isPending}>
           {requestSave.isPending ? 'Sending code...' : 'Save notification settings'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SecretInput({
+  label,
+  field,
+  value,
+  onChange,
+}: {
+  label: string;
+  field?: SecretField;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-sm font-medium text-slate-700">{label}</label>
+      <Input
+        type="password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={field?.set ? `•••• set (ending ${field.preview})` : 'Not set'}
+      />
+      <p className="text-xs text-slate-400">Leave blank to keep the current value.</p>
+    </div>
+  );
+}
+
+function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onRequested: OnRequested }) {
+  const [form, setForm] = useState({
+    mpesaEnv: 'sandbox',
+    mpesaConsumerKey: '',
+    mpesaShortcode: '',
+    mpesaCallbackUrl: '',
+    resendFromAddress: '',
+    advantaPartnerId: '',
+    advantaSenderId: '',
+  });
+  const [secrets, setSecrets] = useState({
+    mpesaConsumerSecret: '',
+    mpesaPasskey: '',
+    resendApiKey: '',
+    advantaApiKey: '',
+  });
+
+  useEffect(() => {
+    if (data) {
+      setForm({
+        mpesaEnv: data.mpesaEnv ?? 'sandbox',
+        mpesaConsumerKey: data.mpesaConsumerKey ?? '',
+        mpesaShortcode: data.mpesaShortcode ?? '',
+        mpesaCallbackUrl: data.mpesaCallbackUrl ?? '',
+        resendFromAddress: data.resendFromAddress ?? '',
+        advantaPartnerId: data.advantaPartnerId ?? '',
+        advantaSenderId: data.advantaSenderId ?? '',
+      });
+      setSecrets({ mpesaConsumerSecret: '', mpesaPasskey: '', resendApiKey: '', advantaApiKey: '' });
+    }
+  }, [data]);
+
+  const requestSave = useMutation({
+    mutationFn: () => {
+      const payload: Record<string, string> = { ...form };
+      for (const [key, value] of Object.entries(secrets)) {
+        if (value) payload[key] = value;
+      }
+      return apiFetch<OtpRequestResult>('/platform/settings/request-update', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+    onSuccess: (result) => onRequested(result, '/platform/settings/confirm-update', 'API & Payment Config'),
+    onError: (err) => notifyError(err, 'Failed to request settings change'),
+  });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">M-Pesa Daraja</CardTitle>
+          <CardDescription>
+            Powers the STK Push activation flow. Sandbox credentials come from the Safaricom
+            developer portal; switch to production when you&apos;re ready to go live.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Environment</label>
+            <select
+              className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+              value={form.mpesaEnv}
+              onChange={(e) => setForm((f) => ({ ...f, mpesaEnv: e.target.value }))}
+            >
+              <option value="sandbox">Sandbox</option>
+              <option value="production">Production</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Shortcode</label>
+            <Input
+              value={form.mpesaShortcode}
+              onChange={(e) => setForm((f) => ({ ...f, mpesaShortcode: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Consumer key</label>
+            <Input
+              value={form.mpesaConsumerKey}
+              onChange={(e) => setForm((f) => ({ ...f, mpesaConsumerKey: e.target.value }))}
+            />
+          </div>
+          <SecretInput
+            label="Consumer secret"
+            field={data?.mpesaConsumerSecret}
+            value={secrets.mpesaConsumerSecret}
+            onChange={(v) => setSecrets((s) => ({ ...s, mpesaConsumerSecret: v }))}
+          />
+          <SecretInput
+            label="Passkey"
+            field={data?.mpesaPasskey}
+            value={secrets.mpesaPasskey}
+            onChange={(v) => setSecrets((s) => ({ ...s, mpesaPasskey: v }))}
+          />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Callback URL</label>
+            <Input
+              value={form.mpesaCallbackUrl}
+              onChange={(e) => setForm((f) => ({ ...f, mpesaCallbackUrl: e.target.value }))}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Resend (email)</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <SecretInput
+            label="API key"
+            field={data?.resendApiKey}
+            value={secrets.resendApiKey}
+            onChange={(v) => setSecrets((s) => ({ ...s, resendApiKey: v }))}
+          />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">From address</label>
+            <Input
+              placeholder="School ERP <no-reply@yourdomain.com>"
+              value={form.resendFromAddress}
+              onChange={(e) => setForm((f) => ({ ...f, resendFromAddress: e.target.value }))}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Advanta (SMS)</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <SecretInput
+            label="API key"
+            field={data?.advantaApiKey}
+            value={secrets.advantaApiKey}
+            onChange={(v) => setSecrets((s) => ({ ...s, advantaApiKey: v }))}
+          />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Partner ID</label>
+            <Input
+              value={form.advantaPartnerId}
+              onChange={(e) => setForm((f) => ({ ...f, advantaPartnerId: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Sender ID</label>
+            <Input
+              value={form.advantaSenderId}
+              onChange={(e) => setForm((f) => ({ ...f, advantaSenderId: e.target.value }))}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div>
+        <Button onClick={() => requestSave.mutate()} disabled={requestSave.isPending}>
+          {requestSave.isPending ? 'Sending code...' : 'Save API & payment config'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequested: OnRequested }) {
+  const [form, setForm] = useState({ systemName: '', loginTagline: '' });
+
+  useEffect(() => {
+    if (data) {
+      setForm({ systemName: data.systemName ?? '', loginTagline: data.loginTagline ?? '' });
+    }
+  }, [data]);
+
+  const requestSave = useMutation({
+    mutationFn: () =>
+      apiFetch<OtpRequestResult>('/platform/settings/request-update', {
+        method: 'POST',
+        body: JSON.stringify(form),
+      }),
+    onSuccess: (result) => onRequested(result, '/platform/settings/confirm-update', 'Branding'),
+    onError: (err) => notifyError(err, 'Failed to request settings change'),
+  });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Login page branding</CardTitle>
+          <CardDescription>
+            Platform-wide only — shown on the login page before anyone signs in. Never applies to an
+            individual school&apos;s own branding.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">System name</label>
+            <Input
+              placeholder="School ERP"
+              value={form.systemName}
+              onChange={(e) => setForm((f) => ({ ...f, systemName: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Login tagline</label>
+            <Input
+              placeholder="One place for every register, rubric and receipt."
+              value={form.loginTagline}
+              onChange={(e) => setForm((f) => ({ ...f, loginTagline: e.target.value }))}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div>
+        <Button onClick={() => requestSave.mutate()} disabled={requestSave.isPending}>
+          {requestSave.isPending ? 'Sending code...' : 'Save branding'}
         </Button>
       </div>
     </div>

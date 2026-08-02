@@ -47,16 +47,22 @@ export class TenantsController {
     return this.tenantsService.confirmCreate(dto);
   }
 
+  // Suspend/activate/payment-config are more consequential than plain creation — a Sub-Admin can
+  // start a school (still gated by the main Super Admin's OTP, see TenantsService.requestCreate)
+  // but can't lock out or redirect payments for an existing one.
+  @RequirePlatformRole('SUPER_ADMIN')
   @Patch(':id/suspend')
   suspend(@Param('id') id: string) {
     return this.tenantsService.suspend(id);
   }
 
+  @RequirePlatformRole('SUPER_ADMIN')
   @Patch(':id/activate')
   activate(@Param('id') id: string) {
     return this.tenantsService.activate(id);
   }
 
+  @RequirePlatformRole('SUPER_ADMIN')
   @Patch(':id/payment-config')
   updatePaymentConfig(@Param('id') id: string, @Body() dto: UpdatePaymentConfigDto) {
     return this.tenantsService.updatePaymentConfig(id, dto);

@@ -11,7 +11,7 @@ import { RecordPaymentDto } from './dto/record-payment.dto';
 @ApiTags('platform/billing')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePlatformRole()
+@RequirePlatformRole('SUPER_ADMIN')
 @Controller('platform')
 export class BillingController {
   constructor(private readonly billingService: BillingService) {}

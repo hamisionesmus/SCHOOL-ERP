@@ -1,14 +1,12 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import * as bcrypt from 'bcryptjs';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { PlatformMpesaService } from '../mpesa/mpesa.service';
 import { generatePlatformReceiptNumber } from '../billing/invoice-number.util';
 import { PlatformNotifierService } from '../messaging/platform-notifier.service';
 import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
-import { generateTempPassword } from '../../common/password.util';
 import { findSchoolAdmin } from '../../common/tenant-admin.util';
 
 interface ActivationTokenPayload {
@@ -187,9 +185,11 @@ export class ActivationService {
 
   /** Same "you're active" messaging regardless of which payment method got the school there — the
    * M-Pesa webhook above and a Super Admin approving a Bank/Paybill proof (see approveProof) both
-   * end here. Generates a fresh temporary password for the school's admin at this moment — the
-   * Super-Admin-typed password from creation is never otherwise communicated to the actual admin,
-   * so this is the only honest way to hand over working credentials. */
+   * end here. Deliberately does NOT touch the admin's password: it was already set to whatever they
+   * typed into the create-school dialog back at TenantsService.requestCreate(), and there's no
+   * plaintext left to re-communicate by this point anyway (it was hashed immediately on submission
+   * and never stored). Regenerating one here would just discard a password the admin may already be
+   * using. Instead the message reminds them to use what they set and change it after signing in. */
   private async sendActivatedNotification(
     tenant: { name: string; schemaName: string; contactEmail: string | null; contactPhone: string | null },
     receiptNumber: string,
@@ -197,17 +197,7 @@ export class ActivationService {
     methodNote: string,
   ) {
     const loginUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/login`;
-
-    let tempPassword = '';
     const admin = await findSchoolAdmin(this.tenantPrisma, tenant.schemaName);
-    if (admin) {
-      tempPassword = generateTempPassword();
-      const passwordHash = await bcrypt.hash(tempPassword, 12);
-      await this.tenantPrisma.forSchema(tenant.schemaName).user.update({
-        where: { id: admin.id },
-        data: { passwordHash },
-      });
-    }
 
     await this.notifier.notify('ACTIVATED', {
       to: { email: tenant.contactEmail, phone: tenant.contactPhone },
@@ -215,7 +205,6 @@ export class ActivationService {
         schoolName: tenant.name,
         loginUrl,
         email: tenant.contactEmail ?? admin?.email ?? '',
-        tempPassword,
         receiptNumber,
         methodNote,
         amountKes: amount.toLocaleString(),

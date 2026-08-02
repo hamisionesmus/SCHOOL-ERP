@@ -8,7 +8,7 @@ import { PlatformPrismaService } from '../../common/prisma/platform-prisma.servi
 @ApiTags('platform/feedback')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePlatformRole()
+@RequirePlatformRole('SUPER_ADMIN')
 @Controller('platform/tenants/:id/feedback')
 export class FeedbackAdminController {
   constructor(private readonly platformPrisma: PlatformPrismaService) {}

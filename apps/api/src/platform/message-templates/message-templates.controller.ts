@@ -14,7 +14,7 @@ import { ConfirmSettingsChangeDto } from '../settings-otp/dto/confirm-settings-c
 @ApiTags('platform/message-templates')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePlatformRole()
+@RequirePlatformRole('SUPER_ADMIN')
 @Controller('platform/message-templates')
 export class MessageTemplatesController {
   constructor(

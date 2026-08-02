@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonTable } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/ui/pagination';
+import { useRequireSuperAdmin } from '@/lib/require-super-admin';
 
 interface BackupFile {
   name: string;
@@ -44,6 +45,7 @@ async function downloadBackup(name: string) {
 }
 
 export default function BackupsPage() {
+  useRequireSuperAdmin();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const pageSize = 10;

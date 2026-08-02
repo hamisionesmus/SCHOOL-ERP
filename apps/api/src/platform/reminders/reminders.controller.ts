@@ -10,7 +10,7 @@ import { RemindersService } from './reminders.service';
 @ApiTags('platform/reminders')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePlatformRole()
+@RequirePlatformRole('SUPER_ADMIN')
 @Controller('platform/reminders')
 export class RemindersController {
   constructor(private readonly remindersService: RemindersService) {}

@@ -19,6 +19,12 @@ const loginSchema = z.object({
 });
 type LoginForm = z.infer<typeof loginSchema>;
 
+interface Branding {
+  systemName: string;
+  loginTagline: string | null;
+}
+const DEFAULT_BRANDING: Branding = { systemName: 'School ERP', loginTagline: null };
+
 // One login form for everyone — the backend resolves which school (if any) an email belongs to via
 // the platform-wide user directory, so the UI never needs to ask for a school slug. See
 // AuthService.login().
@@ -29,6 +35,7 @@ export default function LoginPage() {
   // "success" holds the form on a settled, non-interactive state while the redirect happens, so
   // the page doesn't jump straight from a spinner to a hard navigation — see onSubmit below.
   const [success, setSuccess] = useState(false);
+  const [branding, setBranding] = useState<Branding>(DEFAULT_BRANDING);
   const {
     register,
     handleSubmit,
@@ -44,6 +51,14 @@ export default function LoginPage() {
     return () => {
       document.body.style.backgroundColor = prev;
     };
+  }, []);
+
+  // Platform-wide branding only (never per-school) — falls back to the default while loading/on
+  // error so the page never flashes blank. See BrandingController / PlatformSettings.systemName.
+  useEffect(() => {
+    apiFetch<Branding>('/public/branding')
+      .then(setBranding)
+      .catch(() => undefined);
   }, []);
 
   async function onSubmit(values: LoginForm) {
@@ -79,12 +94,12 @@ export default function LoginPage() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
             <GraduationCap size={20} className="text-emerald-950" />
           </div>
-          <span className="text-lg font-semibold text-white">School ERP</span>
+          <span className="text-lg font-semibold text-white">{branding.systemName}</span>
         </div>
 
         <div className="animate-float-up relative" style={{ animationDelay: '80ms' }}>
           <h1 className="max-w-md text-4xl font-semibold leading-tight text-white">
-            One place for every register, rubric and receipt.
+            {branding.loginTagline || 'One place for every register, rubric and receipt.'}
           </h1>
           <p className="mt-6 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-emerald-300/70">
             Kenyan CBC · PP1 — Grade 9
@@ -99,7 +114,7 @@ export default function LoginPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
               <GraduationCap size={20} className="text-emerald-950" />
             </div>
-            <span className="text-lg font-semibold text-white">School ERP</span>
+            <span className="text-lg font-semibold text-white">{branding.systemName}</span>
           </div>
 
           <h2 className="text-2xl font-semibold text-white">Sign in</h2>

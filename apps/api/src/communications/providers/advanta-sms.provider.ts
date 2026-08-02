@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SendSmsResult, SmsProvider } from './sms-provider.interface';
+import { StubSmsProvider } from './stub-sms.provider';
+import { PlatformSettingsService } from '../../platform/platform-settings/platform-settings.service';
 
 const ADVANTA_BASE_URL = 'https://quicksms.advantasms.com';
 
@@ -14,19 +16,27 @@ function normalizeKenyanPhone(input: string): string {
 }
 
 /**
- * Real outbound SMS via Advanta SMS (https://developers.advantasms.com). See
- * sms-provider.module.ts for how this is selected over StubSmsProvider (ADVANTA_API_KEY set).
+ * Real outbound SMS via Advanta SMS (https://developers.advantasms.com). Credentials resolve as
+ * `dbValue ?? envValue` per call (DB-configured via the OTP-gated Settings screen takes priority,
+ * env var is the fallback) and fall back to StubSmsProvider (log-only) when neither is set — same
+ * reasoning as ResendEmailProvider, see its doc comment.
  */
 @Injectable()
 export class AdvantaSmsProvider implements SmsProvider {
   private readonly logger = new Logger('SMS');
+  private readonly stub = new StubSmsProvider();
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly platformSettings: PlatformSettingsService,
+  ) {}
 
   async send(to: string, body: string): Promise<SendSmsResult> {
-    const apikey = this.config.getOrThrow<string>('ADVANTA_API_KEY');
-    const partnerID = this.config.getOrThrow<string>('ADVANTA_PARTNER_ID');
-    const shortcode = this.config.get<string>('ADVANTA_SENDER_ID') ?? 'Falem Sacco';
+    const settings = await this.platformSettings.get();
+    const apikey = settings.advantaApiKey || this.config.get<string>('ADVANTA_API_KEY');
+    const partnerID = settings.advantaPartnerId || this.config.get<string>('ADVANTA_PARTNER_ID');
+    if (!apikey || !partnerID) return this.stub.send(to, body);
+    const shortcode = settings.advantaSenderId || this.config.get<string>('ADVANTA_SENDER_ID') || 'School ERP';
 
     const res = await fetch(`${ADVANTA_BASE_URL}/api/services/sendsms`, {
       method: 'POST',

@@ -43,6 +43,9 @@ import { PlatformSettingsModule } from './platform/platform-settings/platform-se
 import { SettingsOtpModule } from './platform/settings-otp/settings-otp.module';
 import { FeedbackModule } from './platform/feedback/feedback.module';
 import { RemindersModule } from './platform/reminders/reminders.module';
+import { BrandingModule } from './platform/branding/branding.module';
+import { MeModule } from './platform/me/me.module';
+import { PlatformAdminsModule } from './platform/admins/admins.module';
 
 @Module({
   imports: [
@@ -89,6 +92,9 @@ import { RemindersModule } from './platform/reminders/reminders.module';
     SettingsOtpModule,
     FeedbackModule,
     RemindersModule,
+    BrandingModule,
+    MeModule,
+    PlatformAdminsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

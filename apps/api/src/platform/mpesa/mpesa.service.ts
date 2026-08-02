@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 
 const SANDBOX_BASE_URL = 'https://sandbox.safaricom.co.ke';
 const PRODUCTION_BASE_URL = 'https://api.safaricom.co.ke';
@@ -9,7 +10,7 @@ export interface StkPushResult {
   checkoutRequestId: string;
 }
 
-/** Normalizes a Kenyan phone number (07XX…, 01XX…, +2547XX…, 2547XX… etc.) to the 2547XXXXXXXX /
+/** Normalizes a Kenyan phone number (07XX…, 01XX…, +2547XX… etc.) to the 2547XXXXXXXX /
  * 2541XXXXXXXX format Safaricom's Daraja API requires. */
 export function normalizeKenyanPhone(input: string): string {
   const digits = input.replace(/[^\d]/g, '');
@@ -25,31 +26,46 @@ export function normalizeKenyanPhone(input: string): string {
  * has its own long-standing stub for student-fee M-Pesa payments (see MpesaStkRequest in the
  * tenant schema) which this does not touch.
  *
- * MPESA_ENV switches sandbox vs production; everything else is standard Daraja app config from the
- * Safaricom developer portal. Access tokens are cached in-memory for their ~1hr lifetime (Daraja
- * has no per-request cost consideration here — this is purely to avoid an extra round-trip on
- * every push, not a hard requirement).
+ * All six config values (env, consumer key/secret, shortcode, passkey, callback URL) resolve as
+ * `dbValue ?? envValue` per call — DB-configured via the OTP-gated Settings screen takes priority,
+ * the env var remains a working fallback. Access tokens are cached in-memory for their ~1hr
+ * lifetime; changing credentials mid-cache-lifetime means the next natural expiry (well under an
+ * hour) picks up the new values — not worth extra invalidation plumbing for a rare admin action.
  */
 @Injectable()
 export class PlatformMpesaService {
   private readonly logger = new Logger('PlatformMpesa');
   private cachedToken: { value: string; expiresAt: number } | null = null;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly platformSettings: PlatformSettingsService,
+  ) {}
 
-  private get baseUrl(): string {
-    return this.config.get<string>('MPESA_ENV') === 'production' ? PRODUCTION_BASE_URL : SANDBOX_BASE_URL;
+  private required(dbValue: string | null | undefined, envKey: string, label: string): string {
+    const value = dbValue || this.config.get<string>(envKey);
+    if (!value) {
+      throw new InternalServerErrorException(
+        `M-Pesa is not configured (${label}) — set it from Platform Settings > API & Payment Config.`,
+      );
+    }
+    return value;
   }
 
   private async getAccessToken(): Promise<string> {
     if (this.cachedToken && this.cachedToken.expiresAt > Date.now()) {
       return this.cachedToken.value;
     }
-    const consumerKey = this.config.getOrThrow<string>('MPESA_CONSUMER_KEY');
-    const consumerSecret = this.config.getOrThrow<string>('MPESA_CONSUMER_SECRET');
+    const settings = await this.platformSettings.get();
+    const baseUrl =
+      (settings.mpesaEnv || this.config.get<string>('MPESA_ENV')) === 'production'
+        ? PRODUCTION_BASE_URL
+        : SANDBOX_BASE_URL;
+    const consumerKey = this.required(settings.mpesaConsumerKey, 'MPESA_CONSUMER_KEY', 'Consumer Key');
+    const consumerSecret = this.required(settings.mpesaConsumerSecret, 'MPESA_CONSUMER_SECRET', 'Consumer Secret');
     const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
 
-    const res = await fetch(`${this.baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
+    const res = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
       headers: { Authorization: `Basic ${auth}` },
     });
     if (!res.ok) {
@@ -74,15 +90,20 @@ export class PlatformMpesaService {
     accountReference: string;
     description: string;
   }): Promise<StkPushResult> {
-    const shortcode = this.config.getOrThrow<string>('MPESA_SHORTCODE');
-    const passkey = this.config.getOrThrow<string>('MPESA_PASSKEY');
-    const callbackUrl = this.config.getOrThrow<string>('MPESA_CALLBACK_URL');
+    const settings = await this.platformSettings.get();
+    const baseUrl =
+      (settings.mpesaEnv || this.config.get<string>('MPESA_ENV')) === 'production'
+        ? PRODUCTION_BASE_URL
+        : SANDBOX_BASE_URL;
+    const shortcode = this.required(settings.mpesaShortcode, 'MPESA_SHORTCODE', 'Shortcode');
+    const passkey = this.required(settings.mpesaPasskey, 'MPESA_PASSKEY', 'Passkey');
+    const callbackUrl = this.required(settings.mpesaCallbackUrl, 'MPESA_CALLBACK_URL', 'Callback URL');
     const timestamp = this.darajaTimestamp();
     const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString('base64');
     const phone = normalizeKenyanPhone(params.phone);
     const token = await this.getAccessToken();
 
-    const res = await fetch(`${this.baseUrl}/mpesa/stkpush/v1/processrequest`, {
+    const res = await fetch(`${baseUrl}/mpesa/stkpush/v1/processrequest`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({

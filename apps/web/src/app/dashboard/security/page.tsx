@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonTable } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
+import { useRequireSuperAdmin } from '@/lib/require-super-admin';
 
 interface SecurityAlert {
   id: string;
@@ -35,6 +36,7 @@ const SEVERITY_STYLE: Record<string, string> = {
 };
 
 export default function SecurityPage() {
+  useRequireSuperAdmin();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const pageSize = 15;

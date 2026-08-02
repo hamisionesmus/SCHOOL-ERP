@@ -25,6 +25,11 @@ enum MpesaStkStatus {
 
 enum PlatformRole {
   SUPER_ADMIN
+  // Delegated admin: can create schools (still gated by an OTP sent to a real SUPER_ADMIN, never to
+  // themselves — see TenantsService.requestCreate()) and view revenue/earnings, but is blocked from
+  // Security, Backups, Audit Logs, Platform Settings, and Message Templates — see
+  // RequirePlatformRole('SUPER_ADMIN') usages.
+  SUB_ADMIN
 }
 
 enum BillingCycle {
@@ -173,6 +178,7 @@ model TenantCreationRequest {
   adminOtpCode      String
   adminOtpVerifiedAt DateTime?
   requestedById  String
+  requestedBy    PlatformUser @relation(fields: [requestedById], references: [id])
   adminFullName     String
   adminEmail        String
   adminPhone        String
@@ -215,6 +221,7 @@ model PlatformUser {
   auditLogAccessRequests AuditLogAccessRequest[]
   paymentProofsReviewed PlatformPaymentProof[]
   settingsChangeRequests PlatformSettingsChangeRequest[]
+  tenantCreationRequests TenantCreationRequest[]
 }
 
 model PlatformRefreshToken {
@@ -324,6 +331,26 @@ model PlatformSettings {
   // How many days before a deadline RemindersService's daily job sends the corresponding reminder.
   demoReminderDaysBefore    Int @default(2)
   renewalReminderDaysBefore Int @default(5)
+  // Third-party API credentials — DB-backed so a Super Admin can change them from the UI (OTP-gated,
+  // same as everything else on this model) without editing server env vars and redeploying. Each
+  // provider resolves `dbValue ?? envValue` at call time, so env vars remain a working fallback for
+  // local dev / initial setup. Secret-bearing fields are never returned in full by GET
+  // /platform/settings — see PlatformSettingsService.getMaskedForClient().
+  mpesaEnv            String? @default("sandbox")
+  mpesaConsumerKey    String?
+  mpesaConsumerSecret String?
+  mpesaShortcode      String?
+  mpesaPasskey        String?
+  mpesaCallbackUrl    String?
+  resendApiKey        String?
+  resendFromAddress   String?
+  advantaApiKey       String?
+  advantaPartnerId    String?
+  advantaSenderId     String?
+  // Platform-wide branding shown on the public login page only — never per-school (each school's
+  // own branding is on Tenant.logoUrl/primaryColor etc., untouched by this).
+  systemName          String?
+  loginTagline        String?
   updatedAt         DateTime @updatedAt
 }
 

@@ -9,7 +9,7 @@ import { BackupsService } from './backups.service';
 @ApiTags('platform/backups')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePlatformRole()
+@RequirePlatformRole('SUPER_ADMIN')
 @Controller('platform/backups')
 export class BackupsController {
   constructor(private readonly backupsService: BackupsService) {}

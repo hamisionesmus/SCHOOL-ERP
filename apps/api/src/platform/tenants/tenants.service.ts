@@ -16,6 +16,7 @@ import { generateInvoiceNumber } from '../billing/invoice-number.util';
 import { CYCLE_DAYS } from '../billing/cycle.util';
 import { generateTempPassword } from '../../common/password.util';
 import { PlatformNotifierService } from '../messaging/platform-notifier.service';
+import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 
 const CREATION_CODE_TTL_MS = 15 * 60 * 1000;
 
@@ -44,6 +45,7 @@ export class TenantsService {
     private readonly userDirectory: UserDirectoryService,
     private readonly activationService: ActivationService,
     private readonly notifier: PlatformNotifierService,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
 
   async list(page = 1, pageSize = 20) {
@@ -67,12 +69,20 @@ export class TenantsService {
   }
 
   /** Step 1 of tenant creation: stores the request with two independent 6-digit codes (15-minute
-   * expiry) — one emailed+texted to the *requesting Super Admin's own* registered contact (proves
-   * it's really them, not a compromised/unattended session — see docs/SRS.md §4.1), the other texted
-   * to the *new school's admin phone* (proves that number is real and they consent). Nothing is
-   * provisioned until both codes are confirmed together. Both codes are also returned in the response
-   * (`devCode`/`devAdminOtp`) as a testing convenience, same as the password-reset flow's one-time
-   * temp password — harmless, and still useful until real email is configured (RESEND_API_KEY). */
+   * expiry) — one confirming the request itself, the other texted+emailed to the *new school's
+   * admin* (proves that contact is real and they consent). Nothing is provisioned until both codes
+   * are confirmed together.
+   *
+   * Who the first code goes to depends on the requester's role: a SUPER_ADMIN gets it on their own
+   * registered email/phone (proves it's really them, not a compromised/unattended session — see
+   * docs/SRS.md §4.1). A SUB_ADMIN can start a school-creation request but the code never reaches
+   * them — it's sent to every real SUPER_ADMIN instead, so a delegated admin can never provision a
+   * school without the actual owner's sign-off.
+   *
+   * Both codes are echoed back in the response (`devCode`/`devAdminOtp`) purely as a local-dev
+   * convenience while no real email/SMS provider is configured (see
+   * PlatformSettingsService.isEmailConfigured()). `devCode` is additionally NEVER returned to a
+   * Sub-Admin requester regardless of that setting — it isn't their code to see. */
   async requestCreate(dto: RequestTenantDto, requestedByUserId: string) {
     const existing = await this.platformPrisma.tenant.findUnique({ where: { slug: dto.slug } });
     if (existing) throw new BadRequestException('A school with this slug already exists');
@@ -113,21 +123,34 @@ export class TenantsService {
       },
     });
 
-    await this.notifier.notify('OTP_SUPERADMIN', {
-      to: { email: requester.email, phone: requester.phone },
-      vars: {
-        schoolName: dto.name,
-        slug: dto.slug,
-        code,
-        demoNote: dto.isDemo ? ` as a ${dto.demoDurationHours}-hour demo account` : '',
-      },
-    });
+    const isSubAdmin = requester.role === 'SUB_ADMIN';
+    const codeRecipients = isSubAdmin
+      ? await this.platformPrisma.platformUser.findMany({ where: { role: 'SUPER_ADMIN', deletedAt: null } })
+      : [requester];
+    for (const recipient of codeRecipients) {
+      await this.notifier.notify('OTP_SUPERADMIN', {
+        to: { email: recipient.email, phone: recipient.phone },
+        vars: {
+          schoolName: dto.name,
+          slug: dto.slug,
+          code,
+          demoNote: dto.isDemo ? ` as a ${dto.demoDurationHours}-hour demo account` : '',
+          requestedByName: requester.fullName,
+        },
+      });
+    }
     await this.notifier.notify('OTP_ADMIN', {
-      to: { phone: dto.adminPhone },
-      vars: { schoolName: dto.name, otpCode: adminOtpCode },
+      to: { email: dto.adminEmail, phone: dto.adminPhone },
+      vars: { schoolName: dto.name, otpCode: adminOtpCode, creatorLabel: requester.fullName },
     });
 
-    return { requestId: request.id, expiresAt: request.expiresAt, devCode: code, devAdminOtp: adminOtpCode };
+    const emailConfigured = await this.platformSettings.isEmailConfigured();
+    return {
+      requestId: request.id,
+      expiresAt: request.expiresAt,
+      devCode: !emailConfigured && !isSubAdmin ? code : undefined,
+      devAdminOtp: !emailConfigured ? adminOtpCode : undefined,
+    };
   }
 
   /** Step 2: validates both codes and actually provisions the school. Only now does the schema get

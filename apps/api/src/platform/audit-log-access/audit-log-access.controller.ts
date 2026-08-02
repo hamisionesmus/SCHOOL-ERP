@@ -16,7 +16,7 @@ class ConfirmAccessDto {
 @ApiTags('platform/audit-log-access')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePlatformRole()
+@RequirePlatformRole('SUPER_ADMIN')
 @Controller('platform')
 export class AuditLogAccessController {
   constructor(private readonly service: AuditLogAccessService) {}

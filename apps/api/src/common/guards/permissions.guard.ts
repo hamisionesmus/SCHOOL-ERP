@@ -19,7 +19,7 @@ export class PermissionsGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    const platformOnly = this.reflector.getAllAndOverride<boolean | undefined>(PLATFORM_ONLY_KEY, [
+    const platformOnly = this.reflector.getAllAndOverride<boolean | 'SUPER_ADMIN' | undefined>(PLATFORM_ONLY_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
@@ -29,6 +29,9 @@ export class PermissionsGuard implements CanActivate {
     if (!user) throw new ForbiddenException('Not authenticated');
 
     if (platformOnly && user.realm !== 'platform') {
+      throw new ForbiddenException('Super Admin access required');
+    }
+    if (platformOnly === 'SUPER_ADMIN' && user.role !== 'SUPER_ADMIN') {
       throw new ForbiddenException('Super Admin access required');
     }
 

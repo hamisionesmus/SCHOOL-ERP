@@ -13,7 +13,7 @@ import { ReviewPaymentProofDto } from './dto/review-payment-proof.dto';
 @ApiTags('platform/activation')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePlatformRole()
+@RequirePlatformRole('SUPER_ADMIN')
 @Controller('platform')
 export class ActivationAdminController {
   constructor(private readonly activationService: ActivationService) {}

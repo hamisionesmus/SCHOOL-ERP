@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiFetch, ApiError } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
+import { getSessionUser } from '@/lib/auth';
 
 const DEMO_DURATION_OPTIONS = [
   { label: '4 hours', hours: 4 },
@@ -40,11 +41,12 @@ type DetailsValues = z.infer<typeof detailsSchema>;
 interface RequestResult {
   requestId: string;
   expiresAt: string;
-  devCode: string;
-  devAdminOtp: string;
+  devCode?: string;
+  devAdminOtp?: string;
 }
 
 export function CreateSchoolDialog() {
+  const isSubAdmin = getSessionUser()?.role === 'SUB_ADMIN';
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ result: RequestResult; name: string } | null>(null);
@@ -253,17 +255,40 @@ export function CreateSchoolDialog() {
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-4">
               <p className="mb-4 text-sm text-slate-500">
-                Two codes were sent — your own confirmation code (email + SMS), and a separate OTP
-                texted to <strong>{pending.name}</strong>&apos;s admin phone. Enter both to create the
-                school.
+                {isSubAdmin ? (
+                  <>
+                    Two codes were sent — one to the platform&apos;s Super Admin (ask them for it),
+                    and a separate OTP texted to <strong>{pending.name}</strong>&apos;s admin phone.
+                    Enter both to create the school.
+                  </>
+                ) : (
+                  <>
+                    Two codes were sent — your own confirmation code (email + SMS), and a separate OTP
+                    texted to <strong>{pending.name}</strong>&apos;s admin phone. Enter both to create
+                    the school.
+                  </>
+                )}
               </p>
-              <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                Dev/test convenience: since real email isn&apos;t configured yet, both codes are also
-                shown here — your code <strong>{pending.result.devCode}</strong>, admin OTP{' '}
-                <strong>{pending.result.devAdminOtp}</strong>.
-              </p>
+              {(pending.result.devCode || pending.result.devAdminOtp) && (
+                <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  Dev/test convenience: since real email isn&apos;t configured yet, the code(s) are
+                  also shown here
+                  {pending.result.devCode && (
+                    <>
+                      {' '}
+                      — {isSubAdmin ? "Super Admin's" : 'your'} code <strong>{pending.result.devCode}</strong>
+                    </>
+                  )}
+                  {pending.result.devAdminOtp && (
+                    <>
+                      , admin OTP <strong>{pending.result.devAdminOtp}</strong>
+                    </>
+                  )}
+                  .
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label="Your confirmation code">
+                <Field label={isSubAdmin ? "Super Admin's code" : 'Your confirmation code'}>
                   <Input value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} placeholder="482913" />
                 </Field>
                 <Field label="Admin's OTP code">

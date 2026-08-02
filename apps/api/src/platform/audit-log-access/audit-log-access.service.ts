@@ -3,6 +3,7 @@ import { randomInt } from 'node:crypto';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { EMAIL_PROVIDER, EmailProvider } from '../email/email-provider.interface';
+import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 
 const CODE_TTL_MS = 15 * 60 * 1000;
 const ACCESS_DELAY_MS = 2 * 60 * 60 * 1000; // 2 hours
@@ -30,6 +31,7 @@ export class AuditLogAccessService {
     private readonly platformPrisma: PlatformPrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
 
   private async findTenant(tenantId: string) {
@@ -59,7 +61,8 @@ export class AuditLogAccessService {
       `You requested access to ${tenant.name}'s (${tenant.slug}) activity log. Enter code ${code} to confirm — it expires in 15 minutes. Once confirmed, the log itself won't be available to download for 2 hours; this delay is intentional. If you didn't request this, ignore this message.`,
     );
 
-    return { requestId: request.id, expiresAt: request.codeExpiresAt, devCode: code };
+    const emailConfigured = await this.platformSettings.isEmailConfigured();
+    return { requestId: request.id, expiresAt: request.codeExpiresAt, devCode: emailConfigured ? undefined : code };
   }
 
   async confirm(requestId: string, code: string) {

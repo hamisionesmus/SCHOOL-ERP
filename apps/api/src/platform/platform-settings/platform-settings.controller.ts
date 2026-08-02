@@ -15,7 +15,7 @@ import { ConfirmSettingsChangeDto } from '../settings-otp/dto/confirm-settings-c
 @ApiTags('platform/settings')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@RequirePlatformRole()
+@RequirePlatformRole('SUPER_ADMIN')
 @Controller('platform/settings')
 export class PlatformSettingsController {
   constructor(
@@ -25,7 +25,7 @@ export class PlatformSettingsController {
 
   @Get()
   get() {
-    return this.platformSettingsService.get();
+    return this.platformSettingsService.getMaskedForClient();
   }
 
   @Post('request-update')

@@ -9,6 +9,9 @@ export interface JwtUserPayload {
   tenantSlug?: string;
   roles?: string[];
   permissions?: string[];
+  // Platform-realm only: 'SUPER_ADMIN' | 'SUB_ADMIN' — see RequirePlatformRole/PermissionsGuard for
+  // how this restricts a Sub-Admin from Security/Backups/Audit Logs/Platform Settings.
+  role?: string;
 }
 
 export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext): JwtUserPayload => {

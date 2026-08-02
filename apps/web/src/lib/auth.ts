@@ -7,6 +7,9 @@ export interface SessionUser {
   tenantSlug?: string;
   roles?: string[];
   permissions?: string[];
+  // Platform-realm only: 'SUPER_ADMIN' | 'SUB_ADMIN' — see super-admin-sidebar.tsx for how this
+  // shapes nav visibility.
+  role?: string;
 }
 
 const ACCESS_TOKEN_KEY = 'erp.accessToken';

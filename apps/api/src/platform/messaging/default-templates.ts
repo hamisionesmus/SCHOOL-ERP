@@ -8,7 +8,8 @@ export type MessageTemplateKey =
   | 'PROOF_RECEIVED_SCHOOL'
   | 'DEMO_REMINDER'
   | 'RENEWAL_REMINDER'
-  | 'SETTINGS_OTP';
+  | 'SETTINGS_OTP'
+  | 'SUB_ADMIN_WELCOME';
 
 export interface MessageTemplateContent {
   subject?: string;
@@ -25,17 +26,20 @@ export interface MessageTemplateContent {
  */
 export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateContent> = {
   OTP_SUPERADMIN: {
-    variables: ['schoolName', 'slug', 'code', 'demoNote'],
+    variables: ['schoolName', 'slug', 'code', 'demoNote', 'requestedByName'],
     subject: 'Confirm school creation: {{schoolName}}',
     emailBody:
-      'Someone requested to create "{{schoolName}}" ({{slug}}){{demoNote}} on your Super Admin account. If this was you, enter code {{code}} to confirm. It expires in 15 minutes. If you didn\'t request this, ignore this message — nothing is created until the code is confirmed.',
+      'A request to create "{{schoolName}}" ({{slug}}){{demoNote}} was made by {{requestedByName}}. If this is expected, enter code {{code}} to confirm. It expires in 15 minutes. If you didn\'t expect this, ignore this message — nothing is created until the code is confirmed.',
     smsBody:
-      'School ERP: confirm creating "{{schoolName}}" with code {{code}}. Expires in 15 min. Ignore if this wasn\'t you.',
+      'School ERP: {{requestedByName}} requested to create "{{schoolName}}" — confirm with code {{code}}. Expires in 15 min. Ignore if unexpected.',
   },
   OTP_ADMIN: {
-    variables: ['schoolName', 'otpCode'],
+    variables: ['schoolName', 'otpCode', 'creatorLabel'],
+    subject: 'Welcome to School ERP — confirm you\'re the admin for {{schoolName}}',
+    emailBody:
+      'Welcome to School ERP!\n\n{{creatorLabel}} is setting up "{{schoolName}}" and named you as its administrator. Your verification code is {{otpCode}} — give it to them to confirm it\'s really you and that you consent. It expires in 15 minutes.\n\nIf you didn\'t expect this, you can safely ignore this message — nothing is created without your code.',
     smsBody:
-      'School ERP: someone is setting you up as the administrator for "{{schoolName}}". Your verification code is {{otpCode}}. Give this to them to confirm it\'s really you — it expires in 15 minutes. Ignore if you didn\'t expect this.',
+      'Welcome to School ERP! {{creatorLabel}} is setting up "{{schoolName}}" and named you as its administrator. Your code is {{otpCode}} — give it to them to confirm it\'s really you. Expires in 15 min. Ignore if unexpected.',
   },
   WELCOME_DEMO: {
     variables: ['schoolName', 'loginUrl', 'email', 'tempPassword', 'expiryDate'],
@@ -52,12 +56,12 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
       'Welcome to School ERP! "{{schoolName}}" has been created — one step left before you can sign in.\n\nActivate now: {{activationUrl}}\nAmount due: KES {{amountKes}}\n\nYou can pay instantly by M-Pesa STK Push, or by Bank transfer / Paybill — bank and paybill payments take a little longer to confirm, so after paying that way just paste the confirmation message you receive on the activation page and we\'ll verify it and unlock your account.\n\nOnce payment is confirmed you\'ll get another message with your login details.\nSchool code: {{slug}}\nAdmin email: {{email}}\n\nThis is an automated message from a no-reply address — please don\'t reply to it.',
   },
   ACTIVATED: {
-    variables: ['schoolName', 'loginUrl', 'email', 'tempPassword', 'receiptNumber', 'methodNote', 'amountKes'],
+    variables: ['schoolName', 'loginUrl', 'email', 'receiptNumber', 'methodNote', 'amountKes'],
     subject: '{{schoolName}} is now active — you can sign in',
     emailBody:
-      'Thank you for trusting us! Your payment has been received and "{{schoolName}}" is now active.\n\nHere are your logins:\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change or reset this password as soon as you sign in.\n\nReceipt: {{receiptNumber}} ({{methodNote}})\nAmount: KES {{amountKes}}\n\nThis is an automated message from a no-reply address — please don\'t reply to it.',
+      'Thank you for trusting us! Your payment has been received and "{{schoolName}}" is now active.\n\nSign in at {{loginUrl}} with the email and password you set when the account was created: {{email}}\n\nFor your security, please change your password as soon as you sign in.\n\nReceipt: {{receiptNumber}} ({{methodNote}})\nAmount: KES {{amountKes}}\n\nThis is an automated message from a no-reply address — please don\'t reply to it.',
     smsBody:
-      'Payment received! "{{schoolName}}" is now active. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it). Receipt {{receiptNumber}}.',
+      'Payment received! "{{schoolName}}" is now active. Sign in at {{loginUrl}} with {{email}} and the password you set at signup (please change it once in). Receipt {{receiptNumber}}.',
   },
   PROOF_SUBMITTED_SUPERADMIN: {
     variables: ['schoolName', 'methodLabel', 'reference', 'amountKes'],
@@ -95,5 +99,13 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
     emailBody:
       'A change to your platform settings was requested. If this was you, enter code {{code}} to confirm. It expires in 15 minutes. If you didn\'t request this, ignore this message — nothing changes until the code is confirmed.',
     smsBody: 'School ERP: confirm your settings change with code {{code}}. Expires in 15 min.',
+  },
+  SUB_ADMIN_WELCOME: {
+    variables: ['fullName', 'loginUrl', 'email', 'tempPassword', 'invitedByName'],
+    subject: 'You\'ve been added as a School ERP admin',
+    emailBody:
+      'Hi {{fullName}},\n\n{{invitedByName}} has added you as an administrator on School ERP. You can create schools and view revenue, but Security, Backups, and Platform Settings stay with the main Super Admin.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password as soon as you sign in.',
+    smsBody:
+      'School ERP: {{invitedByName}} added you as an admin. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
   },
 };
