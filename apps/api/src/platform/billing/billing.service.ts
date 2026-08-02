@@ -117,10 +117,14 @@ export class BillingService {
           where: { id: invoice.tenantId },
           data: {
             currentPeriodEnd: invoice.periodEnd,
-            // Auto-restore: a school suspended for non-payment gets reactivated the moment its
-            // invoice clears, whether via bank transfer or M-Pesa paybill — no manual re-activation
-            // step needed.
-            ...(invoice.tenant.status === 'SUSPENDED' ? { status: 'ACTIVE' as const } : {}),
+            // Auto-restore: a school suspended for non-payment, or a non-demo school still awaiting
+            // its first activation payment, gets reactivated the moment its invoice clears — whether
+            // via bank transfer, cash, or M-Pesa paybill recorded here manually, or (for the
+            // activation invoice specifically) the automated M-Pesa STK callback in
+            // ActivationService.handleCallback(). No manual re-activation step needed either way.
+            ...(invoice.tenant.status === 'SUSPENDED' || invoice.tenant.status === 'PENDING_PAYMENT'
+              ? { status: 'ACTIVE' as const }
+              : {}),
           },
         }),
       ]);
