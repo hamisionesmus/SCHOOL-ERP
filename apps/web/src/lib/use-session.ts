@@ -1,17 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { getSessionUser, clearSession, type SessionUser } from './auth';
+import { usePageTransition } from './page-transition';
+
+const LOGIN_CURTAIN_COLOR = '#07130f';
 
 export function useSession(requiredRealm?: 'platform' | 'tenant') {
-  const router = useRouter();
+  const { navigate } = usePageTransition();
   const [user, setUser] = useState<SessionUser | null | undefined>(undefined);
 
   useEffect(() => {
     const sessionUser = getSessionUser();
     if (!sessionUser || (requiredRealm && sessionUser.realm !== requiredRealm)) {
-      router.replace('/login');
+      navigate('/login', { color: LOGIN_CURTAIN_COLOR, replace: true });
       return;
     }
     setUser(sessionUser);
@@ -20,7 +22,7 @@ export function useSession(requiredRealm?: 'platform' | 'tenant') {
 
   function logout() {
     clearSession();
-    router.replace('/login');
+    navigate('/login', { color: LOGIN_CURTAIN_COLOR, replace: true });
   }
 
   return { user, logout };

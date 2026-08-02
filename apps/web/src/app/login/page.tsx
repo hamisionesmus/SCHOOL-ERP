@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -11,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { apiFetch, ApiError } from '@/lib/api';
 import { notifyError } from '@/lib/notify';
 import { storeSession, type SessionUser } from '@/lib/auth';
+import { usePageTransition } from '@/lib/page-transition';
 import { cn } from '@/lib/utils';
 
 const loginSchema = z.object({
@@ -23,7 +23,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 // the platform-wide user directory, so the UI never needs to ask for a school slug. See
 // AuthService.login().
 export default function LoginPage() {
-  const router = useRouter();
+  const { navigate } = usePageTransition();
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   // "success" holds the form on a settled, non-interactive state while the redirect happens, so
@@ -56,7 +56,7 @@ export default function LoginPage() {
       );
       storeSession(data.accessToken, data.refreshToken, data.user);
       setSuccess(true);
-      router.push(data.user.realm === 'platform' ? '/dashboard' : '/school');
+      navigate(data.user.realm === 'platform' ? '/dashboard' : '/school', { color: '#f8fafc' });
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Login failed';
       setError(message);
