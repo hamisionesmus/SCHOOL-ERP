@@ -28,7 +28,8 @@ export class PlatformSettingsService {
     });
   }
 
-  /** Public-safe subset — only the fields a school needs to see to pay by Bank/Paybill. */
+  /** Public-safe subset — only the fields a school needs to see to pay, plus which methods are
+   * currently enabled so the activation page can hide any the Super Admin has turned off. */
   async getPublicPaymentDetails() {
     const s = await this.get();
     return {
@@ -37,6 +38,9 @@ export class PlatformSettingsService {
       bankAccountNumber: s.bankAccountNumber,
       paybillNumber: s.paybillNumber,
       paybillAccountName: s.paybillAccountName,
+      stkEnabled: s.stkEnabled,
+      bankTransferEnabled: s.bankTransferEnabled,
+      paybillEnabled: s.paybillEnabled,
     };
   }
 }

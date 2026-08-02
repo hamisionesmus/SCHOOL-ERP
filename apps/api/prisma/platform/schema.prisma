@@ -125,6 +125,11 @@ model Tenant {
   // since this environment has no scheduler; see docs/SRS.md §4.1.
   isDemo                 Boolean           @default(false)
   demoExpiresAt          DateTime?
+  // Dedupe flags for RemindersService's daily job — set once a reminder fires so it isn't re-sent
+  // every day of the window; renewalReminderSentAt is cleared back to null whenever currentPeriodEnd
+  // moves forward (a new payment clears the way for the next cycle's reminder).
+  demoReminderSentAt     DateTime?
+  renewalReminderSentAt  DateTime?
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
   deletedAt              DateTime?
@@ -134,6 +139,7 @@ model Tenant {
   userDirectoryEntries UserDirectoryEntry[]
   mpesaStkRequests PlatformMpesaStkRequest[]
   paymentProofs PlatformPaymentProof[]
+  feedback TenantFeedback[]
 }
 
 // Global email → school lookup, kept in sync whenever a tenant-side User is created (see
@@ -180,6 +186,10 @@ model TenantCreationRequest {
   // recurring subscriptionPlan price) — required for non-demo requests. Becomes the amount on the
   // first PlatformInvoice, paid via M-Pesa STK push before the school can log in.
   activationFeeKes  Decimal?
+  // Which billing period the activation fee covers — chosen alongside the fee for non-demo
+  // requests, used to compute the first PlatformInvoice's periodEnd and the Tenant's own
+  // billingCycle at creation (previously hardcoded to 30 days / MONTHLY regardless of this field).
+  activationBillingCycle BillingCycle?
   expiresAt         DateTime
   consumedAt        DateTime?
   createdAt         DateTime  @default(now())
@@ -204,6 +214,7 @@ model PlatformUser {
   paymentsRecorded PlatformPayment[]
   auditLogAccessRequests AuditLogAccessRequest[]
   paymentProofsReviewed PlatformPaymentProof[]
+  settingsChangeRequests PlatformSettingsChangeRequest[]
 }
 
 model PlatformRefreshToken {
@@ -301,7 +312,62 @@ model PlatformSettings {
   bankAccountNumber String?
   paybillNumber     String?
   paybillAccountName String?
+  // Feature toggles — nothing about which channels/payment methods are available should be
+  // hardcoded; a Super Admin can turn any of these off without touching config files. Changing any
+  // of these (and the two reminder-window fields below) goes through the OTP-gated
+  // request/confirm flow — see PlatformSettingsChangeRequest.
+  smsEnabled          Boolean @default(true)
+  emailEnabled        Boolean @default(true)
+  stkEnabled          Boolean @default(true)
+  bankTransferEnabled Boolean @default(true)
+  paybillEnabled      Boolean @default(true)
+  // How many days before a deadline RemindersService's daily job sends the corresponding reminder.
+  demoReminderDaysBefore    Int @default(2)
+  renewalReminderDaysBefore Int @default(5)
   updatedAt         DateTime @updatedAt
+}
+
+// Named, customizable copy for every message the platform sends (see PlatformNotifierService). A
+// row only exists once a Super Admin has customized that key — its absence means "use the built-in
+// default" (see default-templates.ts), and deleting/clearing a row is how "reset to default" works.
+// Keys are plain strings (not an enum) so new touchpoints can be added without a migration.
+model PlatformMessageTemplate {
+  key       String   @id
+  subject   String?
+  emailBody String?
+  smsBody   String?
+  updatedAt DateTime @updatedAt
+}
+
+// Generalizes the two-code tenant-creation gate (see TenantCreationRequest) to platform config
+// changes: a Super Admin proposes an edit, a 6-digit code is sent to their own email/phone, and
+// only confirming that code applies it — same reasoning (a compromised/unattended session can't
+// silently alter platform-wide payment config or messaging). One shared request/confirm flow backs
+// both PlatformSettings edits and PlatformMessageTemplate edits; `scope` tells the confirm step
+// which service to apply `changes` through.
+model PlatformSettingsChangeRequest {
+  id            String       @id @default(uuid())
+  requestedById String
+  requestedBy   PlatformUser @relation(fields: [requestedById], references: [id])
+  scope         String
+  changes       Json
+  code          String
+  expiresAt     DateTime
+  consumedAt    DateTime?
+  createdAt     DateTime     @default(now())
+}
+
+// One submission from the short survey linked in a demo's expiry reminder (see RemindersService /
+// FeedbackController). Public, unauthenticated submission — same signed-token pattern as the
+// activation link, scoped to exactly one tenant.
+model TenantFeedback {
+  id                      String   @id @default(uuid())
+  tenantId                String
+  tenant                  Tenant   @relation(fields: [tenantId], references: [id])
+  rating                  Int?
+  improvements            String?
+  interestedInRealAccount Boolean?
+  createdAt               DateTime @default(now())
 }
 
 // A school's claim of having paid by Bank/Paybill (no automatic API confirmation exists for

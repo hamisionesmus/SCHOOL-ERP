@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomInt } from 'node:crypto';
@@ -11,10 +11,11 @@ import { ConfirmTenantDto } from './dto/confirm-tenant.dto';
 import { UpdatePaymentConfigDto } from './dto/update-payment-config.dto';
 import { seedTenantCore } from '../../common/tenant-seed/seed-data';
 import { UserDirectoryService } from '../../common/user-directory/user-directory.service';
-import { EMAIL_PROVIDER, EmailProvider } from '../email/email-provider.interface';
-import { SMS_PROVIDER, SmsProvider } from '../../communications/providers/sms-provider.interface';
 import { ActivationService } from '../activation/activation.service';
 import { generateInvoiceNumber } from '../billing/invoice-number.util';
+import { CYCLE_DAYS } from '../billing/cycle.util';
+import { generateTempPassword } from '../../common/password.util';
+import { PlatformNotifierService } from '../messaging/platform-notifier.service';
 
 const CREATION_CODE_TTL_MS = 15 * 60 * 1000;
 
@@ -42,8 +43,7 @@ export class TenantsService {
     private readonly provisioning: TenantProvisioningService,
     private readonly userDirectory: UserDirectoryService,
     private readonly activationService: ActivationService,
-    @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
-    @Inject(SMS_PROVIDER) private readonly smsProvider: SmsProvider,
+    private readonly notifier: PlatformNotifierService,
   ) {}
 
   async list(page = 1, pageSize = 20) {
@@ -82,6 +82,9 @@ export class TenantsService {
     if (!dto.isDemo && !dto.activationFeeKes) {
       throw new BadRequestException('activationFeeKes is required for a non-demo school');
     }
+    if (!dto.isDemo && !dto.activationBillingCycle) {
+      throw new BadRequestException('activationBillingCycle is required for a non-demo school');
+    }
 
     const requester = await this.platformPrisma.platformUser.findUnique({ where: { id: requestedByUserId } });
     if (!requester) throw new UnauthorizedException();
@@ -105,19 +108,24 @@ export class TenantsService {
         isDemo: !!dto.isDemo,
         demoDurationHours: dto.demoDurationHours,
         activationFeeKes: dto.isDemo ? undefined : dto.activationFeeKes,
+        activationBillingCycle: dto.isDemo ? undefined : dto.activationBillingCycle,
         expiresAt: new Date(Date.now() + CREATION_CODE_TTL_MS),
       },
     });
 
-    const superAdminMessage = `Someone requested to create "${dto.name}" (${dto.slug})${dto.isDemo ? ` as a ${dto.demoDurationHours}-hour demo account` : ''} on your Super Admin account. If this was you, enter code ${code} to confirm. It expires in 15 minutes. If you didn't request this, ignore this message — nothing is created until the code is confirmed.`;
-    await this.emailProvider.send(requester.email, `Confirm school creation: ${dto.name}`, superAdminMessage);
-    if (requester.phone) {
-      await this.smsProvider.send(requester.phone, superAdminMessage);
-    }
-    await this.smsProvider.send(
-      dto.adminPhone,
-      `School ERP: someone is setting you up as the administrator for "${dto.name}". Your verification code is ${adminOtpCode}. Give this to them to confirm it's really you — it expires in 15 minutes. Ignore if you didn't expect this.`,
-    );
+    await this.notifier.notify('OTP_SUPERADMIN', {
+      to: { email: requester.email, phone: requester.phone },
+      vars: {
+        schoolName: dto.name,
+        slug: dto.slug,
+        code,
+        demoNote: dto.isDemo ? ` as a ${dto.demoDurationHours}-hour demo account` : '',
+      },
+    });
+    await this.notifier.notify('OTP_ADMIN', {
+      to: { phone: dto.adminPhone },
+      vars: { schoolName: dto.name, otpCode: adminOtpCode },
+    });
 
     return { requestId: request.id, expiresAt: request.expiresAt, devCode: code, devAdminOtp: adminOtpCode };
   }
@@ -136,6 +144,7 @@ export class TenantsService {
     const demoExpiresAt = request.isDemo
       ? new Date(Date.now() + (request.demoDurationHours ?? 24) * 3_600_000)
       : null;
+    const billingCycle = request.activationBillingCycle ?? 'MONTHLY';
 
     // Demo accounts stay free/expiry-based and are usable immediately (ACTIVE). Real accounts are
     // created locked (PENDING_PAYMENT) — login is blocked (see AuthService.login) until the school
@@ -147,6 +156,7 @@ export class TenantsService {
         schemaName,
         status: request.isDemo ? 'ACTIVE' : 'PENDING_PAYMENT',
         subscriptionPlanId: request.planId ?? undefined,
+        billingCycle,
         currentPeriodEnd: request.isDemo ? new Date(Date.now() + 30 * 86_400_000) : null,
         isDemo: request.isDemo,
         demoExpiresAt,
@@ -159,7 +169,7 @@ export class TenantsService {
     await this.userDirectory.reserveForSchema(request.adminEmail, schemaName);
 
     const db = this.tenantPrisma.forSchema(schemaName);
-    await seedTenantCore(db, {
+    const adminUser = await seedTenantCore(db, {
       email: request.adminEmail,
       fullName: request.adminFullName,
       passwordHash: request.adminPasswordHash,
@@ -172,24 +182,26 @@ export class TenantsService {
 
     const loginUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/login`;
     if (request.isDemo) {
+      // Demo is usable immediately — hand over real, working credentials rather than the
+      // Super-Admin-typed password (which is never otherwise communicated to the actual admin).
+      const tempPassword = generateTempPassword();
+      const passwordHash = await bcrypt.hash(tempPassword, 12);
+      await db.user.update({ where: { id: adminUser.id }, data: { passwordHash } });
+
       const expiryText = demoExpiresAt!.toLocaleString('en-KE');
-      const body = `Welcome to School ERP! Your demo school "${request.name}" is ready.\n\nSign in at ${loginUrl}\nSchool code: ${request.slug}\nEmail: ${request.adminEmail}\n\nThis demo account expires on ${expiryText} — after that, sign-in will be blocked until the Super Admin extends or converts it to a full subscription.`;
-      await this.emailProvider.send(request.adminEmail, `Welcome to School ERP — your ${request.name} demo is ready`, body);
-      if (request.adminPhone) {
-        await this.smsProvider.send(
-          request.adminPhone,
-          `Welcome to School ERP! Your "${request.name}" demo is ready. Sign in at ${loginUrl} with ${request.adminEmail}. Expires ${expiryText}.`,
-        );
-      }
+      await this.notifier.notify('WELCOME_DEMO', {
+        to: { email: request.adminEmail, phone: request.adminPhone },
+        vars: { schoolName: request.name, loginUrl, email: request.adminEmail, tempPassword, expiryDate: expiryText },
+      });
     } else {
       const periodStart = new Date();
-      const periodEnd = new Date(periodStart.getTime() + 30 * 86_400_000);
+      const periodEnd = new Date(periodStart.getTime() + CYCLE_DAYS[billingCycle] * 86_400_000);
       const amountKes = Math.round(Number(request.activationFeeKes ?? 0));
       const invoiceNumber = await generateInvoiceNumber(this.platformPrisma);
       const invoice = await this.platformPrisma.platformInvoice.create({
         data: {
           tenantId: tenant.id,
-          billingCycle: 'MONTHLY',
+          billingCycle,
           periodStart,
           periodEnd,
           amount: amountKes,
@@ -200,11 +212,17 @@ export class TenantsService {
       const activationToken = await this.activationService.signActivationToken(tenant.id, invoice.id);
       const activationUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/activate/${activationToken}`;
 
-      await this.emailProvider.send(
-        request.adminEmail,
-        `Activate School ERP — ${request.name}`,
-        `Welcome to School ERP! "${request.name}" has been created, but sign-in is locked until the one-time activation fee is paid.\n\nActivate now: ${activationUrl}\nAmount due: KES ${amountKes.toLocaleString()}\n\nOnce payment is confirmed you'll get another message and be able to sign in at ${loginUrl}\nSchool code: ${request.slug}\nEmail: ${request.adminEmail}\n\nThis is an automated message from a no-reply address — please don't reply to it.`,
-      );
+      await this.notifier.notify('WELCOME_REAL', {
+        to: { email: request.adminEmail },
+        vars: {
+          schoolName: request.name,
+          activationUrl,
+          amountKes: amountKes.toLocaleString(),
+          loginUrl,
+          slug: request.slug,
+          email: request.adminEmail,
+        },
+      });
     }
 
     return tenant;

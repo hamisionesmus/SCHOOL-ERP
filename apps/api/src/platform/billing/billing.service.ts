@@ -1,5 +1,4 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { randomInt } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
@@ -8,18 +7,9 @@ import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { generateInvoiceNumber, generatePlatformReceiptNumber } from './invoice-number.util';
 import { renderPlatformInvoicePdf } from './invoice-pdf.util';
-
-const CYCLE_DAYS = { MONTHLY: 30, HALF_YEARLY: 182, YEARLY: 365 } as const;
-
-// Excludes visually ambiguous characters (0/O, 1/l/I, etc.) — a temp password shown once on screen
-// and hand-relayed/retyped by someone else is exactly the case where a look-alike character causes a
-// silent, hard-to-diagnose login failure. See docs/SRS.md §4.1.
-const UNAMBIGUOUS_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-function generateTempPassword(length = 12): string {
-  let out = '';
-  for (let i = 0; i < length; i++) out += UNAMBIGUOUS_CHARS[randomInt(UNAMBIGUOUS_CHARS.length)];
-  return out;
-}
+import { CYCLE_DAYS } from './cycle.util';
+import { generateTempPassword } from '../../common/password.util';
+import { findSchoolAdmin } from '../../common/tenant-admin.util';
 
 @Injectable()
 export class BillingService {
@@ -35,15 +25,8 @@ export class BillingService {
     return tenant;
   }
 
-  /** The school's own User table lives in its tenant schema, not the platform schema — this is the
-   * one place billing needs to reach across that boundary, same pattern used by DashboardService's
-   * class-teacher lookups but cross-schema instead of cross-table. */
-  private async getSchoolAdmin(schemaName: string) {
-    const db = this.tenantPrisma.forSchema(schemaName);
-    return db.user.findFirst({
-      where: { deletedAt: null, userRoles: { some: { role: { name: 'School Administrator' } } } },
-      select: { id: true, email: true, fullName: true },
-    });
+  private getSchoolAdmin(schemaName: string) {
+    return findSchoolAdmin(this.tenantPrisma, schemaName);
   }
 
   async listInvoices(tenantId: string) {
@@ -117,6 +100,9 @@ export class BillingService {
           where: { id: invoice.tenantId },
           data: {
             currentPeriodEnd: invoice.periodEnd,
+            // A fresh period starts — clear the dedupe flag so RemindersService's daily job can warn
+            // about *this* period's renewal too, not just the one that was just paid.
+            renewalReminderSentAt: null,
             // Auto-restore: a school suspended for non-payment, or a non-demo school still awaiting
             // its first activation payment, gets reactivated the moment its invoice clears — whether
             // via bank transfer, cash, or M-Pesa paybill recorded here manually, or (for the

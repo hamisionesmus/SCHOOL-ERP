@@ -1,11 +1,15 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcryptjs';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
+import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { PlatformMpesaService } from '../mpesa/mpesa.service';
-import { EMAIL_PROVIDER, EmailProvider } from '../email/email-provider.interface';
-import { SMS_PROVIDER, SmsProvider } from '../../communications/providers/sms-provider.interface';
 import { generatePlatformReceiptNumber } from '../billing/invoice-number.util';
+import { PlatformNotifierService } from '../messaging/platform-notifier.service';
+import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
+import { generateTempPassword } from '../../common/password.util';
+import { findSchoolAdmin } from '../../common/tenant-admin.util';
 
 interface ActivationTokenPayload {
   purpose: 'activation';
@@ -44,11 +48,12 @@ export class ActivationService {
 
   constructor(
     private readonly platformPrisma: PlatformPrismaService,
+    private readonly tenantPrisma: TenantPrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly mpesa: PlatformMpesaService,
-    @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
-    @Inject(SMS_PROVIDER) private readonly smsProvider: SmsProvider,
+    private readonly notifier: PlatformNotifierService,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
 
   async signActivationToken(tenantId: string, invoiceId: string): Promise<string> {
@@ -96,6 +101,10 @@ export class ActivationService {
     const { tenant, invoice } = await this.loadTenantAndInvoice(tenantId, invoiceId);
     if (invoice.status === 'PAID') {
       throw new BadRequestException('This school has already been activated.');
+    }
+    const settings = await this.platformSettings.get();
+    if (!settings.stkEnabled) {
+      throw new BadRequestException('M-Pesa STK Push is currently unavailable — please use another payment method.');
     }
 
     const { merchantRequestId, checkoutRequestId } = await this.mpesa.stkPush({
@@ -178,27 +187,40 @@ export class ActivationService {
 
   /** Same "you're active" messaging regardless of which payment method got the school there — the
    * M-Pesa webhook above and a Super Admin approving a Bank/Paybill proof (see approveProof) both
-   * end here, so the school gets a consistent notification either way. */
+   * end here. Generates a fresh temporary password for the school's admin at this moment — the
+   * Super-Admin-typed password from creation is never otherwise communicated to the actual admin,
+   * so this is the only honest way to hand over working credentials. */
   private async sendActivatedNotification(
-    tenant: { name: string; contactEmail: string | null; contactPhone: string | null },
+    tenant: { name: string; schemaName: string; contactEmail: string | null; contactPhone: string | null },
     receiptNumber: string,
     amount: number,
     methodNote: string,
   ) {
     const loginUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/login`;
-    if (tenant.contactEmail) {
-      await this.emailProvider.send(
-        tenant.contactEmail,
-        `${tenant.name} is now active — you can sign in`,
-        `Payment received! "${tenant.name}" is now active.\n\nSign in at ${loginUrl}\n\nReceipt: ${receiptNumber} (${methodNote})\nAmount: KES ${amount.toLocaleString()}\n\nThis is an automated message from a no-reply address — please don't reply to it.`,
-      );
+
+    let tempPassword = '';
+    const admin = await findSchoolAdmin(this.tenantPrisma, tenant.schemaName);
+    if (admin) {
+      tempPassword = generateTempPassword();
+      const passwordHash = await bcrypt.hash(tempPassword, 12);
+      await this.tenantPrisma.forSchema(tenant.schemaName).user.update({
+        where: { id: admin.id },
+        data: { passwordHash },
+      });
     }
-    if (tenant.contactPhone) {
-      await this.smsProvider.send(
-        tenant.contactPhone,
-        `Payment received! "${tenant.name}" is now active on School ERP. Sign in at ${loginUrl}. Receipt ${receiptNumber}.`,
-      );
-    }
+
+    await this.notifier.notify('ACTIVATED', {
+      to: { email: tenant.contactEmail, phone: tenant.contactPhone },
+      vars: {
+        schoolName: tenant.name,
+        loginUrl,
+        email: tenant.contactEmail ?? admin?.email ?? '',
+        tempPassword,
+        receiptNumber,
+        methodNote,
+        amountKes: amount.toLocaleString(),
+      },
+    });
   }
 
   /** Best-effort read of a pasted M-Pesa/bank confirmation message — assistive only for the
@@ -211,11 +233,13 @@ export class ActivationService {
     return { amount, reference: refMatch ? refMatch[1] : null };
   }
 
-  private async notifySuperAdmins(subject: string, body: string) {
+  private async notifySuperAdmins(vars: Record<string, string | number>) {
     const admins = await this.platformPrisma.platformUser.findMany({ where: { deletedAt: null } });
     for (const admin of admins) {
-      await this.emailProvider.send(admin.email, subject, body);
-      if (admin.phone) await this.smsProvider.send(admin.phone, body);
+      await this.notifier.notify('PROOF_SUBMITTED_SUPERADMIN', {
+        to: { email: admin.email, phone: admin.phone },
+        vars,
+      });
     }
   }
 
@@ -224,6 +248,13 @@ export class ActivationService {
     const { tenant, invoice } = await this.loadTenantAndInvoice(tenantId, invoiceId);
     if (invoice.status === 'PAID') {
       throw new BadRequestException('This school has already been activated.');
+    }
+    const settings = await this.platformSettings.get();
+    if (method === 'BANK' && !settings.bankTransferEnabled) {
+      throw new BadRequestException('Bank transfer is currently unavailable — please use another payment method.');
+    }
+    if (method === 'PAYBILL' && !settings.paybillEnabled) {
+      throw new BadRequestException('Paybill is currently unavailable — please use another payment method.');
     }
 
     const { amount, reference } = this.extractProofDetails(message);
@@ -238,10 +269,17 @@ export class ActivationService {
       },
     });
 
-    await this.notifySuperAdmins(
-      `Payment proof submitted — ${tenant.name}`,
-      `"${tenant.name}" submitted a ${method === 'BANK' ? 'bank transfer' : 'paybill'} payment confirmation for review.\n\n${reference ? `Reference: ${reference}\n` : ''}${amount ? `Amount: KES ${amount.toLocaleString()}\n` : ''}\nReview and approve/reject it from the school's Billing tab in the Super Admin dashboard.`,
-    );
+    const methodLabel = method === 'BANK' ? 'bank transfer' : 'paybill';
+    await this.notifySuperAdmins({
+      schoolName: tenant.name,
+      methodLabel,
+      reference: reference ? `Reference: ${reference}\n` : '',
+      amountKes: amount ? `Amount: KES ${amount.toLocaleString()}\n` : '',
+    });
+    await this.notifier.notify('PROOF_RECEIVED_SCHOOL', {
+      to: { email: tenant.contactEmail, phone: tenant.contactPhone },
+      vars: { schoolName: tenant.name, methodLabel },
+    });
 
     return {
       status: 'submitted' as const,

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './common/prisma/prisma.module';
@@ -39,10 +40,14 @@ import { AnalyticsModule } from './platform/analytics/analytics.module';
 import { AuditLogAccessModule } from './platform/audit-log-access/audit-log-access.module';
 import { ActivationModule } from './platform/activation/activation.module';
 import { PlatformSettingsModule } from './platform/platform-settings/platform-settings.module';
+import { SettingsOtpModule } from './platform/settings-otp/settings-otp.module';
+import { FeedbackModule } from './platform/feedback/feedback.module';
+import { RemindersModule } from './platform/reminders/reminders.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }]),
     PrismaModule,
     UserDirectoryModule,
@@ -81,6 +86,9 @@ import { PlatformSettingsModule } from './platform/platform-settings/platform-se
     AuditLogAccessModule,
     ActivationModule,
     PlatformSettingsModule,
+    SettingsOtpModule,
+    FeedbackModule,
+    RemindersModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

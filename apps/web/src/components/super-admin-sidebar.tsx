@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 
 const NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
-  { href: '/dashboard/payment-settings', label: 'Payment Settings', icon: Wallet },
+  { href: '/dashboard/settings', label: 'Platform Settings', icon: Wallet },
   { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
   { href: '/dashboard/backups', label: 'Backups', icon: DatabaseBackup },
 ];

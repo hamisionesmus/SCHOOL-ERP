@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsInt, IsNumber, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
 
 export class RequestTenantDto {
   @ApiProperty({ example: 'Greenfield Academy' })
@@ -70,4 +70,12 @@ export class RequestTenantDto {
   @IsNumber()
   @Min(1)
   activationFeeKes?: number;
+
+  @ApiPropertyOptional({
+    description: 'Which billing period the activation fee covers — required for non-demo requests.',
+    enum: ['MONTHLY', 'HALF_YEARLY', 'YEARLY'],
+  })
+  @IsOptional()
+  @IsIn(['MONTHLY', 'HALF_YEARLY', 'YEARLY'])
+  activationBillingCycle?: 'MONTHLY' | 'HALF_YEARLY' | 'YEARLY';
 }

@@ -33,6 +33,7 @@ const detailsSchema = z.object({
     .string()
     .optional()
     .refine((v) => !v || Number(v) > 0, 'Must be a positive amount'),
+  activationBillingCycle: z.enum(['MONTHLY', 'HALF_YEARLY', 'YEARLY']).optional(),
 });
 type DetailsValues = z.infer<typeof detailsSchema>;
 
@@ -56,7 +57,10 @@ export function CreateSchoolDialog() {
     reset,
     watch,
     formState: { errors },
-  } = useForm<DetailsValues>({ resolver: zodResolver(detailsSchema), defaultValues: { accountType: 'real' } });
+  } = useForm<DetailsValues>({
+    resolver: zodResolver(detailsSchema),
+    defaultValues: { accountType: 'real', activationBillingCycle: 'MONTHLY' },
+  });
   const accountType = watch('accountType');
   const isDemo = accountType === 'demo';
 
@@ -75,6 +79,7 @@ export function CreateSchoolDialog() {
           isDemo,
           demoDurationHours: isDemo && values.demoDurationHours ? Number(values.demoDurationHours) : undefined,
           activationFeeKes: isDemo ? undefined : values.activationFeeKes ? Number(values.activationFeeKes) : undefined,
+          activationBillingCycle: isDemo ? undefined : values.activationBillingCycle,
         }),
       }),
     onSuccess: (result, values) => {
@@ -208,6 +213,18 @@ export function CreateSchoolDialog() {
                 ) : (
                   <Field label="Activation fee (KES)" error={errors.activationFeeKes?.message}>
                     <Input type="number" min={1} placeholder="5000" {...register('activationFeeKes')} />
+                  </Field>
+                )}
+                {!isDemo && (
+                  <Field label="Billing cycle">
+                    <select
+                      className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                      {...register('activationBillingCycle')}
+                    >
+                      <option value="MONTHLY">Monthly</option>
+                      <option value="HALF_YEARLY">Half-yearly</option>
+                      <option value="YEARLY">Yearly</option>
+                    </select>
                   </Field>
                 )}
               </div>
