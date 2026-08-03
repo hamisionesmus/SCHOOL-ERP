@@ -78,10 +78,12 @@ zone gets reactivated later, switch `ALLOWED_SENDER_DOMAINS`/`HOSTNAME` on the `
 2. **PTR (reverse DNS) for the VPS's own IP.** This is set by whoever controls the IP allocation —
    your VPS/hosting provider, not your domain's DNS zone — usually via a support ticket or an rDNS
    field in their control panel. Ask for the VPS's IP to reverse-resolve to
-   `mail.hamzonetechnologies.com` (matching the `HOSTNAME` set on the `postfix` service), and add a
-   matching forward A record for `mail.hamzonetechnologies.com` → the VPS's IP in the domain's own
-   zone (forward-confirmed rDNS — both directions should agree). Without the PTR, most major
-   providers (Gmail, Outlook) silently drop or spam-box the mail regardless of DKIM being correct.
+   `relay.hamzonetechnologies.com` (matching the `HOSTNAME` set on the `postfix` service — "relay",
+   not "mail", since `hamzonetechnologies.com` already has a `mail` CNAME that an A record can't
+   coexist with), and add a matching forward A record for `relay.hamzonetechnologies.com` → the
+   VPS's IP in the domain's own zone (forward-confirmed rDNS — both directions should agree).
+   Without the PTR, most major providers (Gmail, Outlook) silently drop or spam-box the mail
+   regardless of DKIM being correct.
 
 You'll also want the existing SPF TXT record on `hamzonetechnologies.com` to explicitly authorize
 this server's IP (`ip4:<vps-ip>`) alongside whatever's already there, and `SMTP_FROM_ADDRESS` in

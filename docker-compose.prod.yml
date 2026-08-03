@@ -18,12 +18,14 @@ services:
   # for the DNS records (DKIM TXT + PTR) that make this actually deliverable, not just sendable.
   # Signs as hamzonetechnologies.com rather than myschoolapp.xyz — that domain's DNS zone is live
   # and editable, while myschoolapp.xyz's zone was found to be deprovisioned on the DNS host's end.
+  # HOSTNAME is "relay", not "mail" — hamzonetechnologies.com already has a "mail" CNAME (a cPanel
+  # default) and a CNAME can't coexist with the A record this relay's PTR setup needs at that name.
   postfix:
     image: boky/postfix
     restart: unless-stopped
     environment:
       ALLOWED_SENDER_DOMAINS: hamzonetechnologies.com
-      HOSTNAME: mail.hamzonetechnologies.com
+      HOSTNAME: relay.hamzonetechnologies.com
       DKIM_AUTOGENERATE: "true"
     volumes:
       - postfix_dkim:/etc/opendkim/keys
