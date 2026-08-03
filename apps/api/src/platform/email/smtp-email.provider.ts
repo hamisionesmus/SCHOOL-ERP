@@ -7,7 +7,9 @@ import { StubEmailProvider } from './stub-email.provider';
 /**
  * Real outbound email via a self-hosted Postfix relay (see the `postfix` service in
  * docker-compose.prod.yml — a `boky/postfix` sidecar reachable only inside the docker network,
- * DKIM-signing outbound mail for myschoolapp.xyz). No third-party account/API key involved — the
+ * DKIM-signing outbound mail for hamzonetechnologies.com — myschoolapp.xyz's own DNS zone was
+ * found to be deprovisioned on the DNS host's end, so mail is sent as the platform operator's
+ * domain instead). No third-party account/API key involved — the
  * tradeoff versus a managed ESP (Resend, SendGrid, SES) is that deliverability depends entirely on
  * this server's own IP reputation, so a PTR (reverse DNS) record for the VPS's IP and the DKIM DNS
  * TXT record this relay generates on first boot both have to be added by whoever manages the
@@ -50,7 +52,7 @@ export class SmtpEmailProvider implements EmailProvider {
   ): Promise<SendEmailResult> {
     const transporter = this.getTransporter();
     if (!transporter) return this.stub.send(to, subject, body, attachments);
-    const from = this.config.get<string>('SMTP_FROM_ADDRESS') ?? 'School ERP <noreply@myschoolapp.xyz>';
+    const from = this.config.get<string>('SMTP_FROM_ADDRESS') ?? 'School ERP <noreply@hamzonetechnologies.com>';
 
     try {
       const info = await transporter.sendMail({

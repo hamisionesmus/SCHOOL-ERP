@@ -16,12 +16,14 @@ services:
 
   # Self-hosted outbound-only mail relay (DKIM-signing) — see docs/DEPLOYMENT.md "Email" section
   # for the DNS records (DKIM TXT + PTR) that make this actually deliverable, not just sendable.
+  # Signs as hamzonetechnologies.com rather than myschoolapp.xyz — that domain's DNS zone is live
+  # and editable, while myschoolapp.xyz's zone was found to be deprovisioned on the DNS host's end.
   postfix:
     image: boky/postfix
     restart: unless-stopped
     environment:
-      ALLOWED_SENDER_DOMAINS: myschoolapp.xyz
-      HOSTNAME: mail.myschoolapp.xyz
+      ALLOWED_SENDER_DOMAINS: hamzonetechnologies.com
+      HOSTNAME: mail.hamzonetechnologies.com
       DKIM_AUTOGENERATE: "true"
     volumes:
       - postfix_dkim:/etc/opendkim/keys

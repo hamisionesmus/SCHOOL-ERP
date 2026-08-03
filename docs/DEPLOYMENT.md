@@ -59,25 +59,33 @@ self-hosted Postfix relay — the `postfix` service in `docker-compose.prod.yml`
 ([boky/postfix](https://github.com/bokysan/docker-postfix)), reachable only inside the docker
 network as `postfix:25`. No third-party account or API key needed, but — unlike a managed ESP —
 deliverability depends entirely on this server's own reputation, which needs two DNS pieces before
-mail reliably lands in an inbox instead of spam (or gets rejected outright):
+mail reliably lands in an inbox instead of spam (or gets rejected outright).
+
+The relay signs mail as `hamzonetechnologies.com`, not `myschoolapp.xyz` — `myschoolapp.xyz`'s own
+DNS zone was found deprovisioned on the DNS host's end when this was first set up, so the platform
+operator's own domain (which had a live, editable zone) was used instead. If `myschoolapp.xyz`'s
+zone gets reactivated later, switch `ALLOWED_SENDER_DOMAINS`/`HOSTNAME` on the `postfix` service and
+`SMTP_FROM_ADDRESS` back — nothing else needs to change.
 
 1. **DKIM.** The relay auto-generates a keypair on first boot and signs every outbound message.
    Read the public key out of the running container and add it as a DNS TXT record:
    ```bash
-   docker compose -f docker-compose.prod.yml exec postfix cat /etc/opendkim/keys/myschoolapp.xyz.txt
+   docker compose -f docker-compose.prod.yml exec postfix cat /etc/opendkim/keys/hamzonetechnologies.com.txt
    ```
-   That prints the `mail._domainkey.myschoolapp.xyz` TXT record split across quoted chunks
+   That prints the `mail._domainkey.hamzonetechnologies.com` TXT record split across quoted chunks
    (standard BIND-zone-file format) — concatenate the `p=...` parts into one string when adding it
    to a DNS panel that wants a single value rather than the split form.
 2. **PTR (reverse DNS) for the VPS's own IP.** This is set by whoever controls the IP allocation —
    your VPS/hosting provider, not your domain's DNS zone — usually via a support ticket or an rDNS
-   field in their control panel. Ask for the VPS's IP to reverse-resolve to `mail.myschoolapp.xyz`
-   (matching the `HOSTNAME` set on the `postfix` service). Without this, most major providers
-   (Gmail, Outlook) silently drop or spam-box the mail regardless of DKIM being correct.
+   field in their control panel. Ask for the VPS's IP to reverse-resolve to
+   `mail.hamzonetechnologies.com` (matching the `HOSTNAME` set on the `postfix` service), and add a
+   matching forward A record for `mail.hamzonetechnologies.com` → the VPS's IP in the domain's own
+   zone (forward-confirmed rDNS — both directions should agree). Without the PTR, most major
+   providers (Gmail, Outlook) silently drop or spam-box the mail regardless of DKIM being correct.
 
-You'll also want the existing SPF TXT record on `myschoolapp.xyz` to explicitly authorize this
-server's IP (`ip4:<vps-ip>`) alongside whatever your hosting provider already added there, and
-`SMTP_FROM_ADDRESS` in `.env` set to something like `School ERP <noreply@myschoolapp.xyz>`.
+You'll also want the existing SPF TXT record on `hamzonetechnologies.com` to explicitly authorize
+this server's IP (`ip4:<vps-ip>`) alongside whatever's already there, and `SMTP_FROM_ADDRESS` in
+`.env` set to something like `School ERP <noreply@hamzonetechnologies.com>`.
 
 Sanity-check the relay itself (independent of DNS) by sending straight through it once it's up:
 ```bash
