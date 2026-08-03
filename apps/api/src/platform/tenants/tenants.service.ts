@@ -48,16 +48,27 @@ export class TenantsService {
     private readonly platformSettings: PlatformSettingsService,
   ) {}
 
-  async list(page = 1, pageSize = 20) {
+  async list(page = 1, pageSize = 20, q?: string) {
+    const where = {
+      deletedAt: null,
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' as const } },
+              { slug: { contains: q, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
     const [data, total] = await Promise.all([
       this.platformPrisma.tenant.findMany({
-        where: { deletedAt: null },
+        where,
         include: { subscriptionPlan: true, createdBy: { select: { fullName: true } } },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      this.platformPrisma.tenant.count({ where: { deletedAt: null } }),
+      this.platformPrisma.tenant.count({ where }),
     ]);
     return { data, meta: { page, pageSize, total } };
   }

@@ -1,5 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+
+const INVITABLE_ROLES = ['SUB_ADMIN', 'ASSISTANT_SUPER_ADMIN'] as const;
+const GENDERS = ['MALE', 'FEMALE', 'OTHER'] as const;
 
 export class InviteAdminDto {
   @ApiProperty()
@@ -15,4 +18,13 @@ export class InviteAdminDto {
   @IsString()
   @MinLength(9)
   phone!: string;
+
+  @ApiProperty({ enum: INVITABLE_ROLES })
+  @IsIn(INVITABLE_ROLES)
+  role!: (typeof INVITABLE_ROLES)[number];
+
+  @ApiPropertyOptional({ enum: GENDERS })
+  @IsOptional()
+  @IsIn(GENDERS)
+  gender?: (typeof GENDERS)[number];
 }

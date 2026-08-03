@@ -4,6 +4,7 @@ import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { JwtUserPayload } from '../../common/decorators/current-user.decorator';
 import { PlatformNotifierService } from '../messaging/platform-notifier.service';
 import { CommunicationsService } from '../../communications/communications.service';
+import { TicketsGateway } from '../../tickets/tickets.gateway';
 
 const ESCALATION_INCLUDE = {
   tenant: { select: { id: true, name: true, slug: true } },
@@ -23,6 +24,7 @@ export class PlatformTicketsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifier: PlatformNotifierService,
     private readonly communications: CommunicationsService,
+    private readonly ticketsGateway: TicketsGateway,
   ) {}
 
   list() {
@@ -72,6 +74,14 @@ export class PlatformTicketsService {
         body,
       },
     });
+    this.ticketsGateway.emitComment(escalation.ticketId, {
+      id: comment.id,
+      body: comment.body,
+      createdAt: comment.createdAt,
+      isPlatformReply: comment.isPlatformReply,
+      platformAuthorName: comment.platformAuthorName,
+      author: null,
+    });
 
     const ticket = await db.ticket.findUnique({ where: { id: escalation.ticketId } });
     if (ticket) {
@@ -107,6 +117,7 @@ export class PlatformTicketsService {
         dashboardUrl: `/dashboard/tickets/${id}`,
       },
     });
+    this.ticketsGateway.emitStatusChange(escalation.ticketId, 'ASSIGNED');
 
     return updated;
   }
@@ -143,6 +154,7 @@ export class PlatformTicketsService {
         `School ERP: your ticket "${ticket.subject}" has been resolved.`,
       );
     }
+    this.ticketsGateway.emitStatusChange(escalation.ticketId, 'RESOLVED');
 
     return updated;
   }

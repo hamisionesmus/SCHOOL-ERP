@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { School, CheckCircle2, PauseCircle, Clock, Wallet, AlertTriangle, Sparkles } from 'lucide-react';
+import { School, CheckCircle2, PauseCircle, Clock, Wallet, AlertTriangle, Sparkles, Search } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
@@ -10,6 +10,7 @@ import { getSessionUser } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { daysUntil, formatCountdown, countdownTone } from '@/lib/date';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
@@ -103,10 +104,12 @@ export default function DashboardPage() {
   const [confirmTarget, setConfirmTarget] = useState<{ id: string; name: string; action: 'suspend' | 'activate' } | null>(
     null,
   );
+  const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['tenants'],
-    queryFn: () => apiFetch<{ data: Tenant[] }>('/platform/tenants'),
+    queryKey: ['tenants', search],
+    queryFn: () =>
+      apiFetch<{ data: Tenant[] }>(`/platform/tenants?pageSize=100${search ? `&q=${encodeURIComponent(search)}` : ''}`),
     // Quiet background refresh so a school's status (e.g. PENDING_PAYMENT -> ACTIVE) shows up here
     // without anyone needing to reload the page — isLoading above only gates the very first render.
     refetchInterval: 20_000,
@@ -115,6 +118,11 @@ export default function DashboardPage() {
   const { data: revenue, isLoading: revenueLoading } = useQuery({
     queryKey: ['analytics-revenue'],
     queryFn: () => apiFetch<RevenueOverview>('/platform/analytics/revenue'),
+  });
+
+  const { data: byCounty } = useQuery({
+    queryKey: ['analytics-schools-by-county'],
+    queryFn: () => apiFetch<{ county: string; count: number }[]>('/platform/analytics/schools-by-county'),
   });
 
   const toggleStatus = useMutation({
@@ -182,6 +190,24 @@ export default function DashboardPage() {
                 </Pie>
                 <Tooltip />
               </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {byCounty && byCounty.filter((c) => c.count > 0).length > 1 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Schools by County</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={Math.max(180, byCounty.length * 28)}>
+              <BarChart data={byCounty} layout="vertical" margin={{ left: 24 }}>
+                <XAxis type="number" allowDecimals={false} />
+                <YAxis type="category" dataKey="county" width={120} tick={{ fontSize: 12 }} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
@@ -268,6 +294,15 @@ export default function DashboardPage() {
           <CreateSchoolDialog />
         </CardHeader>
         <CardContent>
+          <div className="relative mb-4 max-w-sm">
+            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or slug..."
+              className="pl-8"
+            />
+          </div>
           {isLoading ? (
             <SkeletonTable rows={3} cols={6} />
           ) : tenants.length === 0 ? (

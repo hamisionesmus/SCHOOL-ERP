@@ -24,8 +24,8 @@ export class TenantsController {
   ) {}
 
   @Get()
-  list(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
-    return this.tenantsService.list(page ? Number(page) : undefined, pageSize ? Number(pageSize) : undefined);
+  list(@Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('q') q?: string) {
+    return this.tenantsService.list(page ? Number(page) : undefined, pageSize ? Number(pageSize) : undefined, q);
   }
 
   @Get(':id')

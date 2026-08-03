@@ -9,8 +9,8 @@ export interface JwtUserPayload {
   tenantSlug?: string;
   roles?: string[];
   permissions?: string[];
-  // Platform-realm only: 'SUPER_ADMIN' | 'SUB_ADMIN' — see RequirePlatformRole/PermissionsGuard for
-  // how this restricts a Sub-Admin from Security/Backups/Audit Logs/Platform Settings.
+  // Platform-realm only: 'SUPER_ADMIN' | 'ASSISTANT_SUPER_ADMIN' | 'SUB_ADMIN' — see
+  // RequirePlatformRole/PermissionsGuard for how this restricts each tier.
   role?: string;
 }
 

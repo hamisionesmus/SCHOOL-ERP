@@ -25,11 +25,27 @@ enum MpesaStkStatus {
 
 enum PlatformRole {
   SUPER_ADMIN
+  // Sits above SUB_ADMIN: can create schools (self-confirms their own OTP, unlike SUB_ADMIN — see
+  // TenantsService.requestCreate()'s isSubAdmin branch) and record finance ledger entries, but is
+  // blocked from Security, Backups, Audit Logs, Platform Settings, Message Templates, Admins
+  // management, and Tickets — same RequirePlatformRole gates as SUB_ADMIN, plus finance access.
+  ASSISTANT_SUPER_ADMIN
   // Delegated admin: can create schools (still gated by an OTP sent to a real SUPER_ADMIN, never to
   // themselves — see TenantsService.requestCreate()) and view revenue/earnings, but is blocked from
   // Security, Backups, Audit Logs, Platform Settings, and Message Templates — see
   // RequirePlatformRole('SUPER_ADMIN') usages.
   SUB_ADMIN
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum FinanceEntryType {
+  IN
+  OUT
 }
 
 enum BillingCycle {
@@ -226,6 +242,7 @@ model PlatformUser {
   fullName         String
   avatarUrl        String?
   role             PlatformRole @default(SUPER_ADMIN)
+  gender           Gender?
   twoFactorEnabled Boolean   @default(false)
   twoFactorSecret  String?
   createdAt        DateTime  @default(now())
@@ -241,6 +258,7 @@ model PlatformUser {
   schoolsCreated         Tenant[]
   notificationDismissals PlatformNotificationDismissal[]
   ticketsAssigned        PlatformTicketEscalation[]
+  financeEntries         PlatformFinanceEntry[]
 }
 
 model PlatformRefreshToken {
@@ -542,4 +560,19 @@ model PlatformTicketEscalation {
   resolvedAt       DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+// A manual money-in/money-out log (salaries, hosting costs, one-off revenue not captured by
+// PlatformPayment, etc.) — deliberately separate from PlatformPayment (school activation/renewal
+// revenue), not a replacement for it. FinanceService.overview() combines both sources for the
+// platform's real "how much do we make" figure. Editable by SUPER_ADMIN and ASSISTANT_SUPER_ADMIN.
+model PlatformFinanceEntry {
+  id              String            @id @default(uuid())
+  type            FinanceEntryType
+  category        String
+  amount          Int
+  description     String?
+  recordedByUserId String
+  recordedBy      PlatformUser      @relation(fields: [recordedByUserId], references: [id])
+  createdAt       DateTime          @default(now())
 }

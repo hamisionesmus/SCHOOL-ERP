@@ -17,4 +17,19 @@ export class AnalyticsController {
   revenue() {
     return this.analyticsService.revenueOverview();
   }
+
+  @Get('schools-by-county')
+  schoolsByCounty() {
+    return this.analyticsService.schoolsByCounty();
+  }
+
+  @Get('tickets')
+  tickets() {
+    return this.analyticsService.ticketsOverview();
+  }
+
+  @Get('admins')
+  admins() {
+    return this.analyticsService.adminsOverview();
+  }
 }

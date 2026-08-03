@@ -2,14 +2,23 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { LifeBuoy } from 'lucide-react';
+import { LifeBuoy, Clock, UserCheck, CheckCircle2, ListTodo } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard } from '@/components/ui/stat-card';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { SkeletonTable } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useBlockAssistantSuperAdmin } from '@/lib/require-super-admin';
+
+interface TicketsAnalytics {
+  total: number;
+  PENDING: number;
+  ASSIGNED: number;
+  RESOLVED: number;
+}
 
 const PRIORITY_TONE: Record<string, string> = {
   LOW: 'bg-slate-100 text-slate-600',
@@ -31,10 +40,16 @@ interface Escalation {
 }
 
 export default function PlatformTicketsPage() {
+  useBlockAssistantSuperAdmin();
   const { data: escalations, isLoading } = useQuery({
     queryKey: ['platform-tickets'],
     queryFn: () => apiFetch<Escalation[]>('/platform/tickets'),
     refetchInterval: 30_000,
+  });
+
+  const { data: analytics } = useQuery({
+    queryKey: ['platform-tickets-analytics'],
+    queryFn: () => apiFetch<TicketsAnalytics>('/platform/analytics/tickets'),
   });
 
   const table = useTableControls(escalations ?? [], { pageSize: 12, initialSortKey: 'createdAt' });
@@ -50,6 +65,15 @@ export default function PlatformTicketsPage() {
           Tickets a School Administrator couldn&apos;t resolve and escalated for platform attention.
         </p>
       </div>
+
+      {analytics && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <StatCard label="Total escalated" value={analytics.total} icon={ListTodo} accent="slate" />
+          <StatCard label="Pending" value={analytics.PENDING} icon={Clock} accent="amber" />
+          <StatCard label="Assigned" value={analytics.ASSIGNED} icon={UserCheck} accent="blue" />
+          <StatCard label="Resolved" value={analytics.RESOLVED} icon={CheckCircle2} accent="emerald" />
+        </div>
+      )}
 
       <Card>
         <CardHeader>

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -19,8 +19,8 @@ export class PlatformAdminsController {
   constructor(private readonly adminsService: PlatformAdminsService) {}
 
   @Get()
-  list() {
-    return this.adminsService.list();
+  list(@Query('q') q?: string) {
+    return this.adminsService.list(q);
   }
 
   @Get(':id')

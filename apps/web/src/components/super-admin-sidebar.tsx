@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   DatabaseBackup,
@@ -12,16 +13,19 @@ import {
   ChevronsRight,
   ShieldCheck,
   Wallet,
+  Landmark,
   Users,
   LifeBuoy,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { apiFetch, API_ORIGIN } from '@/lib/api';
 
 const SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
   { href: '/dashboard/admins', label: 'Admins', icon: Users },
   { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
+  { href: '/dashboard/finance', label: 'Finance', icon: Landmark },
   { href: '/dashboard/settings', label: 'Platform Settings', icon: Wallet },
   { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
   { href: '/dashboard/backups', label: 'Backups', icon: DatabaseBackup },
@@ -35,21 +39,48 @@ const SUB_ADMIN_NAV = [
   { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
 ];
 
+// Sits above Sub-Admin: school creation (self-confirmed) + finance recording, but no
+// Tickets/Admins/Settings/Security/Backups — see docs/RBAC.md.
+const ASSISTANT_SUPER_ADMIN_NAV = [
+  { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
+  { href: '/dashboard/finance', label: 'Finance', icon: Landmark },
+];
+
 const COLLAPSE_STORAGE_KEY = 'school-erp:sa-sidebar-collapsed';
+
+interface MeProfile {
+  fullName: string;
+  avatarUrl: string | null;
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
+}
 
 export function SuperAdminSidebar({
   email,
   role,
+  fallbackName,
   onLogout,
 }: {
   email: string;
   role?: string;
+  fallbackName: string;
   onLogout: () => void;
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const nav = role === 'SUB_ADMIN' ? SUB_ADMIN_NAV : SUPER_ADMIN_NAV;
+  const nav = role === 'SUB_ADMIN' ? SUB_ADMIN_NAV : role === 'ASSISTANT_SUPER_ADMIN' ? ASSISTANT_SUPER_ADMIN_NAV : SUPER_ADMIN_NAV;
+
+  // Shares the ['platform-me'] query key with DashboardTopbar/ProfilePage — React Query dedupes
+  // the request and this updates instantly once a new photo is saved on the Profile page.
+  const { data } = useQuery({
+    queryKey: ['platform-me'],
+    queryFn: () => apiFetch<MeProfile>('/platform/me'),
+  });
+  const name = data?.fullName ?? fallbackName;
 
   useEffect(() => {
     setCollapsed(localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1');
@@ -86,11 +117,20 @@ export function SuperAdminSidebar({
       >
         <div className="flex items-center justify-between px-5 py-5">
           {!collapsed && (
-            <div className="flex items-center gap-2 min-w-0">
-              <ShieldCheck size={18} className="flex-shrink-0 text-blue-400" />
-              <p className="truncate text-sm font-semibold text-white">
-                {role === 'SUB_ADMIN' ? 'Sub-Admin' : 'Super Admin'}
-              </p>
+            <div className="flex min-w-0 items-center gap-2.5">
+              {data?.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`${API_ORIGIN}${data.avatarUrl}`}
+                  alt=""
+                  className="h-8 w-8 flex-shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
+                  {initials(name)}
+                </span>
+              )}
+              <p className="truncate text-sm font-semibold text-white">{name}</p>
             </div>
           )}
           <button onClick={() => setMobileOpen(false)} className="lg:hidden text-slate-400" aria-label="Close menu">

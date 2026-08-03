@@ -105,12 +105,12 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
     smsBody: 'School ERP: confirm your settings change with code {{code}}. Expires in 15 min.',
   },
   SUB_ADMIN_WELCOME: {
-    variables: ['fullName', 'loginUrl', 'email', 'tempPassword', 'invitedByName'],
+    variables: ['fullName', 'loginUrl', 'email', 'tempPassword', 'invitedByName', 'roleLabel'],
     subject: 'You\'ve been added as a School ERP admin',
     emailBody:
-      'Hi {{fullName}},\n\n{{invitedByName}} has added you as an administrator on School ERP. You can create schools and view revenue, but Security, Backups, and Platform Settings stay with the main Super Admin.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password as soon as you sign in.',
+      'Hi {{fullName}},\n\n{{invitedByName}} has added you as {{roleLabel}} on School ERP. You can create schools and view revenue, but Security, Backups, Admins, Tickets, and Platform Settings stay with the main Super Admin.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password as soon as you sign in.',
     smsBody:
-      'School ERP: {{invitedByName}} added you as an admin. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
+      'School ERP: {{invitedByName}} added you as {{roleLabel}}. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
   },
   TICKET_ESCALATED: {
     variables: ['schoolName', 'subject', 'priority', 'escalationReason', 'dashboardUrl'],

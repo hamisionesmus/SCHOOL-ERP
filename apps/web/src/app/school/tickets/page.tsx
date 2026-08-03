@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useTicketSocket } from '@/lib/ticket-socket';
 
 const CATEGORIES = ['TECHNICAL', 'BILLING', 'ACCOUNT', 'GENERAL', 'COMPLAINT', 'OTHER'] as const;
 const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
@@ -27,7 +28,10 @@ interface Comment {
   createdAt: string;
   isPlatformReply: boolean;
   platformAuthorName: string | null;
-  author: UserRef | null;
+  // Live socket-delivered comments only carry {id, fullName} (see TicketsGateway payload) — narrower
+  // than the full UserRef the REST-fetched submittedBy/handledBy fields use, but comments only ever
+  // render .fullName, so this is deliberately the smaller shape.
+  author: { id: string; fullName: string } | null;
 }
 interface Ticket {
   id: string;
@@ -222,12 +226,29 @@ function TicketDetail({ id, canManage, onClose }: { id: string; canManage: boole
     queryClient.invalidateQueries({ queryKey: ['tickets'] });
   }
 
+  const { typingUser, emitTyping } = useTicketSocket(
+    id,
+    (comment) =>
+      queryClient.setQueryData<Ticket>(['ticket', id], (old) =>
+        old && !old.comments?.some((c) => c.id === comment.id)
+          ? { ...old, comments: [...(old.comments ?? []), comment] }
+          : old,
+      ),
+    (status) => {
+      // Platform-side actions (e.g. "assign to a Sub-Admin") broadcast platform-vocabulary statuses
+      // into the same room — only apply ones that are meaningful in the tenant's own OPEN/ESCALATED/
+      // RESOLVED vocabulary, so a school never sees an internal platform status like "ASSIGNED".
+      if (status !== 'OPEN' && status !== 'ESCALATED' && status !== 'RESOLVED') return;
+      queryClient.setQueryData<Ticket>(['ticket', id], (old) => (old ? { ...old, status } : old));
+    },
+  );
+
+  // The gateway broadcasts a sent comment back to everyone in the room, including the sender — the
+  // socket callback above already appends it, so this mutation only sends over REST and clears the
+  // input; it deliberately does NOT invalidate/refetch (that would double the comment briefly).
   const addComment = useMutation({
     mutationFn: () => apiFetch(`/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ body: commentBody }) }),
-    onSuccess: () => {
-      setCommentBody('');
-      invalidate();
-    },
+    onSuccess: () => setCommentBody(''),
     onError: (err) => notifyError(err, 'Failed to add comment'),
   });
 
@@ -307,23 +328,31 @@ function TicketDetail({ id, canManage, onClose }: { id: string; canManage: boole
               </ul>
 
               {ticket.status !== 'RESOLVED' && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (commentBody.trim()) addComment.mutate();
-                  }}
-                  className="mb-4 flex gap-2"
-                >
-                  <Input
-                    value={commentBody}
-                    onChange={(e) => setCommentBody(e.target.value)}
-                    placeholder="Add a reply..."
-                    className="flex-1"
-                  />
-                  <Button type="submit" size="sm" disabled={!commentBody.trim() || addComment.isPending}>
-                    Reply
-                  </Button>
-                </form>
+                <>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (commentBody.trim()) addComment.mutate();
+                    }}
+                    className="flex gap-2"
+                  >
+                    <Input
+                      value={commentBody}
+                      onChange={(e) => {
+                        setCommentBody(e.target.value);
+                        emitTyping();
+                      }}
+                      placeholder="Add a reply..."
+                      className="flex-1"
+                    />
+                    <Button type="submit" size="sm" disabled={!commentBody.trim() || addComment.isPending}>
+                      Reply
+                    </Button>
+                  </form>
+                  <p className="mb-4 mt-1 h-4 text-xs italic text-slate-400">
+                    {typingUser ? `${typingUser} is typing…` : ''}
+                  </p>
+                </>
               )}
 
               {canManage && ticket.status === 'OPEN' && (

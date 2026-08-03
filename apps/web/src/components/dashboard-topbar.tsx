@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, LogOut, UserCircle } from 'lucide-react';
-import { apiFetch, API_ORIGIN } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import { PlatformNotificationBell } from '@/components/platform-notification-bell';
 
 interface MeProfile {
@@ -43,21 +43,13 @@ export function DashboardTopbar({ fallbackName, onLogout }: { fallbackName: stri
       <div ref={ref} className="relative">
         <button
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
+          className="flex items-center gap-1 rounded-full p-1 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
+          aria-label={`${name} — account menu`}
+          title={name}
         >
-          {data?.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`${API_ORIGIN}${data.avatarUrl}`}
-              alt=""
-              className="h-8 w-8 rounded-full object-cover"
-            />
-          ) : (
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
-              {initials(name)}
-            </span>
-          )}
-          <span className="hidden sm:inline">{name}</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+            {initials(name)}
+          </span>
           <ChevronDown size={14} className="text-slate-400" />
         </button>
 

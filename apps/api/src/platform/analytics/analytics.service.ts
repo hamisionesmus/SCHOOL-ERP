@@ -73,4 +73,54 @@ export class AnalyticsService {
     }
     return Array.from(buckets.entries()).map(([month, amount]) => ({ month, amount }));
   }
+
+  async schoolsByCounty() {
+    const rows = await this.platformPrisma.tenant.groupBy({
+      by: ['county'],
+      where: { deletedAt: null },
+      _count: { _all: true },
+    });
+    return rows
+      .map((r) => ({ county: r.county ?? 'Unspecified', count: r._count._all }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  /** Escalated tickets only — the platform never sees routine tickets a school resolves internally,
+   * same visibility boundary already established by the notification bell's ticket count query. */
+  async ticketsOverview() {
+    const rows = await this.platformPrisma.platformTicketEscalation.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+    });
+    const statusCounts: Record<string, number> = { PENDING: 0, ASSIGNED: 0, RESOLVED: 0 };
+    for (const row of rows) statusCounts[row.status] = row._count._all;
+    return {
+      total: rows.reduce((sum, r) => sum + r._count._all, 0),
+      ...statusCounts,
+    };
+  }
+
+  async adminsOverview() {
+    const [byRole, byGender] = await Promise.all([
+      this.platformPrisma.platformUser.groupBy({
+        by: ['role'],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+      this.platformPrisma.platformUser.groupBy({
+        by: ['gender'],
+        where: { deletedAt: null },
+        _count: { _all: true },
+      }),
+    ]);
+    const roleCounts: Record<string, number> = { SUPER_ADMIN: 0, ASSISTANT_SUPER_ADMIN: 0, SUB_ADMIN: 0 };
+    for (const row of byRole) roleCounts[row.role] = row._count._all;
+    const genderCounts: Record<string, number> = { MALE: 0, FEMALE: 0, OTHER: 0, UNSPECIFIED: 0 };
+    for (const row of byGender) genderCounts[row.gender ?? 'UNSPECIFIED'] = row._count._all;
+    return {
+      total: byRole.reduce((sum, r) => sum + r._count._all, 0),
+      byRole: roleCounts,
+      byGender: genderCounts,
+    };
+  }
 }

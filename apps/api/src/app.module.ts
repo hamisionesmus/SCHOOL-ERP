@@ -49,6 +49,7 @@ import { PlatformAdminsModule } from './platform/admins/admins.module';
 import { PlatformNotificationsModule } from './platform/notifications/platform-notifications.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { PlatformTicketsModule } from './platform/tickets/platform-tickets.module';
+import { PlatformFinanceModule } from './platform/finance/finance.module';
 
 @Module({
   imports: [
@@ -101,6 +102,7 @@ import { PlatformTicketsModule } from './platform/tickets/platform-tickets.modul
     PlatformNotificationsModule,
     TicketsModule,
     PlatformTicketsModule,
+    PlatformFinanceModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

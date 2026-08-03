@@ -13,6 +13,7 @@ const ADMIN_SELECT = {
   phone: true,
   avatarUrl: true,
   role: true,
+  gender: true,
   twoFactorEnabled: true,
   deletedAt: true,
   createdAt: true,
@@ -33,8 +34,16 @@ export class PlatformAdminsService {
     private readonly notifier: PlatformNotifierService,
   ) {}
 
-  async list() {
+  async list(q?: string) {
     return this.platformPrisma.platformUser.findMany({
+      where: q
+        ? {
+            OR: [
+              { fullName: { contains: q, mode: 'insensitive' } },
+              { email: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : undefined,
       select: ADMIN_SELECT,
       orderBy: { createdAt: 'asc' },
     });
@@ -94,10 +103,18 @@ export class PlatformAdminsService {
     const passwordHash = await bcrypt.hash(tempPassword, 12);
 
     const admin = await this.platformPrisma.platformUser.create({
-      data: { email: dto.email, fullName: dto.fullName, phone: dto.phone, passwordHash, role: 'SUB_ADMIN' },
+      data: {
+        email: dto.email,
+        fullName: dto.fullName,
+        phone: dto.phone,
+        passwordHash,
+        role: dto.role,
+        gender: dto.gender,
+      },
       select: ADMIN_SELECT,
     });
 
+    const roleLabel = dto.role === 'ASSISTANT_SUPER_ADMIN' ? 'an Assistant Super Admin' : 'a Sub-Admin';
     const loginUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/login`;
     await this.notifier.notify('SUB_ADMIN_WELCOME', {
       to: { email: dto.email, phone: dto.phone },
@@ -107,6 +124,7 @@ export class PlatformAdminsService {
         email: dto.email,
         tempPassword,
         invitedByName: inviter?.fullName ?? 'the platform Super Admin',
+        roleLabel,
       },
     });
 

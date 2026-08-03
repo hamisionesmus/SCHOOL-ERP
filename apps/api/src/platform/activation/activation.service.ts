@@ -129,6 +129,14 @@ export class ActivationService {
     if (invoice.status === 'PAID') {
       throw new BadRequestException('This school has already been activated.');
     }
+    const pendingStk = await this.platformPrisma.platformMpesaStkRequest.findFirst({
+      where: { invoiceId: invoice.id, status: 'PENDING' },
+    });
+    if (pendingStk) {
+      throw new BadRequestException(
+        'A payment is already in progress for this invoice — please wait for it to complete or fail before trying again.',
+      );
+    }
     const settings = await this.platformSettings.get();
     if (!settings.stkEnabled) {
       throw new BadRequestException('M-Pesa STK Push is currently unavailable — please use another payment method.');
@@ -278,6 +286,14 @@ export class ActivationService {
     const { tenant, invoice } = await this.loadTenantAndInvoice(tenantId, invoiceId);
     if (invoice.status === 'PAID') {
       throw new BadRequestException('This school has already been activated.');
+    }
+    const pendingProof = await this.platformPrisma.platformPaymentProof.findFirst({
+      where: { invoiceId, status: 'PENDING_REVIEW' },
+    });
+    if (pendingProof) {
+      throw new BadRequestException(
+        "You already have a payment proof awaiting review for this invoice — no need to submit another. We'll notify you once it's checked.",
+      );
     }
     const settings = await this.platformSettings.get();
     if (method === 'BANK' && !settings.bankTransferEnabled) {

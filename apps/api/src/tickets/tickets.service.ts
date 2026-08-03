@@ -4,6 +4,7 @@ import { PlatformPrismaService } from '../common/prisma/platform-prisma.service'
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { CommunicationsService } from '../communications/communications.service';
 import { PlatformNotifierService } from '../platform/messaging/platform-notifier.service';
+import { TicketsGateway } from './tickets.gateway';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { CreateTicketCommentDto } from './dto/create-comment.dto';
 import { ResolveTicketDto } from './dto/resolve-ticket.dto';
@@ -27,6 +28,7 @@ export class TicketsService {
     private readonly platformPrisma: PlatformPrismaService,
     private readonly communications: CommunicationsService,
     private readonly platformNotifier: PlatformNotifierService,
+    private readonly ticketsGateway: TicketsGateway,
   ) {}
 
   async create(user: JwtUserPayload, dto: CreateTicketDto) {
@@ -99,10 +101,19 @@ export class TicketsService {
   async addComment(user: JwtUserPayload, id: string, dto: CreateTicketCommentDto) {
     await this.findAccessible(user, id);
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
-    return db.ticketComment.create({
+    const comment = await db.ticketComment.create({
       data: { ticketId: id, authorUserId: user.sub, body: dto.body },
       include: { author: { select: { id: true, fullName: true } } },
     });
+    this.ticketsGateway.emitComment(id, {
+      id: comment.id,
+      body: comment.body,
+      createdAt: comment.createdAt,
+      isPlatformReply: comment.isPlatformReply,
+      platformAuthorName: comment.platformAuthorName,
+      author: comment.author,
+    });
+    return comment;
   }
 
   async resolve(user: JwtUserPayload, id: string, dto: ResolveTicketDto) {
@@ -130,6 +141,7 @@ export class TicketsService {
       ticket.submittedByUserId,
       `School ERP: your ticket "${ticket.subject}" has been resolved.`,
     );
+    this.ticketsGateway.emitStatusChange(id, 'RESOLVED');
 
     return resolved;
   }
@@ -180,6 +192,7 @@ export class TicketsService {
         }),
       ),
     );
+    this.ticketsGateway.emitStatusChange(id, 'ESCALATED');
 
     return updated;
   }

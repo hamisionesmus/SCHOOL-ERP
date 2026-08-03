@@ -13,6 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useBlockAssistantSuperAdmin } from '@/lib/require-super-admin';
+import { useTicketSocket } from '@/lib/ticket-socket';
 
 const PRIORITY_TONE: Record<string, string> = {
   LOW: 'bg-slate-100 text-slate-600',
@@ -58,6 +60,7 @@ interface Admin {
 }
 
 export default function PlatformTicketDetailPage() {
+  useBlockAssistantSuperAdmin();
   const params = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const isSuperAdmin = getSessionUser()?.role === 'SUPER_ADMIN';
@@ -81,12 +84,33 @@ export default function PlatformTicketDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['platform-tickets'] });
   }
 
+  // Room is keyed by the tenant-schema Ticket.id (data.ticket.id), not the escalation id — this
+  // matches the room the tenant-side chat (apps/web/src/app/school/tickets/page.tsx) joins for the
+  // same conversation, so both sides broadcast into the same place.
+  const { typingUser, emitTyping } = useTicketSocket(
+    data?.ticket?.id,
+    (liveComment) =>
+      queryClient.setQueryData<typeof data>(['platform-ticket', params.id], (old) =>
+        old?.ticket && !old.ticket.comments.some((c) => c.id === liveComment.id)
+          ? { ...old, ticket: { ...old.ticket, comments: [...old.ticket.comments, liveComment] } }
+          : old,
+      ),
+    (status) => {
+      // A school resolving the underlying ticket also broadcasts 'RESOLVED' — apply it here too so
+      // this view updates live. Ignore anything outside the platform's own PENDING/ASSIGNED/RESOLVED
+      // vocabulary (e.g. a tenant-side 'OPEN'/'ESCALATED' event, which has no meaning here).
+      if (status !== 'PENDING' && status !== 'ASSIGNED' && status !== 'RESOLVED') return;
+      queryClient.setQueryData<typeof data>(['platform-ticket', params.id], (old) =>
+        old ? { ...old, escalation: { ...old.escalation, status } } : old,
+      );
+    },
+  );
+
+  // The gateway broadcasts a sent comment back to everyone in the room, including the sender — the
+  // socket callback above already appends it, so this deliberately does NOT invalidate/refetch.
   const addComment = useMutation({
     mutationFn: () => apiFetch(`/platform/tickets/${params.id}/comments`, { method: 'POST', body: JSON.stringify({ body: comment }) }),
-    onSuccess: () => {
-      setComment('');
-      invalidate();
-    },
+    onSuccess: () => setComment(''),
     onError: (err) => notifyError(err, 'Failed to reply'),
   });
 
@@ -185,18 +209,29 @@ export default function PlatformTicketDetailPage() {
           </ul>
 
           {escalation.status !== 'RESOLVED' && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (comment.trim()) addComment.mutate();
-              }}
-              className="flex gap-2"
-            >
-              <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Reply as Platform Support..." className="flex-1" />
-              <Button type="submit" size="sm" disabled={!comment.trim() || addComment.isPending}>
-                Reply
-              </Button>
-            </form>
+            <>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (comment.trim()) addComment.mutate();
+                }}
+                className="flex gap-2"
+              >
+                <Input
+                  value={comment}
+                  onChange={(e) => {
+                    setComment(e.target.value);
+                    emitTyping();
+                  }}
+                  placeholder="Reply as Platform Support..."
+                  className="flex-1"
+                />
+                <Button type="submit" size="sm" disabled={!comment.trim() || addComment.isPending}>
+                  Reply
+                </Button>
+              </form>
+              <p className="mt-1 h-4 text-xs italic text-slate-400">{typingUser ? `${typingUser} is typing…` : ''}</p>
+            </>
           )}
         </CardContent>
       </Card>
