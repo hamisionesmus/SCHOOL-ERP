@@ -33,6 +33,9 @@ interface Tenant {
   bankAccountName: string | null;
   bankAccountNumber: string | null;
   createdAt: string;
+  county: string | null;
+  town: string | null;
+  createdBy: { fullName: string } | null;
 }
 interface TenantUsage {
   totalMb: number;
@@ -128,7 +131,11 @@ export default function SchoolDetailPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">{tenant.name}</h1>
-            <p className="text-sm text-slate-500">{tenant.slug} · created {new Date(tenant.createdAt).toLocaleDateString()}</p>
+            <p className="text-sm text-slate-500">
+              {tenant.slug} · created {new Date(tenant.createdAt).toLocaleDateString()}
+              {tenant.createdBy && ` by ${tenant.createdBy.fullName}`}
+              {tenant.county && ` · ${tenant.county}${tenant.town ? `, ${tenant.town}` : ''}`}
+            </p>
           </div>
           <Badge status={tenant.status} />
         </div>

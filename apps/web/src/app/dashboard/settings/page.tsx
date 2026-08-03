@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
@@ -96,6 +96,10 @@ export default function PlatformSettingsPage() {
   const [tab, setTab] = useState<TabKey>('payment');
   const [pending, setPending] = useState<PendingChange | null>(null);
   const [code, setCode] = useState('');
+  // Bumped only when our own confirmed save lands — remounts the active tab (via its `key` below)
+  // so its form resyncs from the freshly-saved server data. Background refetchInterval ticks don't
+  // touch this, so they never remount a tab mid-edit and clobber unsaved typing.
+  const [dataVersion, setDataVersion] = useState(0);
   const queryClient = useQueryClient();
 
   const settingsQuery = useQuery({
@@ -116,6 +120,7 @@ export default function PlatformSettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platform-settings'] });
       queryClient.invalidateQueries({ queryKey: ['platform-message-templates'] });
+      setDataVersion((v) => v + 1);
       notifySuccess(`${pending!.label} saved`);
       setPending(null);
       setCode('');
@@ -160,14 +165,15 @@ export default function PlatformSettingsPage() {
         <Skeleton className="h-64 w-full" />
       ) : (
         <>
-          {tab === 'payment' && <PaymentDetailsTab data={settingsQuery.data} onRequested={onRequested} />}
-          {tab === 'notifications' && <NotificationsTab data={settingsQuery.data} onRequested={onRequested} />}
-          {tab === 'api' && <ApiConfigTab data={settingsQuery.data} onRequested={onRequested} />}
-          {tab === 'branding' && <BrandingTab data={settingsQuery.data} onRequested={onRequested} />}
+          {tab === 'payment' && <PaymentDetailsTab key={dataVersion} data={settingsQuery.data} onRequested={onRequested} />}
+          {tab === 'notifications' && <NotificationsTab key={dataVersion} data={settingsQuery.data} onRequested={onRequested} />}
+          {tab === 'api' && <ApiConfigTab key={dataVersion} data={settingsQuery.data} onRequested={onRequested} />}
+          {tab === 'branding' && <BrandingTab key={dataVersion} data={settingsQuery.data} onRequested={onRequested} />}
         </>
       )}
       {tab === 'templates' && (
         <TemplatesTab
+          dataVersion={dataVersion}
           templates={templatesQuery.data}
           loading={templatesQuery.isLoading}
           onRequested={onRequested}
@@ -269,9 +275,14 @@ function Toggle({
 
 function PaymentDetailsTab({ data, onRequested }: { data?: PlatformSettings; onRequested: OnRequested }) {
   const [form, setForm] = useState<Partial<PlatformSettings>>({});
+  // Sync only once per mount (the parent remounts this tab via `key={dataVersion}` after our own
+  // confirmed save) — not on every background refetchInterval tick, which would otherwise clobber
+  // in-progress typing.
+  const hasSynced = useRef(false);
 
   useEffect(() => {
-    if (data) {
+    if (data && !hasSynced.current) {
+      hasSynced.current = true;
       setForm({
         bankName: data.bankName ?? '',
         bankAccountName: data.bankAccountName ?? '',
@@ -374,9 +385,11 @@ function PaymentDetailsTab({ data, onRequested }: { data?: PlatformSettings; onR
 
 function NotificationsTab({ data, onRequested }: { data?: PlatformSettings; onRequested: OnRequested }) {
   const [form, setForm] = useState<Partial<PlatformSettings>>({});
+  const hasSynced = useRef(false);
 
   useEffect(() => {
-    if (data) {
+    if (data && !hasSynced.current) {
+      hasSynced.current = true;
       setForm({
         smsEnabled: data.smsEnabled,
         emailEnabled: data.emailEnabled,
@@ -494,9 +507,11 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
     resendApiKey: '',
     advantaApiKey: '',
   });
+  const hasSynced = useRef(false);
 
   useEffect(() => {
-    if (data) {
+    if (data && !hasSynced.current) {
+      hasSynced.current = true;
       setForm({
         mpesaEnv: data.mpesaEnv ?? '',
         mpesaConsumerKey: data.mpesaConsumerKey ?? '',
@@ -646,9 +661,11 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
 
 function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequested: OnRequested }) {
   const [form, setForm] = useState({ systemName: '', loginTagline: '', loginSubtitle: '' });
+  const hasSynced = useRef(false);
 
   useEffect(() => {
-    if (data) {
+    if (data && !hasSynced.current) {
+      hasSynced.current = true;
       setForm({
         systemName: data.systemName ?? '',
         loginTagline: data.loginTagline ?? '',
@@ -722,10 +739,12 @@ function TemplatesTab({
   templates,
   loading,
   onRequested,
+  dataVersion,
 }: {
   templates?: EffectiveTemplate[];
   loading: boolean;
   onRequested: OnRequested;
+  dataVersion: number;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
 
@@ -735,7 +754,10 @@ function TemplatesTab({
     <div className="flex flex-col gap-3">
       {(templates ?? []).map((t) => (
         <TemplateRow
-          key={t.key}
+          // Remounts (resyncing subject/body from the server) only when our own confirmed save
+          // bumps dataVersion — a background refetchInterval tick keeps the same key, so it never
+          // clobbers an in-progress edit.
+          key={`${t.key}-${dataVersion}`}
           template={t}
           open={openKey === t.key}
           onToggle={() => setOpenKey(openKey === t.key ? null : t.key)}
@@ -760,11 +782,15 @@ function TemplateRow({
   const [subject, setSubject] = useState(template.subject ?? '');
   const [emailBody, setEmailBody] = useState(template.emailBody ?? '');
   const [smsBody, setSmsBody] = useState(template.smsBody ?? '');
+  const hasSynced = useRef(false);
 
   useEffect(() => {
-    setSubject(template.subject ?? '');
-    setEmailBody(template.emailBody ?? '');
-    setSmsBody(template.smsBody ?? '');
+    if (!hasSynced.current) {
+      hasSynced.current = true;
+      setSubject(template.subject ?? '');
+      setEmailBody(template.emailBody ?? '');
+      setSmsBody(template.smsBody ?? '');
+    }
   }, [template]);
 
   const requestSave = useMutation({

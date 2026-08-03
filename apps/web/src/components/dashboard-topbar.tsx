@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, LogOut, UserCircle } from 'lucide-react';
 import { apiFetch, API_ORIGIN } from '@/lib/api';
+import { PlatformNotificationBell } from '@/components/platform-notification-bell';
 
 interface MeProfile {
   fullName: string;
@@ -37,7 +38,8 @@ export function DashboardTopbar({ fallbackName, onLogout }: { fallbackName: stri
   }, []);
 
   return (
-    <header className="flex h-14 flex-shrink-0 items-center justify-end border-b border-slate-200 bg-white px-4 lg:px-10">
+    <header className="flex h-14 flex-shrink-0 items-center justify-end gap-1 border-b border-slate-200 bg-white px-4 lg:px-10">
+      <PlatformNotificationBell />
       <div ref={ref} className="relative">
         <button
           onClick={() => setOpen((v) => !v)}

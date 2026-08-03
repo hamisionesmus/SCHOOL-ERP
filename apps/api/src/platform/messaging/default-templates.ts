@@ -9,7 +9,9 @@ export type MessageTemplateKey =
   | 'DEMO_REMINDER'
   | 'RENEWAL_REMINDER'
   | 'SETTINGS_OTP'
-  | 'SUB_ADMIN_WELCOME';
+  | 'SUB_ADMIN_WELCOME'
+  | 'TICKET_ESCALATED'
+  | 'TICKET_ASSIGNED';
 
 export interface MessageTemplateContent {
   subject?: string;
@@ -109,5 +111,20 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
       'Hi {{fullName}},\n\n{{invitedByName}} has added you as an administrator on School ERP. You can create schools and view revenue, but Security, Backups, and Platform Settings stay with the main Super Admin.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password as soon as you sign in.',
     smsBody:
       'School ERP: {{invitedByName}} added you as an admin. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
+  },
+  TICKET_ESCALATED: {
+    variables: ['schoolName', 'subject', 'priority', 'escalationReason', 'dashboardUrl'],
+    subject: 'Ticket escalated — {{schoolName}}',
+    emailBody:
+      '"{{schoolName}}" escalated a support ticket that needs platform attention.\n\nSubject: {{subject}}\nPriority: {{priority}}\nWhy it was escalated: {{escalationReason}}\n\nReview and resolve or assign it here: {{dashboardUrl}}',
+    smsBody:
+      'School ERP: "{{schoolName}}" escalated a ticket ({{priority}} priority) — "{{subject}}". Review at {{dashboardUrl}}',
+  },
+  TICKET_ASSIGNED: {
+    variables: ['schoolName', 'subject', 'priority', 'dashboardUrl'],
+    subject: 'Ticket assigned to you — {{schoolName}}',
+    emailBody:
+      'You\'ve been assigned an escalated support ticket from "{{schoolName}}".\n\nSubject: {{subject}}\nPriority: {{priority}}\n\nView and resolve it here: {{dashboardUrl}}',
+    smsBody: 'School ERP: you\'ve been assigned a ticket from "{{schoolName}}" — "{{subject}}". {{dashboardUrl}}',
   },
 };

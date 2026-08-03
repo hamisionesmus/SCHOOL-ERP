@@ -28,6 +28,9 @@ interface Tenant {
   address: string | null;
   currentPeriodEnd: string | null;
   createdAt: string;
+  county: string | null;
+  town: string | null;
+  createdBy: { fullName: string } | null;
 }
 interface TenantUsage {
   totalMb: number;
@@ -278,6 +281,7 @@ export default function DashboardPage() {
                     <SortableTh label="Slug" active={table.sortKey === 'slug'} dir={table.sortDir} onClick={() => table.toggleSort('slug')} />
                     <SortableTh label="Status" active={table.sortKey === 'status'} dir={table.sortDir} onClick={() => table.toggleSort('status')} />
                     <th className="py-2 font-medium">Storage</th>
+                    <SortableTh label="County" active={table.sortKey === 'county'} dir={table.sortDir} onClick={() => table.toggleSort('county')} />
                     <SortableTh
                       label="Renewal"
                       active={table.sortKey === 'currentPeriodEnd'}
@@ -308,10 +312,16 @@ export default function DashboardPage() {
                       <td className="py-2">
                         <UsageCell tenantId={t.id} />
                       </td>
+                      <td className="py-2 text-slate-500">
+                        {t.county ? `${t.county}${t.town ? `, ${t.town}` : ''}` : <span className="text-slate-300">—</span>}
+                      </td>
                       <td className="py-2">
                         <RenewalCell currentPeriodEnd={t.currentPeriodEnd} />
                       </td>
-                      <td className="py-2 text-slate-500">{new Date(t.createdAt).toLocaleDateString()}</td>
+                      <td className="py-2 text-slate-500">
+                        {new Date(t.createdAt).toLocaleDateString()}
+                        {t.createdBy && <div className="text-xs text-slate-400">by {t.createdBy.fullName}</div>}
+                      </td>
                       <td className="py-2 text-right">
                         <div className="flex justify-end gap-2">
                           <Link href={`/dashboard/schools/${t.id}`}>

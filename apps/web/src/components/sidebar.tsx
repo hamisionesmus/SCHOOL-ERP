@@ -29,6 +29,7 @@ import {
   MapPinned,
   ChevronsLeft,
   ChevronsRight,
+  LifeBuoy,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { SessionUser } from '@/lib/auth';
@@ -105,6 +106,10 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/school/classes', label: 'Classes', icon: School, anyOf: ['TENANT:MANAGE_USERS'] },
       { href: '/school/settings', label: 'School Settings', icon: SettingsIcon, anyOf: ['SETTINGS:MANAGE'] },
     ],
+  },
+  {
+    label: 'Support',
+    items: [{ href: '/school/tickets', label: 'Tickets', icon: LifeBuoy }],
   },
 ];
 

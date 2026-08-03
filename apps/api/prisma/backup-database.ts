@@ -2,13 +2,17 @@
  * Backs up the whole Postgres database (the `public` platform schema plus every tenant schema all
  * live in one Postgres database under schema-per-tenant — see docs/ARCHITECTURE.md §2 — so a single
  * `pg_dump` of the database covers every school) and the local-disk uploads folder to timestamped
- * files under `backups/`. Run manually (`npm run backup`) or on a schedule via cron / Windows Task
- * Scheduler — see docs/ARCHITECTURE.md for the exact scheduling commands.
+ * files under `backups/`. Called by BackupsService.trigger() — both the manual "Run backup now"
+ * button and the hourly @Cron job in production — as well as runnable standalone (`npm run backup`).
  *
- * Postgres runs in the `postgres` Docker Compose service (see docker-compose.yml), not installed on
- * the host, so `pg_dump` is invoked *inside* that container via `docker compose exec` rather than
- * assuming a host-installed Postgres client toolchain — the earlier host-pg_dump approach failed with
- * ENOENT on a plain Windows/macOS host with no local Postgres install.
+ * `pg_dump` is invoked directly against the `postgres` service over the docker network (host/port
+ * parsed straight out of DATABASE_URL), not via `docker compose exec` — the previous approach only
+ * worked when this script ran on the Docker *host* with the `docker` CLI on PATH. Since
+ * BackupsService actually runs this from *inside* the already-running `api` container (which has
+ * neither Docker CLI nor socket access), that path silently failed there; this direct-`pg_dump`
+ * approach works identically whether invoked from inside the container (prod, via the cron/button)
+ * or from a host machine that happens to have the `postgresql-client` package installed and can
+ * reach the `postgres` service's exposed port.
  *
  * This script does not upload anywhere; wiring it to S3/GCS/etc. is a deployment-specific follow-up,
  * not something this repo can do without real cloud credentials.
@@ -30,29 +34,27 @@ function parseDatabaseUrl(url: string) {
     user: decodeURIComponent(u.username),
     password: decodeURIComponent(u.password),
     database: u.pathname.replace(/^\//, ''),
+    host: u.hostname,
+    port: u.port || '5432',
   };
 }
 
 function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error('DATABASE_URL not set');
-  const { user, password, database } = parseDatabaseUrl(databaseUrl);
+  const { user, password, database, host, port } = parseDatabaseUrl(databaseUrl);
 
-  const repoRoot = join(process.cwd(), '..', '..');
   const backupsDir = join(process.cwd(), 'backups');
   if (!existsSync(backupsDir)) mkdirSync(backupsDir, { recursive: true });
 
   const stamp = timestamp();
   const sqlPath = join(backupsDir, `db-${database}-${stamp}.sql`);
 
-  console.log(`Dumping database "${database}" (all schemas) via the postgres container to ${sqlPath} ...`);
+  console.log(`Dumping database "${database}" (all schemas) from ${host}:${port} to ${sqlPath} ...`);
   const dump = execFileSync(
-    'docker',
-    [
-      'compose', '--project-directory', repoRoot, 'exec', '-T', '-e', `PGPASSWORD=${password}`,
-      'postgres', 'pg_dump', '-U', user, '-F', 'p', database,
-    ],
-    { maxBuffer: 1024 * 1024 * 512 },
+    'pg_dump',
+    ['-h', host, '-p', port, '-U', user, '-F', 'p', database],
+    { env: { ...process.env, PGPASSWORD: password }, maxBuffer: 1024 * 1024 * 512 },
   );
   writeFileSync(sqlPath, dump);
 

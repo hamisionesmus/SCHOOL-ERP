@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
+import { KENYA_COUNTIES } from '../../../common/kenya-counties';
 
 export class RequestTenantDto {
   @ApiProperty({ example: 'Greenfield Academy' })
@@ -17,6 +18,16 @@ export class RequestTenantDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @ApiPropertyOptional({ enum: KENYA_COUNTIES })
+  @IsOptional()
+  @IsIn(KENYA_COUNTIES)
+  county?: string;
+
+  @ApiPropertyOptional({ description: 'Town/city — free text' })
+  @IsOptional()
+  @IsString()
+  town?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

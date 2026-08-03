@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { apiFetch, ApiError } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
@@ -85,7 +86,11 @@ export default function AdminsPage() {
             <tbody className="divide-y divide-slate-100">
               {(adminsQuery.data ?? []).map((admin) => (
                 <tr key={admin.id}>
-                  <td className="px-4 py-3 font-medium text-slate-900">{admin.fullName}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">
+                    <Link href={`/dashboard/admins/${admin.id}`} className="hover:underline">
+                      {admin.fullName}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-slate-600">{admin.email}</td>
                   <td className="px-4 py-3 text-slate-600">{admin.phone ?? '—'}</td>
                   <td className="px-4 py-3">

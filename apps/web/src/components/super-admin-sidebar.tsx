@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Wallet,
   Users,
+  LifeBuoy,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -20,15 +21,19 @@ import { cn } from '@/lib/utils';
 const SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
   { href: '/dashboard/admins', label: 'Admins', icon: Users },
+  { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
   { href: '/dashboard/settings', label: 'Platform Settings', icon: Wallet },
   { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
   { href: '/dashboard/backups', label: 'Backups', icon: DatabaseBackup },
 ];
 
-// A Sub-Admin can create schools and see revenue (both live on the Schools page) but nothing else —
-// Admins/Platform Settings/Security/Backups are all Super-Admin-only, both here and enforced
-// server-side via @RequirePlatformRole('SUPER_ADMIN').
-const SUB_ADMIN_NAV = [{ href: '/dashboard', label: 'Schools', icon: LayoutDashboard }];
+// A Sub-Admin can create schools, see revenue, and handle escalated tickets (assigned to them or
+// unassigned) but nothing else — Admins/Platform Settings/Security/Backups are all Super-Admin-only,
+// both here and enforced server-side via @RequirePlatformRole('SUPER_ADMIN').
+const SUB_ADMIN_NAV = [
+  { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
+  { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
+];
 
 const COLLAPSE_STORAGE_KEY = 'school-erp:sa-sidebar-collapsed';
 

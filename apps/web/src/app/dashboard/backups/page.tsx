@@ -18,6 +18,7 @@ interface BackupFile {
   sizeBytes: number;
   createdAt: string;
   kind: 'database' | 'uploads';
+  archived: boolean;
 }
 interface BackupsPage {
   data: BackupFile[];
@@ -101,7 +102,10 @@ export default function BackupsPage() {
           <h1 className="text-2xl font-semibold text-slate-900">Backups</h1>
           <p className="mt-1 text-sm text-slate-500">
             A database dump covers every school (schema-per-tenant means one Postgres database for
-            all of them), plus an archive of the local-disk uploads folder.
+            all of them), plus an archive of the local-disk uploads folder. A fresh backup runs
+            automatically every hour — nothing here needs a manual click to happen — and files older
+            than 48 hours are compressed and moved into an archive automatically. Nothing is ever
+            deleted; archived files stay downloadable below.
           </p>
         </div>
         <Button onClick={() => trigger.mutate()} disabled={trigger.isPending}>
@@ -174,6 +178,11 @@ export default function BackupsPage() {
                             <Archive size={14} className="text-violet-500" />
                           )}
                           {b.name}
+                          {b.archived && (
+                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                              Archived
+                            </span>
+                          )}
                         </span>
                       </td>
                       <td className="py-2 text-slate-500">{formatBytes(b.sizeBytes)}</td>

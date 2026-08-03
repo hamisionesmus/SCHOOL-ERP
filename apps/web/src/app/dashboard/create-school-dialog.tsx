@@ -8,9 +8,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { apiFetch, ApiError } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { getSessionUser } from '@/lib/auth';
+import { KENYA_COUNTIES } from '@/lib/kenya-counties';
+
+const COUNTY_OPTIONS = KENYA_COUNTIES.map((c) => ({ value: c, label: c }));
 
 const DEMO_DURATION_OPTIONS = [
   { label: '4 hours', hours: 4 },
@@ -25,6 +29,8 @@ const detailsSchema = z.object({
   name: z.string().min(2),
   slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'lowercase, hyphenated'),
   address: z.string().optional(),
+  county: z.string().optional(),
+  town: z.string().optional(),
   adminEmail: z.string().email(),
   adminFullName: z.string().min(2),
   adminPassword: z.string().min(8),
@@ -59,6 +65,7 @@ export function CreateSchoolDialog() {
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<DetailsValues>({
     resolver: zodResolver(detailsSchema),
@@ -66,6 +73,7 @@ export function CreateSchoolDialog() {
   });
   const accountType = watch('accountType');
   const isDemo = accountType === 'demo';
+  const county = watch('county');
 
   const requestCreate = useMutation({
     mutationFn: (values: DetailsValues) =>
@@ -75,6 +83,8 @@ export function CreateSchoolDialog() {
           name: values.name,
           slug: values.slug,
           address: values.address,
+          county: values.county || undefined,
+          town: values.town || undefined,
           adminEmail: values.adminEmail,
           adminFullName: values.adminFullName,
           adminPassword: values.adminPassword,
@@ -165,6 +175,19 @@ export function CreateSchoolDialog() {
               <div className="mt-3">
                 <Field label="Address (optional)">
                   <Input {...register('address')} />
+                </Field>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="County (optional)">
+                  <SearchableSelect
+                    options={COUNTY_OPTIONS}
+                    value={county}
+                    onChange={(v) => setValue('county', v)}
+                    placeholder="Search counties..."
+                  />
+                </Field>
+                <Field label="Town / city (optional)">
+                  <Input placeholder="Kitengela" {...register('town')} />
                 </Field>
               </div>
 

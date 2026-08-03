@@ -52,7 +52,7 @@ export class TenantsService {
     const [data, total] = await Promise.all([
       this.platformPrisma.tenant.findMany({
         where: { deletedAt: null },
-        include: { subscriptionPlan: true },
+        include: { subscriptionPlan: true, createdBy: { select: { fullName: true } } },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -63,7 +63,10 @@ export class TenantsService {
   }
 
   async findOne(id: string) {
-    const tenant = await this.platformPrisma.tenant.findFirst({ where: { id, deletedAt: null } });
+    const tenant = await this.platformPrisma.tenant.findFirst({
+      where: { id, deletedAt: null },
+      include: { createdBy: { select: { fullName: true } } },
+    });
     if (!tenant) throw new NotFoundException('School not found');
     return tenant;
   }
@@ -119,6 +122,8 @@ export class TenantsService {
         demoDurationHours: dto.demoDurationHours,
         activationFeeKes: dto.isDemo ? undefined : dto.activationFeeKes,
         activationBillingCycle: dto.isDemo ? undefined : dto.activationBillingCycle,
+        county: dto.county,
+        town: dto.town,
         expiresAt: new Date(Date.now() + CREATION_CODE_TTL_MS),
       },
     });
@@ -185,6 +190,9 @@ export class TenantsService {
         demoExpiresAt,
         contactEmail: request.adminEmail,
         contactPhone: request.adminPhone,
+        county: request.county,
+        town: request.town,
+        createdById: request.requestedById,
       },
     });
 

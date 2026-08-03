@@ -46,6 +46,9 @@ import { RemindersModule } from './platform/reminders/reminders.module';
 import { BrandingModule } from './platform/branding/branding.module';
 import { MeModule } from './platform/me/me.module';
 import { PlatformAdminsModule } from './platform/admins/admins.module';
+import { PlatformNotificationsModule } from './platform/notifications/platform-notifications.module';
+import { TicketsModule } from './tickets/tickets.module';
+import { PlatformTicketsModule } from './platform/tickets/platform-tickets.module';
 
 @Module({
   imports: [
@@ -95,6 +98,9 @@ import { PlatformAdminsModule } from './platform/admins/admins.module';
     BrandingModule,
     MeModule,
     PlatformAdminsModule,
+    PlatformNotificationsModule,
+    TicketsModule,
+    PlatformTicketsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

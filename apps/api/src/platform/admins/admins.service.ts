@@ -6,7 +6,18 @@ import { PlatformNotifierService } from '../messaging/platform-notifier.service'
 import { generateTempPassword } from '../../common/password.util';
 import { InviteAdminDto } from './dto/invite-admin.dto';
 
-const ADMIN_SELECT = { id: true, email: true, fullName: true, phone: true, role: true, deletedAt: true, createdAt: true } as const;
+const ADMIN_SELECT = {
+  id: true,
+  email: true,
+  fullName: true,
+  phone: true,
+  avatarUrl: true,
+  role: true,
+  twoFactorEnabled: true,
+  deletedAt: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 /**
  * Super-Admin-only management of delegated Sub-Admins — the only place `PlatformUser` rows get
@@ -27,6 +38,44 @@ export class PlatformAdminsService {
       select: ADMIN_SELECT,
       orderBy: { createdAt: 'asc' },
     });
+  }
+
+  /** Full detail view for one admin — everything on ADMIN_SELECT plus activity assembled from
+   * relations that already existed but weren't queried anywhere before this (tenantCreationRequests,
+   * paymentsRecorded, paymentProofsReviewed, settingsChangeRequests). "Last login" proxies off the
+   * most recent PlatformRefreshToken issuance for this user — there's no dedicated lastLoginAt field,
+   * and a refresh-token issuance is the closest existing signal without adding new tracking. */
+  async findOne(id: string) {
+    const admin = await this.platformPrisma.platformUser.findUnique({ where: { id }, select: ADMIN_SELECT });
+    if (!admin) throw new NotFoundException('Admin not found');
+
+    const [schoolsCreated, paymentsRecorded, proofsReviewed, settingsChangeRequests, lastRefreshToken] =
+      await Promise.all([
+        this.platformPrisma.tenant.findMany({
+          where: { createdById: id, deletedAt: null },
+          select: { id: true, name: true, slug: true, status: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.platformPrisma.platformPayment.count({ where: { recordedByUserId: id } }),
+        this.platformPrisma.platformPaymentProof.count({ where: { reviewedByUserId: id } }),
+        this.platformPrisma.platformSettingsChangeRequest.count({ where: { requestedById: id } }),
+        this.platformPrisma.platformRefreshToken.findFirst({
+          where: { platformUserId: id },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        }),
+      ]);
+
+    return {
+      ...admin,
+      schoolsCreated,
+      activityCounts: {
+        paymentsRecorded,
+        proofsReviewed,
+        settingsChangeRequests,
+      },
+      lastLoginApprox: lastRefreshToken?.createdAt ?? null,
+    };
   }
 
   async requestCreate(dto: InviteAdminDto, requestedById: string) {

@@ -36,8 +36,13 @@ export default function ProfilePage() {
     queryFn: () => apiFetch<Profile>('/platform/me'),
   });
 
+  // Only sync the form from the first fetch, or right after our own save invalidates the query
+  // (see confirmUpdate.onSuccess below) — not from every background refetchInterval tick, which
+  // would otherwise silently overwrite whatever the user is mid-typing every 30s.
+  const hasSyncedForm = useRef(false);
   useEffect(() => {
-    if (profileQuery.data) {
+    if (profileQuery.data && !hasSyncedForm.current) {
+      hasSyncedForm.current = true;
       setForm({
         fullName: profileQuery.data.fullName,
         phone: profileQuery.data.phone ?? '',
@@ -67,6 +72,7 @@ export default function ProfilePage() {
         body: JSON.stringify({ requestId: pending!.requestId, code }),
       }),
     onSuccess: () => {
+      hasSyncedForm.current = false;
       queryClient.invalidateQueries({ queryKey: ['platform-me'] });
       setPending(null);
       setCode('');

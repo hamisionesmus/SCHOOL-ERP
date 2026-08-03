@@ -181,6 +181,9 @@ model User {
   workLogs             WorkLog[]          @relation("WorkLogStaff")
   biometricStaffEvents BiometricEvent[]   @relation("BiometricStaffSubject")
   biometricEventsLogged BiometricEvent[]  @relation("BiometricLoggedBy")
+  ticketsSubmitted     Ticket[]           @relation("TicketSubmittedBy")
+  ticketsHandled       Ticket[]           @relation("TicketHandledBy")
+  ticketComments       TicketComment[]
 }
 
 model Role {
@@ -782,6 +785,71 @@ model LeaveRequest {
   reviewedBy       User?       @relation("LeaveReviewedBy", fields: [reviewedByUserId], references: [id])
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+}
+
+// ---- Support tickets (any staff/parent -> School Administrator -> optional platform escalation) ----
+// Open to any authenticated tenant user regardless of role — see TicketsController, which has no
+// @RequirePermission on submit/comment routes, same "guard only checks authenticated" pattern
+// HrController already uses for POST /hr/leave-requests. Escalating creates a matching row in the
+// platform schema (PlatformTicketEscalation) — see that model's own doc comment for why the split.
+enum TicketStatus {
+  OPEN
+  ESCALATED
+  RESOLVED
+}
+
+enum TicketCategory {
+  TECHNICAL
+  BILLING
+  ACCOUNT
+  GENERAL
+  COMPLAINT
+  OTHER
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model Ticket {
+  id                String   @id @default(uuid())
+  submittedByUserId String
+  submittedBy       User     @relation("TicketSubmittedBy", fields: [submittedByUserId], references: [id])
+  subject           String
+  description       String
+  category          TicketCategory
+  priority          TicketPriority @default(NORMAL)
+  status            TicketStatus   @default(OPEN)
+  // The School Administrator who triaged it — set on resolve or escalate, null while still OPEN.
+  handledByUserId   String?
+  handledBy         User?          @relation("TicketHandledBy", fields: [handledByUserId], references: [id])
+  resolutionNote    String?
+  resolvedAt        DateTime?
+  escalatedAt       DateTime?
+  escalationReason  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  comments          TicketComment[]
+}
+
+model TicketComment {
+  id           String   @id @default(uuid())
+  ticketId     String
+  ticket       Ticket   @relation(fields: [ticketId], references: [id])
+  // Null for platform-authored replies (Super Admin/Sub-Admin responding to an escalated ticket,
+  // written here via a cross-schema TenantPrismaService.forSchema() call from platform code) — no
+  // PlatformUser row exists in this schema to reference, so authorUserId can't be a required FK.
+  // isPlatformReply + platformAuthorName cover that case instead, so the UI can render
+  // "Platform Support (Name)" without a tenant User row backing it.
+  authorUserId    String?
+  author          User?    @relation(fields: [authorUserId], references: [id])
+  isPlatformReply Boolean  @default(false)
+  platformAuthorName String?
+  body         String
+  createdAt    DateTime @default(now())
 }
 
 // ---- Trips (teacher proposes -> admin approves -> parents register + pay) ----

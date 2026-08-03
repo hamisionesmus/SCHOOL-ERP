@@ -97,6 +97,13 @@ needing schema changes (the model already supports arbitrary roles/permissions).
 | SETTINGS:MANAGE (branding, mission/vision/motto) | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | TRANSPORT:PROPOSE (propose a trip) | ✅ | ❌ | ❌ | ✅ (also holds TRANSPORT:MANAGE) | ❌ | ❌ |
 | BIOMETRIC:MANAGE (log a face/fingerprint scan) | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| TICKET:MANAGE (triage/resolve/escalate all school tickets) | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+
+Submitting a support ticket (`POST /tickets`) and viewing/commenting on your own ticket are
+deliberately **not** gated by a permission code — every authenticated tenant user can do both
+regardless of role (staff and parents alike), matching the same "no `@RequirePermission` decorator,
+guard only checks authenticated" pattern already used by `POST /hr/leave-requests`. `TICKET:MANAGE`
+only gates seeing/acting on *other* people's tickets (the School Administrator's triage view).
 
 This table directly encodes the "can / cannot" examples from the source requirements (teachers
 cannot edit finance/delete exam results/edit another teacher's marks/approve payroll; finance

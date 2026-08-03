@@ -18,6 +18,23 @@ export const GRADE_LEVEL_CODES = [
 
 export type GradeLevelCode = (typeof GRADE_LEVEL_CODES)[number];
 
+// Kenya's 47 official counties, used to validate/populate the school region dropdown. Actual
+// runtime copies live at apps/api/src/common/kenya-counties.ts and
+// apps/web/src/lib/kenya-counties.ts (same caveat as GRADE_LEVEL_CODES above — this package isn't
+// wired into either app's build yet, so keep all three copies in sync by hand if this list changes).
+export const KENYA_COUNTIES = [
+  'Mombasa', 'Kwale', 'Kilifi', 'Tana River', 'Lamu', 'Taita-Taveta',
+  'Garissa', 'Wajir', 'Mandera', 'Marsabit', 'Isiolo', 'Meru', 'Tharaka-Nithi',
+  'Embu', 'Kitui', 'Machakos', 'Makueni', 'Nyandarua', 'Nyeri', 'Kirinyaga',
+  "Murang'a", 'Kiambu', 'Turkana', 'West Pokot', 'Samburu', 'Trans Nzoia',
+  'Uasin Gishu', 'Elgeyo-Marakwet', 'Nandi', 'Baringo', 'Laikipia', 'Nakuru',
+  'Narok', 'Kajiado', 'Kericho', 'Bomet', 'Kakamega', 'Vihiga', 'Bungoma',
+  'Busia', 'Siaya', 'Kisumu', 'Homa Bay', 'Migori', 'Kisii', 'Nyamira',
+  'Nairobi',
+] as const;
+
+export type KenyaCounty = (typeof KENYA_COUNTIES)[number];
+
 export interface JwtUserPayload {
   sub: string;
   realm: 'platform' | 'tenant';

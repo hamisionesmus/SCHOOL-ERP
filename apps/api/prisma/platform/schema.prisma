@@ -90,6 +90,12 @@ model Tenant {
   sidebarColor           String?
   contentBgColor         String?
   address                String?
+  // County is constrained client/server-side to Kenya's 47 official counties (see
+  // apps/api/src/common/kenya-counties.ts) but stored as a plain string, not a Prisma enum, so the
+  // list can be extended without a migration. Town is free text (county alone is precise enough for
+  // grouping/reporting; town is just a helpful label for follow-ups).
+  county                 String?
+  town                   String?
   website                String?
   smsSenderId            String?
   // Captured from the creation request so the platform can reach the school directly (activation
@@ -135,6 +141,11 @@ model Tenant {
   // moves forward (a new payment clears the way for the next cycle's reminder).
   demoReminderSentAt     DateTime?
   renewalReminderSentAt  DateTime?
+  // Which Super Admin/Sub-Admin actually created this school — nullable since it can't be backfilled
+  // for tenants created before this field existed unless a matching TenantCreationRequest exists
+  // (see the migration's data-backfill UPDATE).
+  createdById            String?
+  createdBy              PlatformUser?     @relation(fields: [createdById], references: [id])
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
   deletedAt              DateTime?
@@ -145,6 +156,7 @@ model Tenant {
   mpesaStkRequests PlatformMpesaStkRequest[]
   paymentProofs PlatformPaymentProof[]
   feedback TenantFeedback[]
+  ticketEscalations PlatformTicketEscalation[]
 }
 
 // Global email → school lookup, kept in sync whenever a tenant-side User is created (see
@@ -196,6 +208,9 @@ model TenantCreationRequest {
   // requests, used to compute the first PlatformInvoice's periodEnd and the Tenant's own
   // billingCycle at creation (previously hardcoded to 30 days / MONTHLY regardless of this field).
   activationBillingCycle BillingCycle?
+  // Carried through to the resulting Tenant on confirmation — see TenantsService.confirmCreate().
+  county            String?
+  town              String?
   expiresAt         DateTime
   consumedAt        DateTime?
   createdAt         DateTime  @default(now())
@@ -223,6 +238,9 @@ model PlatformUser {
   paymentProofsReviewed PlatformPaymentProof[]
   settingsChangeRequests PlatformSettingsChangeRequest[]
   tenantCreationRequests TenantCreationRequest[]
+  schoolsCreated         Tenant[]
+  notificationDismissals PlatformNotificationDismissal[]
+  ticketsAssigned        PlatformTicketEscalation[]
 }
 
 model PlatformRefreshToken {
@@ -477,4 +495,51 @@ model AuditLogAccessRequest {
   downloadedAt   DateTime?
   sharedWithSchoolAt DateTime?
   createdAt      DateTime  @default(now())
+}
+
+// Platform-side notification bell — a computed feed, not a persisted table (mirrors the tenant-side
+// NotificationDismissal in apps/api/prisma/tenant/schema.prisma exactly). "Read" state is tracked by
+// snapshotting the item's message text at dismiss time; if the underlying count changes, the message
+// no longer matches the snapshot and the item automatically reappears as unread.
+model PlatformNotificationDismissal {
+  id          String   @id @default(uuid())
+  userId      String
+  user        PlatformUser @relation(fields: [userId], references: [id])
+  notifKey    String
+  snapshot    String
+  dismissedAt DateTime @default(now())
+
+  @@unique([userId, notifKey])
+}
+
+enum PlatformTicketStatus {
+  PENDING
+  ASSIGNED
+  RESOLVED
+}
+
+// Created only when a School Administrator escalates a ticket — routine tickets they resolve
+// internally never touch this table at all (they stay entirely in that school's own tenant schema,
+// see Ticket/TicketComment in apps/api/prisma/tenant/schema.prisma). This gives the Super Admin a
+// fast, single-table cross-school list of only what actually needs platform attention, instead of
+// fanning a query out across every tenant schema. The full conversation thread is fetched live via
+// TenantPrismaService.forSchema() when a Super Admin/Sub-Admin opens one — see
+// AuditLogAccessService.assembleCsv() for the exact precedent this follows.
+model PlatformTicketEscalation {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  ticketId         String   // Ticket.id in that tenant's own schema — no cross-schema FK possible
+  subject          String   // denormalized at escalation time so list views don't need a forSchema() round trip
+  category         String
+  priority         String
+  submitterName    String
+  escalationReason String
+  status           PlatformTicketStatus @default(PENDING)
+  assignedToId     String?
+  assignedTo       PlatformUser? @relation(fields: [assignedToId], references: [id])
+  resolutionNote   String?
+  resolvedAt       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }

@@ -23,6 +23,11 @@ export class PlatformAdminsController {
     return this.adminsService.list();
   }
 
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.adminsService.findOne(id);
+  }
+
   @Post('request-create')
   requestCreate(@Body() dto: InviteAdminDto, @CurrentUser() user: JwtUserPayload) {
     return this.adminsService.requestCreate(dto, user.sub);
