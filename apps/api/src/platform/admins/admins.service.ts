@@ -114,7 +114,14 @@ export class PlatformAdminsService {
       select: ADMIN_SELECT,
     });
 
-    const roleLabel = dto.role === 'ASSISTANT_SUPER_ADMIN' ? 'an Assistant Super Admin' : 'a Sub-Admin';
+    // Deliberately describes what the recipient can do, never the formal role/tier name — see
+    // docs/RBAC.md and the user's explicit ask that outbound messages never say "Super Admin" /
+    // "Sub-Admin" / "Assistant Super Admin" to identify anyone. `invitedByName` falls back to the
+    // company name, not a rank, if the inviter's own account can't be resolved for some reason.
+    const capabilities =
+      dto.role === 'ASSISTANT_SUPER_ADMIN'
+        ? 'You can create schools, view revenue, and record finance entries.'
+        : 'You can create schools and view revenue.';
     const loginUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/login`;
     await this.notifier.notify('SUB_ADMIN_WELCOME', {
       to: { email: dto.email, phone: dto.phone },
@@ -123,8 +130,8 @@ export class PlatformAdminsService {
         loginUrl,
         email: dto.email,
         tempPassword,
-        invitedByName: inviter?.fullName ?? 'the platform Super Admin',
-        roleLabel,
+        invitedByName: inviter?.fullName ?? 'Hamzone Technologies',
+        capabilities,
       },
     });
 

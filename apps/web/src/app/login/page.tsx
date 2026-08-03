@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { Eye, EyeOff, GraduationCap, Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch, ApiError, API_ORIGIN } from '@/lib/api';
 import { notifyError } from '@/lib/notify';
 import { storeSession, type SessionUser } from '@/lib/auth';
 import { usePageTransition } from '@/lib/page-transition';
@@ -23,11 +23,19 @@ interface Branding {
   systemName: string;
   loginTagline: string | null;
   loginSubtitle: string | null;
+  loginLogoUrl: string | null;
+  loginHeading: string | null;
+  loginHelperText: string | null;
+  loginFooterText: string | null;
 }
 const DEFAULT_BRANDING: Branding = {
   systemName: 'School ERP',
   loginTagline: null,
   loginSubtitle: 'Kenyan CBC · PP1 — Grade 9',
+  loginLogoUrl: null,
+  loginHeading: 'Sign in',
+  loginHelperText: 'Enter your details to access your dashboard.',
+  loginFooterText: 'Multi-tenant SaaS for CBC schools — PP1 to Grade 9',
 };
 
 // One login form for everyone — the backend resolves which school (if any) an email belongs to via
@@ -96,9 +104,7 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 rounded-full bg-amber-400/10 blur-3xl" />
 
         <div className="animate-float-up relative flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
-            <GraduationCap size={20} className="text-emerald-950" />
-          </div>
+          <LoginLogo url={branding.loginLogoUrl} />
           <span className="text-lg font-semibold text-white">{branding.systemName}</span>
         </div>
 
@@ -116,14 +122,12 @@ export default function LoginPage() {
       <div className="flex w-full flex-col justify-center px-6 py-12 lg:w-1/2 lg:px-16 xl:px-24">
         <div className="animate-float-up mx-auto w-full max-w-sm">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
-              <GraduationCap size={20} className="text-emerald-950" />
-            </div>
+            <LoginLogo url={branding.loginLogoUrl} />
             <span className="text-lg font-semibold text-white">{branding.systemName}</span>
           </div>
 
-          <h2 className="text-2xl font-semibold text-white">Sign in</h2>
-          <p className="mt-1.5 text-sm text-slate-400">Enter your details to access your dashboard.</p>
+          <h2 className="text-2xl font-semibold text-white">{branding.loginHeading || DEFAULT_BRANDING.loginHeading}</h2>
+          <p className="mt-1.5 text-sm text-slate-400">{branding.loginHelperText || DEFAULT_BRANDING.loginHelperText}</p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="mt-8 flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
@@ -188,12 +192,27 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-8 flex items-center justify-center gap-1.5 text-xs text-slate-500">
-            <ShieldCheck size={13} className="text-emerald-500/70" />
-            Multi-tenant SaaS for CBC schools — PP1 to Grade 9
+          <div className="mt-8 flex items-center justify-center gap-1.5 text-center text-xs text-slate-500">
+            <ShieldCheck size={13} className="shrink-0 text-emerald-500/70" />
+            {branding.loginFooterText || DEFAULT_BRANDING.loginFooterText}
           </div>
         </div>
       </div>
     </main>
+  );
+}
+
+/** Renders the Super-Admin-uploaded login logo when set, else the built-in gradient mark — same
+ * "placeholder as default suggestion" fallback used everywhere else branding is configurable. */
+function LoginLogo({ url }: { url: string | null }) {
+  if (url) {
+    const src = url.startsWith('http') ? url : `${API_ORIGIN}${url}`;
+    // eslint-disable-next-line @next/next/no-img-element -- external/uploaded URL, not a static asset
+    return <img src={src} alt="" className="h-10 w-10 rounded-xl object-cover shadow-lg shadow-emerald-900/40" />;
+  }
+  return (
+    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
+      <GraduationCap size={20} className="text-emerald-950" />
+    </div>
   );
 }

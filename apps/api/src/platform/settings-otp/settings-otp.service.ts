@@ -10,6 +10,50 @@ const CODE_TTL_MS = 15 * 60 * 1000;
 
 export type SettingsChangeScope = 'SETTINGS' | 'TEMPLATES' | 'PROFILE' | 'ADMINS';
 
+const PAYMENT_FIELDS = ['bankName', 'bankAccountName', 'bankAccountNumber', 'paybillNumber', 'paybillAccountName', 'stkEnabled', 'bankTransferEnabled', 'paybillEnabled'];
+const NOTIFICATION_FIELDS = ['smsEnabled', 'emailEnabled', 'demoReminderDaysBefore', 'renewalReminderDaysBefore'];
+const API_CONFIG_FIELDS = ['mpesaEnv', 'mpesaConsumerKey', 'mpesaConsumerSecret', 'mpesaShortcode', 'mpesaPasskey', 'mpesaCallbackUrl', 'resendApiKey', 'resendFromAddress', 'advantaApiKey', 'advantaPartnerId', 'advantaSenderId'];
+const BRANDING_FIELDS = [
+  'systemName',
+  'loginTagline',
+  'loginSubtitle',
+  'loginLogoUrl',
+  'faviconUrl',
+  'loginHeading',
+  'loginHelperText',
+  'loginFooterText',
+  'builtByText',
+];
+
+/** Says exactly what's being requested, in the OTP notification the requester receives — so a
+ * generic "confirm code {{code}}" never leaves the recipient guessing what they're approving.
+ * Never names a role/tier (see docs/RBAC.md); only what's being changed and, for admin invites, by
+ * whom the invitee will be — as "an admin", not the specific rank. */
+function describeOperation(scope: SettingsChangeScope, changes: object): string {
+  const keys = Object.keys(changes);
+  switch (scope) {
+    case 'SETTINGS': {
+      if (keys.some((k) => PAYMENT_FIELDS.includes(k))) return 'update Payment Details';
+      if (keys.some((k) => NOTIFICATION_FIELDS.includes(k))) return 'update Notification settings';
+      if (keys.some((k) => API_CONFIG_FIELDS.includes(k))) return 'update API & Payment Config';
+      if (keys.some((k) => BRANDING_FIELDS.includes(k))) return 'update Branding';
+      return 'update Platform Settings';
+    }
+    case 'TEMPLATES': {
+      const key = (changes as { key?: string }).key;
+      return key ? `edit the "${key}" message template` : 'edit a message template';
+    }
+    case 'PROFILE':
+      return 'update your profile';
+    case 'ADMINS': {
+      const name = (changes as { fullName?: string }).fullName;
+      return name ? `invite ${name} as a new admin` : 'invite a new admin';
+    }
+    default:
+      return 'change platform settings';
+  }
+}
+
 /**
  * Generalizes the two-code tenant-creation gate (see TenantsService.requestCreate/confirmCreate)
  * to platform config changes: propose an edit, a 6-digit code goes to the requester's own
@@ -46,7 +90,7 @@ export class SettingsOtpService {
 
     await this.notifier.notify('SETTINGS_OTP', {
       to: { email: requester.email, phone: requester.phone },
-      vars: { code },
+      vars: { code, operation: describeOperation(scope, changes), requestedByName: requester.fullName },
     });
 
     const emailConfigured = await this.platformSettings.isEmailConfigured();

@@ -71,7 +71,7 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
     variables: ['schoolName', 'methodLabel', 'reference', 'amountKes'],
     subject: 'Payment proof submitted — {{schoolName}}',
     emailBody:
-      '"{{schoolName}}" submitted a {{methodLabel}} payment confirmation for review.\n\n{{reference}}{{amountKes}}\nReview and approve/reject it from the school\'s Billing tab in the Super Admin dashboard.',
+      '"{{schoolName}}" submitted a {{methodLabel}} payment confirmation for review.\n\n{{reference}}{{amountKes}}\nReview and approve/reject it from the school\'s Billing tab in your dashboard.',
     smsBody: 'School ERP: "{{schoolName}}" submitted a {{methodLabel}} payment proof — review it in the dashboard.',
   },
   PROOF_RECEIVED_SCHOOL: {
@@ -98,19 +98,19 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
     smsBody: 'School ERP: "{{schoolName}}" renews in {{daysLeft}} day(s) ({{renewalDate}}). Contact us to renew.',
   },
   SETTINGS_OTP: {
-    variables: ['code'],
-    subject: 'Confirm platform settings change',
+    variables: ['code', 'operation', 'requestedByName'],
+    subject: 'Confirm: {{operation}}',
     emailBody:
-      'A change to your platform settings was requested. If this was you, enter code {{code}} to confirm. It expires in 15 minutes. If you didn\'t request this, ignore this message — nothing changes until the code is confirmed.',
-    smsBody: 'School ERP: confirm your settings change with code {{code}}. Expires in 15 min.',
+      '{{requestedByName}} requested to {{operation}}. If this was you, enter code {{code}} to confirm. It expires in 15 minutes. If you didn\'t request this, ignore this message — nothing changes until the code is confirmed.',
+    smsBody: 'School ERP: {{requestedByName}} requested to {{operation}}. Confirm with code {{code}}. Expires in 15 min.',
   },
   SUB_ADMIN_WELCOME: {
-    variables: ['fullName', 'loginUrl', 'email', 'tempPassword', 'invitedByName', 'roleLabel'],
+    variables: ['fullName', 'loginUrl', 'email', 'tempPassword', 'invitedByName', 'capabilities'],
     subject: 'You\'ve been added as a School ERP admin',
     emailBody:
-      'Hi {{fullName}},\n\n{{invitedByName}} has added you as {{roleLabel}} on School ERP. You can create schools and view revenue, but Security, Backups, Admins, Tickets, and Platform Settings stay with the main Super Admin.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password as soon as you sign in.',
+      'Hi {{fullName}},\n\n{{invitedByName}} has added you as an admin on School ERP. {{capabilities}} Other administrative areas stay with the account owner.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password as soon as you sign in.',
     smsBody:
-      'School ERP: {{invitedByName}} added you as {{roleLabel}}. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
+      'School ERP: {{invitedByName}} added you as an admin. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
   },
   TICKET_ESCALATED: {
     variables: ['schoolName', 'subject', 'priority', 'escalationReason', 'dashboardUrl'],

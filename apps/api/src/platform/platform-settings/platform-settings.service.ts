@@ -81,6 +81,12 @@ export class PlatformSettingsService {
       systemName: s.systemName ?? DEFAULT_SYSTEM_NAME,
       loginTagline: s.loginTagline ?? null,
       loginSubtitle: s.loginSubtitle ?? DEFAULT_LOGIN_SUBTITLE,
+      loginLogoUrl: s.loginLogoUrl ?? null,
+      faviconUrl: s.faviconUrl ?? null,
+      loginHeading: s.loginHeading ?? null,
+      loginHelperText: s.loginHelperText ?? null,
+      loginFooterText: s.loginFooterText ?? null,
+      builtByText: s.builtByText ?? null,
     };
   }
 

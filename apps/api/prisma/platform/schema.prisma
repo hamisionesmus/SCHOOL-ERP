@@ -389,6 +389,16 @@ model PlatformSettings {
   systemName          String?
   loginTagline        String?
   loginSubtitle       String?
+  // Fully dynamic login-page identity: an uploaded image (via the existing /uploads endpoint,
+  // same pattern as a school's own logo) shown instead of the built-in icon, a browser-tab
+  // favicon, and every remaining piece of copy on the page — each falls back to a sensible
+  // built-in default in the frontend when unset (see login/page.tsx's DEFAULT_BRANDING).
+  loginLogoUrl        String?
+  faviconUrl          String?
+  loginHeading         String?
+  loginHelperText      String?
+  loginFooterText      String?
+  builtByText          String?
   updatedAt         DateTime @updatedAt
 }
 

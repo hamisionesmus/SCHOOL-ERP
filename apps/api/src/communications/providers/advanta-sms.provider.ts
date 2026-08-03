@@ -36,7 +36,10 @@ export class AdvantaSmsProvider implements SmsProvider {
     const apikey = settings.advantaApiKey || this.config.get<string>('ADVANTA_API_KEY');
     const partnerID = settings.advantaPartnerId || this.config.get<string>('ADVANTA_PARTNER_ID');
     if (!apikey || !partnerID) return this.stub.send(to, body);
-    const shortcode = settings.advantaSenderId || this.config.get<string>('ADVANTA_SENDER_ID') || 'School ERP';
+    // Last-resort fallback only — the real registered sender ID (which Kenyan telcos typically cap
+    // at 11 alphanumeric characters) belongs in PlatformSettings.advantaSenderId or ADVANTA_SENDER_ID,
+    // editable from the API & Payment Config settings tab.
+    const shortcode = settings.advantaSenderId || this.config.get<string>('ADVANTA_SENDER_ID') || 'HamzoneTech';
 
     const res = await fetch(`${ADVANTA_BASE_URL}/api/services/sendsms`, {
       method: 'POST',

@@ -139,4 +139,36 @@ export class UpdatePlatformSettingsDto {
   @IsOptional()
   @IsString()
   loginSubtitle?: string;
+
+  // Dynamic login-page identity + platform-wide watermark — each falls back to a built-in frontend
+  // default (see login/page.tsx's DEFAULT_BRANDING and layout.tsx's BuiltByWatermark) when unset.
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  loginLogoUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  faviconUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  loginHeading?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  loginHelperText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  loginFooterText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  builtByText?: string;
 }

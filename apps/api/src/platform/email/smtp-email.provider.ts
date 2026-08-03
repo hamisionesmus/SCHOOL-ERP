@@ -52,7 +52,7 @@ export class SmtpEmailProvider implements EmailProvider {
   ): Promise<SendEmailResult> {
     const transporter = this.getTransporter();
     if (!transporter) return this.stub.send(to, subject, body, attachments);
-    const from = this.config.get<string>('SMTP_FROM_ADDRESS') ?? 'School ERP <noreply@hamzonetechnologies.com>';
+    const from = this.config.get<string>('SMTP_FROM_ADDRESS') ?? 'Hamzone Technologies <noreply@hamzonetechnologies.com>';
 
     try {
       const info = await transporter.sendMail({

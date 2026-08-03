@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, apiUpload, API_ORIGIN } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,6 +53,12 @@ interface PlatformSettings {
   systemName: string | null;
   loginTagline: string | null;
   loginSubtitle: string | null;
+  loginLogoUrl: string | null;
+  faviconUrl: string | null;
+  loginHeading: string | null;
+  loginHelperText: string | null;
+  loginFooterText: string | null;
+  builtByText: string | null;
 }
 
 interface EffectiveTemplate {
@@ -659,9 +665,25 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
   );
 }
 
+const BRANDING_DEFAULTS = {
+  systemName: '',
+  loginTagline: '',
+  loginSubtitle: '',
+  loginLogoUrl: '',
+  faviconUrl: '',
+  loginHeading: '',
+  loginHelperText: '',
+  loginFooterText: '',
+  builtByText: '',
+};
+
 function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequested: OnRequested }) {
-  const [form, setForm] = useState({ systemName: '', loginTagline: '', loginSubtitle: '' });
+  const [form, setForm] = useState(BRANDING_DEFAULTS);
   const hasSynced = useRef(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const faviconInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (data && !hasSynced.current) {
@@ -670,6 +692,12 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
         systemName: data.systemName ?? '',
         loginTagline: data.loginTagline ?? '',
         loginSubtitle: data.loginSubtitle ?? '',
+        loginLogoUrl: data.loginLogoUrl ?? '',
+        faviconUrl: data.faviconUrl ?? '',
+        loginHeading: data.loginHeading ?? '',
+        loginHelperText: data.loginHelperText ?? '',
+        loginFooterText: data.loginFooterText ?? '',
+        builtByText: data.builtByText ?? '',
       });
     }
   }, [data]);
@@ -684,17 +712,104 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
     onError: (err) => notifyError(err, 'Failed to request settings change'),
   });
 
+  async function uploadImage(file: File, field: 'loginLogoUrl' | 'faviconUrl', setBusy: (v: boolean) => void) {
+    setBusy(true);
+    try {
+      const { url } = await apiUpload(file);
+      setForm((f) => ({ ...f, [field]: url }));
+    } catch (err) {
+      notifyError(err, 'Upload failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Login page branding</CardTitle>
           <CardDescription>
-            Platform-wide only — shown on the login page before anyone signs in. Never applies to an
-            individual school&apos;s own branding.
+            Platform-wide only — shown on the login page before anyone signs in, plus the browser-tab
+            icon and the &quot;Built by&quot; watermark shown across the whole app. Never applies to
+            an individual school&apos;s own branding. Leave a field blank to use the default shown as
+            its placeholder.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Login logo</label>
+            <div className="flex items-center gap-3">
+              {form.loginLogoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={form.loginLogoUrl.startsWith('http') ? form.loginLogoUrl : `${API_ORIGIN}${form.loginLogoUrl}`}
+                  alt="Login logo"
+                  className="h-10 w-10 rounded-lg border border-slate-200 object-cover"
+                />
+              ) : (
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-amber-400 text-xs font-semibold text-emerald-950">
+                  Default
+                </span>
+              )}
+              <Button type="button" variant="outline" size="sm" disabled={uploadingLogo} onClick={() => logoInputRef.current?.click()}>
+                {uploadingLogo ? 'Uploading...' : 'Change logo'}
+              </Button>
+              {form.loginLogoUrl && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setForm((f) => ({ ...f, loginLogoUrl: '' }))}>
+                  Reset
+                </Button>
+              )}
+            </div>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/svg+xml"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadImage(file, 'loginLogoUrl', setUploadingLogo);
+                e.target.value = '';
+              }}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Favicon (browser tab icon)</label>
+            <div className="flex items-center gap-3">
+              {form.faviconUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={form.faviconUrl.startsWith('http') ? form.faviconUrl : `${API_ORIGIN}${form.faviconUrl}`}
+                  alt="Favicon"
+                  className="h-10 w-10 rounded-lg border border-slate-200 object-cover"
+                />
+              ) : (
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-xs font-medium text-slate-500">
+                  Default
+                </span>
+              )}
+              <Button type="button" variant="outline" size="sm" disabled={uploadingFavicon} onClick={() => faviconInputRef.current?.click()}>
+                {uploadingFavicon ? 'Uploading...' : 'Change favicon'}
+              </Button>
+              {form.faviconUrl && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setForm((f) => ({ ...f, faviconUrl: '' }))}>
+                  Reset
+                </Button>
+              )}
+            </div>
+            <input
+              ref={faviconInputRef}
+              type="file"
+              accept="image/png,image/x-icon,image/svg+xml"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadImage(file, 'faviconUrl', setUploadingFavicon);
+                e.target.value = '';
+              }}
+            />
+          </div>
+
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-slate-700">System name</label>
             <Input
@@ -722,6 +837,40 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
               Small caps line under the tagline — e.g. &quot;Feel the difference&quot; or &quot;Value
               for your money&quot;.
             </p>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Sign-in heading</label>
+            <Input
+              placeholder="Sign in"
+              value={form.loginHeading}
+              onChange={(e) => setForm((f) => ({ ...f, loginHeading: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Sign-in helper text</label>
+            <Input
+              placeholder="Enter your details to access your dashboard."
+              value={form.loginHelperText}
+              onChange={(e) => setForm((f) => ({ ...f, loginHelperText: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <label className="text-sm font-medium text-slate-700">Login footer text</label>
+            <Input
+              placeholder="Multi-tenant SaaS for CBC schools — PP1 to Grade 9"
+              value={form.loginFooterText}
+              onChange={(e) => setForm((f) => ({ ...f, loginFooterText: e.target.value }))}
+            />
+            <p className="text-xs text-slate-500">Small line under the sign-in button, next to the shield icon.</p>
+          </div>
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <label className="text-sm font-medium text-slate-700">&quot;Built by&quot; watermark</label>
+            <Input
+              placeholder="Built by Hamzone Technologies"
+              value={form.builtByText}
+              onChange={(e) => setForm((f) => ({ ...f, builtByText: e.target.value }))}
+            />
+            <p className="text-xs text-slate-500">Shown in the corner of every page across the whole app.</p>
           </div>
         </CardContent>
       </Card>
