@@ -84,12 +84,16 @@ export class PlatformSettingsService {
     };
   }
 
-  /** Whether a real email provider is reachable — DB-configured value takes priority, env var is the
-   * fallback. Used to decide whether OTP-flow responses may still include a `devCode` convenience
-   * field (only while nothing real is wired up yet). */
+  /** Whether a real email provider is reachable — the self-hosted SMTP relay (SMTP_HOST) or,
+   * failing that, a DB/env-configured Resend key. Used to decide whether OTP-flow responses may
+   * still include a `devCode` convenience field (only while nothing real is wired up yet). */
   async isEmailConfigured(): Promise<boolean> {
     const s = await this.get();
-    return !!(s.resendApiKey || this.config.get<string>('RESEND_API_KEY'));
+    return !!(
+      this.config.get<string>('SMTP_HOST') ||
+      s.resendApiKey ||
+      this.config.get<string>('RESEND_API_KEY')
+    );
   }
 
   async isSmsConfigured(): Promise<boolean> {

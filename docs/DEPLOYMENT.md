@@ -41,18 +41,49 @@ nano .env
 
 Fill in: a Postgres password, two JWT secrets (`node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` run twice), and the Super Admin seed email/password. `NEXT_PUBLIC_API_URL` and `WEB_ORIGIN` are already correct in the template — `WEB_ORIGIN` matters even without the rest of this section filled in, since it's what builds the login link in every outbound email.
 
-The M-Pesa/Resend/Advanta block is optional at first boot — leave any of those blank and the app
-falls back to logging instead of sending (see `StubEmailProvider`/`StubSmsProvider`), so the app
-still runs. Fill them in to make school-activation payments and notifications real:
+The M-Pesa/Advanta block is optional at first boot — leave either blank and the app falls back to
+logging instead of sending (see `StubSmsProvider`), so the app still runs. Fill them in to make
+school-activation payments and notifications real:
 
 - **M-Pesa (Daraja)** — from a Safaricom Daraja app's "Lipa Na M-Pesa Online" credentials.
   `MPESA_CALLBACK_URL` must be reachable from the internet — the template value
   (`https://api.myschoolapp.xyz/public/activation/mpesa-callback`) is already correct as long as
   that domain resolves to this server. Register the same callback URL in the Daraja app config on
   Safaricom's developer portal.
-- **Resend** — an API key from [resend.com](https://resend.com), with `myschoolapp.xyz` added and
-  verified as a sending domain (Resend gives you a DNS record to add).
 - **Advanta SMS** — partner ID + API key from [developers.advantasms.com](https://developers.advantasms.com) (Partners page → toggle API → generate key).
+
+### Email
+
+Outbound platform email (activation links, OTP codes, payment confirmations) goes through a
+self-hosted Postfix relay — the `postfix` service in `docker-compose.prod.yml`
+([boky/postfix](https://github.com/bokysan/docker-postfix)), reachable only inside the docker
+network as `postfix:25`. No third-party account or API key needed, but — unlike a managed ESP —
+deliverability depends entirely on this server's own reputation, which needs two DNS pieces before
+mail reliably lands in an inbox instead of spam (or gets rejected outright):
+
+1. **DKIM.** The relay auto-generates a keypair on first boot and signs every outbound message.
+   Read the public key out of the running container and add it as a DNS TXT record:
+   ```bash
+   docker compose -f docker-compose.prod.yml exec postfix cat /etc/opendkim/keys/myschoolapp.xyz/mail.txt
+   ```
+   That prints the exact `mail._domainkey.myschoolapp.xyz` TXT record value — add it verbatim in
+   your DNS zone.
+2. **PTR (reverse DNS) for the VPS's own IP.** This is set by whoever controls the IP allocation —
+   your VPS/hosting provider, not your domain's DNS zone — usually via a support ticket or an rDNS
+   field in their control panel. Ask for the VPS's IP to reverse-resolve to `mail.myschoolapp.xyz`
+   (matching the `HOSTNAME` set on the `postfix` service). Without this, most major providers
+   (Gmail, Outlook) silently drop or spam-box the mail regardless of DKIM being correct.
+
+You'll also want the existing SPF TXT record on `myschoolapp.xyz` to explicitly authorize this
+server's IP (`ip4:<vps-ip>`) alongside whatever your hosting provider already added there, and
+`SMTP_FROM_ADDRESS` in `.env` set to something like `School ERP <noreply@myschoolapp.xyz>`.
+
+Sanity-check the relay itself (independent of DNS) by sending straight through it once it's up:
+```bash
+docker compose -f docker-compose.prod.yml exec api node -e "require('nodemailer').createTransport({host:'postfix',port:25}).sendMail({from:process.env.SMTP_FROM_ADDRESS,to:'YOUR_TEST_ADDRESS',subject:'test',text:'hello'}).then(r=>console.log(r)).catch(e=>console.error(e))"
+```
+A successful queue-accept here just proves the relay works — actual inbox delivery still depends
+on the DKIM/PTR/SPF records above being in place.
 
 ### 5. Bring everything up
 
@@ -103,6 +134,8 @@ Once those are set, every push to `main` deploys automatically — no manual ste
 
 ## Things this deploy does *not* touch
 
-- `postgres_data`, `api_uploads`, `api_backups` — named Docker volumes, persist across
-  `docker compose up` and image rebuilds; only removed by an explicit `docker compose down -v`.
+- `postgres_data`, `api_uploads`, `api_backups`, `postfix_dkim` — named Docker volumes, persist
+  across `docker compose up` and image rebuilds; only removed by an explicit `docker compose down
+  -v`. `postfix_dkim` matters especially — losing it means a new DKIM keypair gets generated on
+  next boot, invalidating whatever DKIM DNS record you'd already added.
 - `.env` at the repo root — gitignored, created once by hand, never overwritten by a deploy.

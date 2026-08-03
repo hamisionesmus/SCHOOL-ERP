@@ -14,11 +14,26 @@ services:
       timeout: 5s
       retries: 10
 
+  # Self-hosted outbound-only mail relay (DKIM-signing) — see docs/DEPLOYMENT.md "Email" section
+  # for the DNS records (DKIM TXT + PTR) that make this actually deliverable, not just sendable.
+  postfix:
+    image: boky/postfix
+    restart: unless-stopped
+    environment:
+      ALLOWED_SENDER_DOMAINS: myschoolapp.xyz
+      HOSTNAME: mail.myschoolapp.xyz
+      DKIM_AUTOGENERATE: "true"
+    volumes:
+      - postfix_dkim:/etc/opendkim/keys
+
   api:
     build:
       context: ./apps/api
     restart: unless-stopped
     environment:
+      SMTP_HOST: postfix
+      SMTP_PORT: 25
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
@@ -48,6 +63,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postfix:
+        condition: service_started
 
   web:
     build:
@@ -78,3 +95,4 @@ volumes:
   api_backups:
   caddy_data:
   caddy_config:
+  postfix_dkim:

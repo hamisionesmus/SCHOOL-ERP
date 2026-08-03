@@ -1,15 +1,13 @@
 import { Module } from '@nestjs/common';
 import { EMAIL_PROVIDER } from './email-provider.interface';
-import { ResendEmailProvider } from './resend-email.provider';
-import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
+import { SmtpEmailProvider } from './smtp-email.provider';
 
-// Always binds ResendEmailProvider — it internally falls back to StubEmailProvider (log-only) when
-// neither a DB-configured nor env-configured RESEND_API_KEY is present, resolved per call rather
-// than once at boot. This is what lets a Super Admin turn on real email from the Settings UI
-// without a redeploy — see ResendEmailProvider's own doc comment.
+// Binds SmtpEmailProvider — real outbound email via the self-hosted `postfix` relay (see
+// docker-compose.prod.yml), falling back to StubEmailProvider (log-only) when SMTP_HOST isn't set.
+// ResendEmailProvider is still available (resend-email.provider.ts) if a managed ESP is preferred
+// later — swap the useClass below, no other call sites change.
 @Module({
-  imports: [PlatformSettingsModule],
-  providers: [{ provide: EMAIL_PROVIDER, useClass: ResendEmailProvider }],
+  providers: [{ provide: EMAIL_PROVIDER, useClass: SmtpEmailProvider }],
   exports: [EMAIL_PROVIDER],
 })
 export class PlatformEmailModule {}
