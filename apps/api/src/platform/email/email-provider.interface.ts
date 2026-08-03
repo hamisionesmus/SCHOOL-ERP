@@ -17,7 +17,13 @@ export interface EmailAttachment {
  * platform-email.module.ts, no call site changes elsewhere.
  */
 export interface EmailProvider {
-  send(to: string, subject: string, body: string, attachments?: EmailAttachment[]): Promise<SendEmailResult>;
+  send(
+    to: string,
+    subject: string,
+    body: string,
+    attachments?: EmailAttachment[],
+    html?: string,
+  ): Promise<SendEmailResult>;
 }
 
 export const EMAIL_PROVIDER = 'EMAIL_PROVIDER';

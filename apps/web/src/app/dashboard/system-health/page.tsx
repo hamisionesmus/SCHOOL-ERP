@@ -6,8 +6,10 @@ import { Cpu, MemoryStick, HardDrive, School, Users } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
+import { StorageBar } from '@/components/ui/storage-bar';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { useRequireFinanceAccess } from '@/lib/require-super-admin';
+import Link from 'next/link';
 
 interface SystemHealth {
   cpu: { cores: number; loadAvg1m: number };
@@ -20,6 +22,14 @@ interface SystemHealth {
     estimatedRemainingCapacity: number | null;
   };
   dailyActiveLogins: { date: string; count: number }[];
+}
+
+interface SchoolStorage {
+  tenantId: string;
+  name: string;
+  totalMb: number;
+  limitMb: number | null;
+  usagePct: number | null;
 }
 
 function mb(n: number) {
@@ -36,6 +46,12 @@ export default function SystemHealthPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['system-health'],
     queryFn: () => apiFetch<SystemHealth>('/platform/system-health'),
+    refetchInterval: 30_000,
+  });
+
+  const { data: storageBySchool } = useQuery({
+    queryKey: ['system-health-storage-by-school'],
+    queryFn: () => apiFetch<SchoolStorage[]>('/platform/system-health/storage-by-school'),
     refetchInterval: 30_000,
   });
 
@@ -97,6 +113,36 @@ export default function SystemHealthPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-slate-600">{capacityText}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <HardDrive size={16} className="text-slate-400" />
+                Storage by school
+              </CardTitle>
+              <CardDescription>
+                Ranked by usage — tells you which schools should be advised to upgrade their storage.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!storageBySchool || storageBySchool.length === 0 ? (
+                <p className="text-sm text-slate-400">No schools yet.</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {storageBySchool.map((s) => (
+                    <Link
+                      key={s.tenantId}
+                      href={`/dashboard/schools/${s.tenantId}`}
+                      className="flex items-center gap-4 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+                    >
+                      <span className="w-40 flex-shrink-0 truncate text-sm text-slate-700">{s.name}</span>
+                      <StorageBar totalMb={s.totalMb} limitMb={s.limitMb} className="flex-1" />
+                    </Link>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

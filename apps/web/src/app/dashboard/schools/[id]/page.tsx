@@ -14,10 +14,12 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
+import { StorageBar } from '@/components/ui/storage-bar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { Wallet, Database, ShieldAlert, Users } from 'lucide-react';
+import { useTabQueryState } from '@/hooks/use-tab-query-state';
 
 interface Tenant {
   id: string;
@@ -101,7 +103,7 @@ type Tab = (typeof TABS)[number];
 export default function SchoolDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const [tab, setTab] = useState<Tab>('Overview');
+  const [tab, setTab] = useTabQueryState<Tab>(TABS, 'Overview');
 
   const { data: tenant, isLoading } = useQuery({
     queryKey: ['tenant', id],
@@ -177,6 +179,22 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
   const { data: usage } = useQuery({
     queryKey: ['tenant-usage', tenant.id],
     queryFn: () => apiFetch<TenantUsage>(`/platform/tenants/${tenant.id}/usage`),
+  });
+  const [editingLimit, setEditingLimit] = useState(false);
+  const [limitInput, setLimitInput] = useState('');
+
+  const updateStorageLimit = useMutation({
+    mutationFn: (storageLimitMb: number | null) =>
+      apiFetch(`/platform/tenants/${tenant.id}/storage-limit`, {
+        method: 'PATCH',
+        body: JSON.stringify({ storageLimitMb }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-usage', tenant.id] });
+      notifySuccess('Storage limit updated');
+      setEditingLimit(false);
+    },
+    onError: (err) => notifyError(err, 'Failed to update storage limit'),
   });
 
   const { data: activationLink } = useQuery({
@@ -280,14 +298,60 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard
-          label="Storage Used"
-          value={usage?.totalMb ?? 0}
-          icon={Database}
-          accent="blue"
-          suffix=" MB"
-          hint={usage?.limitMb ? `of ${usage.limitMb} MB limit` : 'No limit set'}
-        />
+        <div className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white p-5 shadow-sm animate-float-up">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600 opacity-80" aria-hidden />
+          <div className="flex items-start justify-between">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Storage Used</p>
+            <div className="rounded-lg bg-blue-50 p-2.5">
+              <Database size={18} className="text-blue-600" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <StorageBar totalMb={usage?.totalMb ?? 0} limitMb={usage?.limitMb ?? null} />
+          </div>
+          {isSuperAdmin && (
+            <div className="mt-2">
+              {editingLimit ? (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="MB, blank = no limit"
+                    value={limitInput}
+                    onChange={(e) => setLimitInput(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    disabled={updateStorageLimit.isPending}
+                    onClick={() => updateStorageLimit.mutate(limitInput.trim() === '' ? null : Number(limitInput))}
+                  >
+                    Save
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingLimit(false)}
+                    className="text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLimitInput(usage?.limitMb ? String(usage.limitMb) : '');
+                    setEditingLimit(true);
+                  }}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                >
+                  Override limit
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         <StatCard
           label="Billing Cycle"
           value={0}

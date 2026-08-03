@@ -16,9 +16,11 @@ export class StubEmailProvider implements EmailProvider {
     subject: string,
     body: string,
     attachments?: EmailAttachment[],
+    html?: string,
   ): Promise<SendEmailResult> {
     const attachmentNote = attachments?.length ? ` (+${attachments.length} attachment(s))` : '';
-    this.logger.log(`[stub] -> ${to}: "${subject}"${attachmentNote}\n${body}`);
+    const htmlNote = html ? ' (+html)' : '';
+    this.logger.log(`[stub] -> ${to}: "${subject}"${attachmentNote}${htmlNote}\n${body}`);
     return { success: true, providerMessageId: randomUUID() };
   }
 }

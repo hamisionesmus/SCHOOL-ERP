@@ -3,6 +3,8 @@ import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { SMS_PROVIDER, SmsProvider } from './providers/sms-provider.interface';
 import { EMAIL_PROVIDER, EmailProvider } from '../platform/email/email-provider.interface';
+import { PlatformSettingsService } from '../platform/platform-settings/platform-settings.service';
+import { wrapWithLogo } from '../platform/messaging/render-email-html';
 
 @Injectable()
 export class CommunicationsService {
@@ -10,6 +12,7 @@ export class CommunicationsService {
     private readonly tenantPrisma: TenantPrismaService,
     @Inject(SMS_PROVIDER) private readonly smsProvider: SmsProvider,
     @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
 
   /** Tenant-side email, piggybacking on the platform's own SMTP provider (already branded "Hamzone
@@ -20,7 +23,11 @@ export class CommunicationsService {
     const db = this.tenantPrisma.forSchema(tenantSchema);
     const recipient = await db.user.findUnique({ where: { id: recipientUserId } });
     if (!recipient?.email) return;
-    await this.emailProvider.send(recipient.email, subject, body);
+    const settings = await this.platformSettings.get();
+    const logoUrl = settings.loginLogoUrl
+      ? `${process.env.API_ORIGIN ?? 'http://localhost:4000'}${settings.loginLogoUrl}`
+      : null;
+    await this.emailProvider.send(recipient.email, subject, body, undefined, wrapWithLogo(body, logoUrl));
   }
 
   /** Sends via the configured SmsProvider and logs the attempt as an SmsMessage row regardless of

@@ -5,6 +5,7 @@ import { TenantsService } from './tenants.service';
 import { RequestTenantDto } from './dto/request-tenant.dto';
 import { ConfirmTenantDto } from './dto/confirm-tenant.dto';
 import { UpdatePaymentConfigDto } from './dto/update-payment-config.dto';
+import { UpdateStorageLimitDto } from './dto/update-storage-limit.dto';
 import { InitiateActivationPaymentDto } from '../activation/dto/initiate-activation-payment.dto';
 import { ActivationService } from '../activation/activation.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -96,5 +97,14 @@ export class TenantsController {
   @Patch(':id/payment-config')
   updatePaymentConfig(@Param('id') id: string, @Body() dto: UpdatePaymentConfigDto) {
     return this.tenantsService.updatePaymentConfig(id, dto);
+  }
+
+  // Manual override — schools created before pricing-tier-derived limits existed have no cap at
+  // all, and this is also the escape hatch for any special case a Super Admin wants to handle
+  // outside the standard tiers.
+  @RequirePlatformRole('SUPER_ADMIN')
+  @Patch(':id/storage-limit')
+  updateStorageLimit(@Param('id') id: string, @Body() dto: UpdateStorageLimitDto) {
+    return this.tenantsService.updateStorageLimit(id, dto.storageLimitMb);
   }
 }

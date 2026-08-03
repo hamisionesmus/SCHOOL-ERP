@@ -17,4 +17,9 @@ export class SystemHealthController {
   overview() {
     return this.systemHealth.overview();
   }
+
+  @Get('storage-by-school')
+  perSchoolStorage() {
+    return this.systemHealth.perSchoolStorage();
+  }
 }

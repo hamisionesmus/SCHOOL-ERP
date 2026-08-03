@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiFetch, ApiError, API_ORIGIN } from '@/lib/api';
 import { notifyError } from '@/lib/notify';
-import { storeSession, type SessionUser } from '@/lib/auth';
+import { storeSession, getSessionUser, type SessionUser } from '@/lib/auth';
 import { usePageTransition } from '@/lib/page-transition';
 import { cn } from '@/lib/utils';
 
@@ -49,6 +49,22 @@ export default function LoginPage() {
   // the page doesn't jump straight from a spinner to a hard navigation — see onSubmit below.
   const [success, setSuccess] = useState(false);
   const [branding, setBranding] = useState<Branding>(DEFAULT_BRANDING);
+  // Guards against ever flashing the login form when a session already exists — e.g. opening this
+  // URL in a fresh tab of the same browser while logged in elsewhere. localStorage (where the
+  // session lives, see lib/auth.ts) is shared across tabs of the same origin, so this only needs to
+  // check once on mount, not react to other tabs — a stale check here just means the user reaches
+  // this page at all, which is harmless.
+  const [checkedExistingSession, setCheckedExistingSession] = useState(false);
+  useEffect(() => {
+    const existing = getSessionUser();
+    if (existing) {
+      navigate(existing.realm === 'platform' ? '/dashboard' : '/school', { color: '#f8fafc' });
+      return;
+    }
+    setCheckedExistingSession(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const {
     register,
     handleSubmit,
@@ -93,6 +109,12 @@ export default function LoginPage() {
   }
 
   const busy = isSubmitting || success;
+
+  // Nothing renders until we know there's no existing session — avoids ever flashing the login
+  // form for a tab that's actually already authenticated.
+  if (!checkedExistingSession) {
+    return <main className="min-h-screen bg-[#07130f]" />;
+  }
 
   return (
     <main className="flex min-h-screen bg-[#07130f]">

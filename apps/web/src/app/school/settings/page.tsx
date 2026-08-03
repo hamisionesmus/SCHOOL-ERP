@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, apiUpload, API_ORIGIN, ApiError } from '@/lib/api';
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface SchoolSettings {
   name: string;
@@ -32,6 +33,7 @@ interface SchoolSettings {
   passMarkPercent: number;
   billingCycle: 'MONTHLY' | 'YEARLY';
   currentPeriodEnd: string | null;
+  settingsConfigured: boolean;
 }
 interface Payment {
   id: string;
@@ -52,6 +54,33 @@ interface Invoice {
   payments: Payment[];
 }
 
+interface FormState {
+  [key: string]: string;
+  name: string;
+  primaryColor: string;
+  sidebarColor: string;
+  contentBgColor: string;
+  address: string;
+  website: string;
+  smsSenderId: string;
+  motto: string;
+  mission: string;
+  vision: string;
+  passMarkPercent: string;
+}
+
+// Mirrored in apps/api/src/settings/settings.service.ts's REQUIRED_FIELDS — the fields that
+// actually make a school look "set up" for the onboarding progress bar below.
+const REQUIRED_FIELDS: (keyof SchoolSettings)[] = ['name', 'logoUrl', 'address', 'mission', 'vision', 'motto'];
+const REQUIRED_FIELD_LABELS: Record<string, string> = {
+  name: 'School name',
+  logoUrl: 'Logo',
+  address: 'Address',
+  mission: 'Mission',
+  vision: 'Vision',
+  motto: 'Motto',
+};
+
 function kes(n: number) {
   return `KES ${n.toLocaleString()}`;
 }
@@ -62,6 +91,21 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [form, setForm] = useState<FormState>({
+    name: '',
+    primaryColor: '#2563eb',
+    sidebarColor: '#ffffff',
+    contentBgColor: '#f8fafc',
+    address: '',
+    website: '',
+    smsSenderId: '',
+    motto: '',
+    mission: '',
+    vision: '',
+    passMarkPercent: '50',
+  });
+  const hasSynced = useRef(false);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<FormState>('school-settings');
 
   const canManage = user?.permissions?.includes('SETTINGS:MANAGE');
 
@@ -71,27 +115,58 @@ export default function SettingsPage() {
     enabled: !!user,
   });
 
+  // Syncs from the server exactly once (a real reload restarts this component and `hasSynced`
+  // together, which is fine — the draft below is what survives that), then layers any saved draft
+  // on top so an accidental refresh mid-edit doesn't lose typed-but-unsaved changes.
+  useEffect(() => {
+    if (settings && !hasSynced.current) {
+      hasSynced.current = true;
+      const fromServer: FormState = {
+        name: settings.name,
+        primaryColor: settings.primaryColor ?? '#2563eb',
+        sidebarColor: settings.sidebarColor ?? '#ffffff',
+        contentBgColor: settings.contentBgColor ?? '#f8fafc',
+        address: settings.address ?? '',
+        website: settings.website ?? '',
+        smsSenderId: settings.smsSenderId ?? '',
+        motto: settings.motto ?? '',
+        mission: settings.mission ?? '',
+        vision: settings.vision ?? '',
+        passMarkPercent: String(settings.passMarkPercent),
+      };
+      const draft = loadDraft();
+      setForm(draft ? ({ ...fromServer, ...draft } as FormState) : fromServer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings]);
+
+  useEffect(() => {
+    if (hasSynced.current) saveDraft(form);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form]);
+
   const updateSettings = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/settings', {
         method: 'PATCH',
         body: JSON.stringify({
-          name: fd.get('name'),
-          primaryColor: fd.get('primaryColor'),
-          sidebarColor: fd.get('sidebarColor'),
-          contentBgColor: fd.get('contentBgColor'),
-          address: fd.get('address') || undefined,
-          website: fd.get('website') || undefined,
-          smsSenderId: fd.get('smsSenderId') || undefined,
-          mission: fd.get('mission') || undefined,
-          vision: fd.get('vision') || undefined,
-          motto: fd.get('motto') || undefined,
-          passMarkPercent: fd.get('passMarkPercent') ? Number(fd.get('passMarkPercent')) : undefined,
+          name: form.name,
+          primaryColor: form.primaryColor,
+          sidebarColor: form.sidebarColor,
+          contentBgColor: form.contentBgColor,
+          address: form.address || undefined,
+          website: form.website || undefined,
+          smsSenderId: form.smsSenderId || undefined,
+          mission: form.mission || undefined,
+          vision: form.vision || undefined,
+          motto: form.motto || undefined,
+          passMarkPercent: form.passMarkPercent ? Number(form.passMarkPercent) : undefined,
         }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['branding'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      clearDraft();
       setError(null);
       notifySuccess('Settings saved');
     },
@@ -148,12 +223,39 @@ export default function SettingsPage() {
     );
   }
 
+  const missingFields = REQUIRED_FIELDS.filter((f) => !settings[f]);
+  const completedCount = REQUIRED_FIELDS.length - missingFields.length;
+
   return (
     <div className="flex flex-col gap-6">
+      {!settings.settingsConfigured && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="font-medium text-slate-700">Getting your school set up</span>
+              <span className="text-slate-500">
+                {completedCount} of {REQUIRED_FIELDS.length} done
+              </span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all"
+                style={{ width: `${(completedCount / REQUIRED_FIELDS.length) * 100}%` }}
+              />
+            </div>
+            {missingFields.length > 0 && (
+              <p className="mt-2 text-xs text-slate-500">
+                Still needed: {missingFields.map((f) => REQUIRED_FIELD_LABELS[f]).join(', ')}.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          updateSettings.mutate(new FormData(e.currentTarget));
+          updateSettings.mutate();
         }}
         className="flex flex-col gap-6"
       >
@@ -201,7 +303,7 @@ export default function SettingsPage() {
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">School name</label>
-              <Input name="name" defaultValue={settings.name} required />
+              <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
             </div>
           </CardContent>
         </Card>
@@ -219,27 +321,27 @@ export default function SettingsPage() {
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Brand color</label>
               <input
-                name="primaryColor"
                 type="color"
-                defaultValue={settings.primaryColor ?? '#2563eb'}
+                value={form.primaryColor}
+                onChange={(e) => setForm((f) => ({ ...f, primaryColor: e.target.value }))}
                 className="h-10 w-full rounded-md border border-slate-300"
               />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Sidebar color</label>
               <input
-                name="sidebarColor"
                 type="color"
-                defaultValue={settings.sidebarColor ?? '#ffffff'}
+                value={form.sidebarColor}
+                onChange={(e) => setForm((f) => ({ ...f, sidebarColor: e.target.value }))}
                 className="h-10 w-full rounded-md border border-slate-300"
               />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Main background color</label>
               <input
-                name="contentBgColor"
                 type="color"
-                defaultValue={settings.contentBgColor ?? '#f8fafc'}
+                value={form.contentBgColor}
+                onChange={(e) => setForm((f) => ({ ...f, contentBgColor: e.target.value }))}
                 className="h-10 w-full rounded-md border border-slate-300"
               />
             </div>
@@ -256,25 +358,33 @@ export default function SettingsPage() {
           <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Address</label>
-              <Input name="address" defaultValue={settings.address ?? ''} />
+              <Input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Website</label>
-              <Input name="website" defaultValue={settings.website ?? ''} />
+              <Input value={form.website} onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))} />
             </div>
             <div className="flex flex-col gap-1 sm:col-span-2">
               <label className="text-sm font-medium text-slate-700">SMS sender ID</label>
-              <Input name="smsSenderId" defaultValue={settings.smsSenderId ?? ''} placeholder="SCHOOLNAME" />
+              <Input
+                value={form.smsSenderId}
+                onChange={(e) => setForm((f) => ({ ...f, smsSenderId: e.target.value }))}
+                placeholder="SCHOOLNAME"
+              />
             </div>
             <div className="flex flex-col gap-1 sm:col-span-2">
               <label className="text-sm font-medium text-slate-700">Motto</label>
-              <Input name="motto" defaultValue={settings.motto ?? ''} placeholder="Excellence Through Character" />
+              <Input
+                value={form.motto}
+                onChange={(e) => setForm((f) => ({ ...f, motto: e.target.value }))}
+                placeholder="Excellence Through Character"
+              />
             </div>
             <div className="flex flex-col gap-1 sm:col-span-2">
               <label className="text-sm font-medium text-slate-700">Mission</label>
               <textarea
-                name="mission"
-                defaultValue={settings.mission ?? ''}
+                value={form.mission}
+                onChange={(e) => setForm((f) => ({ ...f, mission: e.target.value }))}
                 rows={2}
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
@@ -282,8 +392,8 @@ export default function SettingsPage() {
             <div className="flex flex-col gap-1 sm:col-span-2">
               <label className="text-sm font-medium text-slate-700">Vision</label>
               <textarea
-                name="vision"
-                defaultValue={settings.vision ?? ''}
+                value={form.vision}
+                onChange={(e) => setForm((f) => ({ ...f, vision: e.target.value }))}
                 rows={2}
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
@@ -302,11 +412,11 @@ export default function SettingsPage() {
             <div className="flex max-w-xs flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Report card pass mark (%)</label>
               <Input
-                name="passMarkPercent"
                 type="number"
                 min={1}
                 max={100}
-                defaultValue={settings.passMarkPercent}
+                value={form.passMarkPercent}
+                onChange={(e) => setForm((f) => ({ ...f, passMarkPercent: e.target.value }))}
               />
             </div>
           </CardContent>

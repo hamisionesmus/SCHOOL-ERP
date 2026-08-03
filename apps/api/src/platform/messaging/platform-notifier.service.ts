@@ -4,6 +4,7 @@ import { PlatformSettingsService } from '../platform-settings/platform-settings.
 import { EMAIL_PROVIDER, EmailProvider } from '../email/email-provider.interface';
 import { SMS_PROVIDER, SmsProvider } from '../../communications/providers/sms-provider.interface';
 import { DEFAULT_TEMPLATES, MessageTemplateKey } from './default-templates';
+import { wrapWithLogo } from './render-email-html';
 
 interface RenderedTemplate {
   subject?: string;
@@ -53,7 +54,11 @@ export class PlatformNotifierService {
     const [rendered, settings] = await Promise.all([this.render(key, options.vars), this.settings.get()]);
 
     if (settings.emailEnabled && options.to.email && rendered.emailBody) {
-      await this.emailProvider.send(options.to.email, rendered.subject ?? '', rendered.emailBody);
+      const logoUrl = settings.loginLogoUrl
+        ? `${process.env.API_ORIGIN ?? 'http://localhost:4000'}${settings.loginLogoUrl}`
+        : null;
+      const html = wrapWithLogo(rendered.emailBody, logoUrl);
+      await this.emailProvider.send(options.to.email, rendered.subject ?? '', rendered.emailBody, undefined, html);
     }
     if (settings.smsEnabled && options.to.phone && rendered.smsBody) {
       await this.smsProvider.send(options.to.phone, rendered.smsBody);

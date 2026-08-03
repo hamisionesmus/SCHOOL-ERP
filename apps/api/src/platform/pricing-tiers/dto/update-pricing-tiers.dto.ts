@@ -18,6 +18,12 @@ export class PricingTierRowDto {
   @IsNumber()
   @Min(0)
   priceKes!: number;
+
+  @ApiProperty({ example: 500, required: false, description: 'Storage cap in MB for schools in this tier — omit for no cap' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  storageLimitMb?: number;
 }
 
 export class UpdatePricingTiersDto {

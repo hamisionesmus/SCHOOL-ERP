@@ -18,6 +18,7 @@ import { SkeletonCard, SkeletonTable } from '@/components/ui/skeleton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { SortableTh } from '@/components/ui/sortable-th';
+import { StorageBar } from '@/components/ui/storage-bar';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { CreateSchoolDialog } from './create-school-dialog';
 
@@ -49,13 +50,7 @@ function UsageCell({ tenantId }: { tenantId: string }) {
 
   if (isLoading || !data) return <span className="text-slate-300">…</span>;
 
-  const overLimit = data.usagePct !== null && data.usagePct >= 90;
-  return (
-    <span className={overLimit ? 'font-medium text-rose-600' : 'text-slate-600'}>
-      {data.totalMb} MB
-      {data.limitMb && ` / ${data.limitMb} MB (${data.usagePct}%)`}
-    </span>
-  );
+  return <StorageBar totalMb={data.totalMb} limitMb={data.limitMb} className="w-40" />;
 }
 
 function RenewalCell({ currentPeriodEnd }: { currentPeriodEnd: string | null }) {

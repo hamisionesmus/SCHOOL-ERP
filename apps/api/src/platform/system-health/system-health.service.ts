@@ -102,6 +102,51 @@ export class SystemHealthService {
     };
   }
 
+  /** Per-school breakdown behind the "which schools should be told to upgrade" question — one
+   * grouped SQL query for database size (not N per-tenant round trips) plus a per-tenant uploads-
+   * folder walk (uploads are on local disk, keyed by schemaName, no cross-schema SQL equivalent
+   * exists for that part). Sorted by usage percentage (schools with a limit first, worst offenders
+   * at the top), then by raw size for schools with no limit set. */
+  async perSchoolStorage() {
+    const tenants = await this.platformPrisma.tenant.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true, schemaName: true, storageLimitMbOverride: true },
+    });
+    if (tenants.length === 0) return [];
+
+    const schemaNames = tenants.map((t) => t.schemaName);
+    const dbSizeRows = await this.platformPrisma.$queryRaw<{ schemaname: string; bytes: bigint | null }[]>`
+      SELECT schemaname, COALESCE(SUM(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename))), 0) AS bytes
+      FROM pg_tables
+      WHERE schemaname = ANY(${schemaNames})
+      GROUP BY schemaname
+    `;
+    const dbBytesBySchema = new Map(dbSizeRows.map((r) => [r.schemaname, Number(r.bytes ?? 0)]));
+
+    const results = await Promise.all(
+      tenants.map(async (t) => {
+        const dbBytes = dbBytesBySchema.get(t.schemaName) ?? 0;
+        const uploadsBytes = await this.directorySizeBytes(join(UPLOADS_DIR, t.schemaName));
+        const totalMb = Math.round(((dbBytes + uploadsBytes) / 1024 / 1024) * 100) / 100;
+        const limitMb = t.storageLimitMbOverride ?? null;
+        return {
+          tenantId: t.id,
+          name: t.name,
+          totalMb,
+          limitMb,
+          usagePct: limitMb ? Math.round((totalMb / limitMb) * 1000) / 10 : null,
+        };
+      }),
+    );
+
+    return results.sort((a, b) => {
+      if (a.usagePct !== null && b.usagePct !== null) return b.usagePct - a.usagePct;
+      if (a.usagePct !== null) return -1;
+      if (b.usagePct !== null) return 1;
+      return b.totalMb - a.totalMb;
+    });
+  }
+
   private async directorySizeBytes(dir: string): Promise<number> {
     let total = 0;
     let entries: string[];

@@ -31,10 +31,11 @@ export class ResendEmailProvider implements EmailProvider {
     subject: string,
     body: string,
     attachments?: EmailAttachment[],
+    html?: string,
   ): Promise<SendEmailResult> {
     const settings = await this.platformSettings.get();
     const apiKey = settings.resendApiKey || this.config.get<string>('RESEND_API_KEY');
-    if (!apiKey) return this.stub.send(to, subject, body, attachments);
+    if (!apiKey) return this.stub.send(to, subject, body, attachments, html);
     const from =
       settings.resendFromAddress ||
       this.config.get<string>('RESEND_FROM_ADDRESS') ||
@@ -48,6 +49,7 @@ export class ResendEmailProvider implements EmailProvider {
         to: [to],
         subject,
         text: body,
+        html,
         attachments: attachments?.map((a) => ({
           filename: a.filename,
           content: a.content.toString('base64'),

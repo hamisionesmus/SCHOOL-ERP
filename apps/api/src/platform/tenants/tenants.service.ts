@@ -126,13 +126,19 @@ export class TenantsService {
       throw new BadRequestException('studentCount, teacherCount, and nonTeachingStaffCount are required for a real school');
     }
 
-    // Server-computed, never trusted from the client — see PricingTiersService.computeFee(). The
-    // frontend's displayed "estimated fee" is only a preview using the same tier list.
-    const activationFeeKes = isReal
-      ? await this.pricingTiers.computeFee(
-          (dto.studentCount ?? 0) + (dto.teacherCount ?? 0) + (dto.nonTeachingStaffCount ?? 0),
-        )
-      : undefined;
+    // Server-computed, never trusted from the client — see PricingTiersService.findMatchingTier().
+    // The frontend's displayed "estimated fee" is only a preview using the same tier list. The
+    // matched tier's storageLimitMb rides along to confirmCreate() so the school's storage cap is
+    // set from the exact same tier its fee came from.
+    let activationFeeKes: number | undefined;
+    let storageLimitMb: number | null | undefined;
+    if (isReal) {
+      const matchedTier = await this.pricingTiers.findMatchingTier(
+        (dto.studentCount ?? 0) + (dto.teacherCount ?? 0) + (dto.nonTeachingStaffCount ?? 0),
+      );
+      activationFeeKes = Number(matchedTier.priceKes);
+      storageLimitMb = matchedTier.storageLimitMb;
+    }
 
     const requester = await this.platformPrisma.platformUser.findUnique({ where: { id: requestedByUserId } });
     if (!requester) throw new UnauthorizedException();
@@ -161,6 +167,7 @@ export class TenantsService {
         studentCount: dto.studentCount,
         teacherCount: dto.teacherCount,
         nonTeachingStaffCount: dto.nonTeachingStaffCount,
+        storageLimitMb,
         county: dto.county,
         town: dto.town,
         expiresAt: new Date(Date.now() + CREATION_CODE_TTL_MS),
@@ -233,6 +240,7 @@ export class TenantsService {
         county: request.county,
         town: request.town,
         createdById: request.requestedById,
+        storageLimitMbOverride: request.storageLimitMb,
       },
     });
 
@@ -334,6 +342,11 @@ export class TenantsService {
   async updatePaymentConfig(id: string, dto: UpdatePaymentConfigDto) {
     await this.findOne(id);
     return this.platformPrisma.tenant.update({ where: { id }, data: dto });
+  }
+
+  async updateStorageLimit(id: string, storageLimitMb: number | null | undefined) {
+    await this.findOne(id);
+    return this.platformPrisma.tenant.update({ where: { id }, data: { storageLimitMbOverride: storageLimitMb } });
   }
 
   /** Real usage, not an estimate: sums pg_total_relation_size across every table in the tenant's

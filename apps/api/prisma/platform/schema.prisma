@@ -243,6 +243,10 @@ model TenantCreationRequest {
   studentCount           Int?
   teacherCount           Int?
   nonTeachingStaffCount  Int?
+  // Storage cap (MB) from the PricingTier that matched the headcount above at request time —
+  // applied to Tenant.storageLimitMbOverride on confirmation. Null means the matched tier had no
+  // cap configured.
+  storageLimitMb         Int?
   // Carried through to the resulting Tenant on confirmation — see TenantsService.confirmCreate().
   county            String?
   town              String?
@@ -624,6 +628,9 @@ model PricingTier {
   minHeadcount  Int
   maxHeadcount  Int?
   priceKes      Decimal
+  // Storage cap (MB) auto-assigned to Tenant.storageLimitMbOverride when a real school lands in
+  // this tier at creation — see TenantsService.confirmCreate(). Null means "no cap at this tier".
+  storageLimitMb Int?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

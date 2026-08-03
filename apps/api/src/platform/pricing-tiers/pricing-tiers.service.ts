@@ -38,11 +38,12 @@ export class PricingTiersService {
     return this.list();
   }
 
-  /** Authoritative fee lookup — always called server-side with a headcount the client cannot
-   * override (see TenantsService.requestCreate()). Throws when no configured tier covers the given
-   * headcount, including when no tiers exist yet at all, so a real-account request never silently
-   * proceeds with an undefined/zero charge. */
-  async computeFee(totalHeadcount: number): Promise<number> {
+  /** Shared lookup behind both computeFee() and the storage-limit auto-assignment in
+   * TenantsService.confirmCreate() — one source of truth for "which tier does this headcount fall
+   * into," so the fee and the storage cap always come from the exact same matched row. Throws when
+   * no configured tier covers the given headcount, including when no tiers exist yet at all, so a
+   * real-account request never silently proceeds with an undefined/zero charge. */
+  async findMatchingTier(totalHeadcount: number) {
     const tiers = await this.list();
     const match = tiers.find(
       (t) => totalHeadcount >= t.minHeadcount && (t.maxHeadcount === null || totalHeadcount <= t.maxHeadcount),
@@ -52,6 +53,11 @@ export class PricingTiersService {
         `No pricing tier covers ${totalHeadcount} people — ask the Super Admin to configure pricing tiers in Settings first.`,
       );
     }
+    return match;
+  }
+
+  async computeFee(totalHeadcount: number): Promise<number> {
+    const match = await this.findMatchingTier(totalHeadcount);
     return Number(match.priceKes);
   }
 }

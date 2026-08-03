@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useRequireSuperAdmin } from '@/lib/require-super-admin';
+import { useTabQueryState } from '@/hooks/use-tab-query-state';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 const TABS = [
   { key: 'payment', label: 'Payment Details' },
@@ -106,7 +108,10 @@ const TEMPLATE_LABELS: Record<string, string> = {
 
 export default function PlatformSettingsPage() {
   useRequireSuperAdmin();
-  const [tab, setTab] = useState<TabKey>('payment');
+  const [tab, setTab] = useTabQueryState<TabKey>(
+    TABS.map((t) => t.key),
+    'payment',
+  );
   const [pending, setPending] = useState<PendingChange | null>(null);
   const [code, setCode] = useState('');
   // Bumped only when our own confirmed save lands — remounts the active tab (via its `key` below)
@@ -300,11 +305,12 @@ function PaymentDetailsTab({ data, onRequested }: { data?: PlatformSettings; onR
   // confirmed save) — not on every background refetchInterval tick, which would otherwise clobber
   // in-progress typing.
   const hasSynced = useRef(false);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<Partial<PlatformSettings>>('settings-payment');
 
   useEffect(() => {
     if (data && !hasSynced.current) {
       hasSynced.current = true;
-      setForm({
+      const fromServer = {
         bankName: data.bankName ?? '',
         bankAccountName: data.bankAccountName ?? '',
         bankAccountNumber: data.bankAccountNumber ?? '',
@@ -313,16 +319,27 @@ function PaymentDetailsTab({ data, onRequested }: { data?: PlatformSettings; onR
         stkEnabled: data.stkEnabled,
         bankTransferEnabled: data.bankTransferEnabled,
         paybillEnabled: data.paybillEnabled,
-      });
+      };
+      const draft = loadDraft();
+      setForm(draft ? { ...fromServer, ...draft } : fromServer);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
+  useEffect(() => {
+    if (hasSynced.current) saveDraft(form);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form]);
 
   const requestSave = useMutation({
     mutationFn: () => apiFetch<OtpRequestResult>('/platform/settings/request-update', {
       method: 'POST',
       body: JSON.stringify(form),
     }),
-    onSuccess: (result) => onRequested(result, '/platform/settings/confirm-update', 'Payment details'),
+    onSuccess: (result) => {
+      clearDraft();
+      onRequested(result, '/platform/settings/confirm-update', 'Payment details');
+    },
     onError: (err) => notifyError(err, 'Failed to request settings change'),
   });
 
@@ -407,25 +424,37 @@ function PaymentDetailsTab({ data, onRequested }: { data?: PlatformSettings; onR
 function NotificationsTab({ data, onRequested }: { data?: PlatformSettings; onRequested: OnRequested }) {
   const [form, setForm] = useState<Partial<PlatformSettings>>({});
   const hasSynced = useRef(false);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<Partial<PlatformSettings>>('settings-notifications');
 
   useEffect(() => {
     if (data && !hasSynced.current) {
       hasSynced.current = true;
-      setForm({
+      const fromServer = {
         smsEnabled: data.smsEnabled,
         emailEnabled: data.emailEnabled,
         demoReminderDaysBefore: data.demoReminderDaysBefore,
         renewalReminderDaysBefore: data.renewalReminderDaysBefore,
-      });
+      };
+      const draft = loadDraft();
+      setForm(draft ? { ...fromServer, ...draft } : fromServer);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
+  useEffect(() => {
+    if (hasSynced.current) saveDraft(form);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form]);
 
   const requestSave = useMutation({
     mutationFn: () => apiFetch<OtpRequestResult>('/platform/settings/request-update', {
       method: 'POST',
       body: JSON.stringify(form),
     }),
-    onSuccess: (result) => onRequested(result, '/platform/settings/confirm-update', 'Notification settings'),
+    onSuccess: (result) => {
+      clearDraft();
+      onRequested(result, '/platform/settings/confirm-update', 'Notification settings');
+    },
     onError: (err) => notifyError(err, 'Failed to request settings change'),
   });
 
@@ -529,11 +558,15 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
     advantaApiKey: '',
   });
   const hasSynced = useRef(false);
+  // Secrets are deliberately excluded from draft persistence — they never come from the server
+  // (masked fields are write-only) and a plaintext API key sitting in localStorage isn't worth the
+  // convenience, same reasoning as the admin-password exclusion on the create-school dialog.
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<typeof form>('settings-api-config');
 
   useEffect(() => {
     if (data && !hasSynced.current) {
       hasSynced.current = true;
-      setForm({
+      const fromServer = {
         mpesaEnv: data.mpesaEnv ?? '',
         mpesaConsumerKey: data.mpesaConsumerKey ?? '',
         mpesaShortcode: data.mpesaShortcode ?? '',
@@ -541,10 +574,18 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
         resendFromAddress: data.resendFromAddress ?? '',
         advantaPartnerId: data.advantaPartnerId ?? '',
         advantaSenderId: data.advantaSenderId ?? '',
-      });
+      };
+      const draft = loadDraft();
+      setForm(draft ? { ...fromServer, ...draft } : fromServer);
       setSecrets({ mpesaConsumerSecret: '', mpesaPasskey: '', resendApiKey: '', advantaApiKey: '' });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
+  useEffect(() => {
+    if (hasSynced.current) saveDraft(form);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form]);
 
   const requestSave = useMutation({
     mutationFn: () => {
@@ -558,7 +599,10 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
         body: JSON.stringify(payload),
       });
     },
-    onSuccess: (result) => onRequested(result, '/platform/settings/confirm-update', 'API & Payment Config'),
+    onSuccess: (result) => {
+      clearDraft();
+      onRequested(result, '/platform/settings/confirm-update', 'API & Payment Config');
+    },
     onError: (err) => notifyError(err, 'Failed to request settings change'),
   });
 
@@ -699,11 +743,12 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const faviconInputRef = useRef<HTMLInputElement>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<typeof BRANDING_DEFAULTS>('settings-branding');
 
   useEffect(() => {
     if (data && !hasSynced.current) {
       hasSynced.current = true;
-      setForm({
+      const fromServer = {
         systemName: data.systemName ?? '',
         loginTagline: data.loginTagline ?? '',
         loginSubtitle: data.loginSubtitle ?? '',
@@ -713,9 +758,17 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
         loginHelperText: data.loginHelperText ?? '',
         loginFooterText: data.loginFooterText ?? '',
         builtByText: data.builtByText ?? '',
-      });
+      };
+      const draft = loadDraft();
+      setForm(draft ? { ...fromServer, ...draft } : fromServer);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
+  useEffect(() => {
+    if (hasSynced.current) saveDraft(form);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form]);
 
   const requestSave = useMutation({
     mutationFn: () =>
@@ -723,7 +776,10 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
         method: 'POST',
         body: JSON.stringify(form),
       }),
-    onSuccess: (result) => onRequested(result, '/platform/settings/confirm-update', 'Branding'),
+    onSuccess: (result) => {
+      clearDraft();
+      onRequested(result, '/platform/settings/confirm-update', 'Branding');
+    },
     onError: (err) => notifyError(err, 'Failed to request settings change'),
   });
 
@@ -932,23 +988,32 @@ function PricingTiersTab({
   loading: boolean;
   onRequested: OnRequested;
 }) {
-  const [rows, setRows] = useState<{ minHeadcount: string; maxHeadcount: string; priceKes: string }[]>([]);
+  type Row = { minHeadcount: string; maxHeadcount: string; priceKes: string };
+  const [rows, setRows] = useState<Row[]>([]);
   const hasSynced = useRef(false);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<{ rows: Row[] }>('settings-pricing-tiers');
 
   useEffect(() => {
     if (tiers && !hasSynced.current) {
       hasSynced.current = true;
-      setRows(
+      const fromServer =
         tiers.length > 0
           ? tiers.map((t) => ({
               minHeadcount: String(t.minHeadcount),
               maxHeadcount: t.maxHeadcount === null ? '' : String(t.maxHeadcount),
               priceKes: t.priceKes,
             }))
-          : [{ minHeadcount: '1', maxHeadcount: '', priceKes: '' }],
-      );
+          : [{ minHeadcount: '1', maxHeadcount: '', priceKes: '' }];
+      const draft = loadDraft();
+      setRows(draft?.rows ?? fromServer);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tiers]);
+
+  useEffect(() => {
+    if (hasSynced.current) saveDraft({ rows });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
 
   const requestSave = useMutation({
     mutationFn: () =>
@@ -962,7 +1027,10 @@ function PricingTiersTab({
           })),
         }),
       }),
-    onSuccess: (result) => onRequested(result, '/platform/pricing-tiers/confirm-update', 'Pricing Tiers'),
+    onSuccess: (result) => {
+      clearDraft();
+      onRequested(result, '/platform/pricing-tiers/confirm-update', 'Pricing Tiers');
+    },
     onError: (err) => notifyError(err, 'Failed to request pricing-tier change'),
   });
 

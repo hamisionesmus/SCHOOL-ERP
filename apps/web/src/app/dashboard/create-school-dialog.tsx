@@ -13,6 +13,7 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { getSessionUser } from '@/lib/auth';
 import { KENYA_COUNTIES } from '@/lib/kenya-counties';
+import { useDraftForm } from '@/hooks/use-draft-form';
 
 const COUNTY_OPTIONS = KENYA_COUNTIES.map((c) => ({ value: c, label: c }));
 
@@ -65,6 +66,10 @@ export function CreateSchoolDialog() {
   const [code, setCode] = useState('');
   const [adminOtpCode, setAdminOtpCode] = useState('');
   const queryClient = useQueryClient();
+  const form = useForm<DetailsValues>({
+    resolver: zodResolver(detailsSchema),
+    defaultValues: { accountType: 'real', activationBillingCycle: 'MONTHLY' },
+  });
   const {
     register,
     handleSubmit,
@@ -72,10 +77,8 @@ export function CreateSchoolDialog() {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<DetailsValues>({
-    resolver: zodResolver(detailsSchema),
-    defaultValues: { accountType: 'real', activationBillingCycle: 'MONTHLY' },
-  });
+  } = form;
+  const { clearDraft } = useDraftForm('create-school', form, { exclude: ['adminPassword'] });
   const accountType = watch('accountType');
   const isDemo = accountType === 'demo' || accountType === 'test';
   const isReal = accountType === 'real';
@@ -141,6 +144,7 @@ export function CreateSchoolDialog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
       reset();
+      clearDraft();
       setPending(null);
       setCode('');
       setAdminOtpCode('');

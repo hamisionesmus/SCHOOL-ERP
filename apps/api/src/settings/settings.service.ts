@@ -4,6 +4,12 @@ import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { renderPlatformInvoicePdf } from '../platform/billing/invoice-pdf.util';
 
+// The fields that actually make a school look "set up" — identity + report-card content. Excludes
+// purely cosmetic color pickers and the rarely-touched SMS sender ID, which aren't worth blocking
+// onboarding over. Mirrored in apps/web/src/app/school/settings/page.tsx (no shared package exists
+// between the two apps yet — same duplication precedent as KENYA_COUNTIES).
+const REQUIRED_FIELDS = ['name', 'logoUrl', 'address', 'mission', 'vision', 'motto'] as const;
+
 @Injectable()
 export class SettingsService {
   constructor(private readonly platformPrisma: PlatformPrismaService) {}
@@ -23,9 +29,16 @@ export class SettingsService {
     });
     if (!tenant) throw new NotFoundException('School not found');
 
+    // Computed from actual field completeness (post-update) rather than an unconditional flip —
+    // previously ANY successful save, even just uploading a logo, permanently marked the school
+    // "configured" regardless of what was still blank, which defeated the whole point of the
+    // first-login redirect (see school/layout.tsx's needsSettingsRedirect).
+    const merged = { ...tenant, ...dto } as Record<string, unknown>;
+    const settingsConfigured = REQUIRED_FIELDS.every((f) => !!merged[f]);
+
     return this.platformPrisma.tenant.update({
       where: { id: tenant.id },
-      data: { ...dto, settingsConfigured: true },
+      data: { ...dto, settingsConfigured },
     });
   }
 

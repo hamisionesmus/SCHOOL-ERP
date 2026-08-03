@@ -49,9 +49,10 @@ export class SmtpEmailProvider implements EmailProvider {
     subject: string,
     body: string,
     attachments?: EmailAttachment[],
+    html?: string,
   ): Promise<SendEmailResult> {
     const transporter = this.getTransporter();
-    if (!transporter) return this.stub.send(to, subject, body, attachments);
+    if (!transporter) return this.stub.send(to, subject, body, attachments, html);
     const from = this.config.get<string>('SMTP_FROM_ADDRESS') ?? 'Hamzone Technologies <noreply@hamzonetechnologies.com>';
 
     try {
@@ -60,6 +61,7 @@ export class SmtpEmailProvider implements EmailProvider {
         to,
         subject,
         text: body,
+        html,
         attachments: attachments?.map((a) => ({
           filename: a.filename,
           content: a.content,
