@@ -2,6 +2,14 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Sized for a small VPS (1-2 vCPU / 2-4GB RAM, the confirmed target): the image's compiled-in
+    # default of max_connections=100 doesn't fit this box's RAM budget safely alongside the app-side
+    # connection pooling in TenantPrismaService/PlatformPrismaService (worst case ~53 connections at
+    # their tuned defaults) — 60 leaves real headroom without over-promising memory the container
+    # doesn't have. mem_limit is sized so shared_buffers + per-connection overhead can't OOM the host.
+    command: postgres -c max_connections=60 -c shared_buffers=128MB
+    mem_limit: 512m
+    cpus: "1.5"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -23,6 +31,8 @@ services:
   postfix:
     image: boky/postfix
     restart: unless-stopped
+    mem_limit: 128m
+    cpus: "0.25"
     environment:
       ALLOWED_SENDER_DOMAINS: hamzonetechnologies.com
       HOSTNAME: relay.hamzonetechnologies.com
@@ -34,7 +44,16 @@ services:
     build:
       context: ./apps/api
     restart: unless-stopped
+    # Ceilings, not reservations — sized so one runaway/overloaded container can't starve the
+    # others on this small VPS. Also configures the connection-pool tuning in
+    # TenantPrismaService/PlatformPrismaService (see those files); defaults there already match
+    # postgres's max_connections=60 above, these env vars just make it explicit/adjustable.
+    mem_limit: 512m
+    cpus: "1.0"
     environment:
+      DB_POOL_PER_TENANT: "3"
+      DB_MAX_CACHED_TENANT_CLIENTS: "15"
+      DB_POOL_PLATFORM: "8"
       SMTP_HOST: postfix
       SMTP_PORT: 25
       SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS}
@@ -76,12 +95,16 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     restart: unless-stopped
+    mem_limit: 384m
+    cpus: "0.75"
     depends_on:
       - api
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    mem_limit: 64m
+    cpus: "0.25"
     ports:
       - "80:80"
       - "443:443"

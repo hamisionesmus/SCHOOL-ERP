@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Cpu, MemoryStick, HardDrive, School, Users } from 'lucide-react';
+import { Cpu, MemoryStick, HardDrive, School, Users, Database } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
@@ -19,9 +19,11 @@ interface SystemHealth {
     count: number;
     totalStorageMb: number;
     avgStorageMbPerSchool: number;
+    committedStorageMb: number;
     estimatedRemainingCapacity: number | null;
   };
   dailyActiveLogins: { date: string; count: number }[];
+  database: { activeConnections: number; maxConnections: number };
 }
 
 interface SchoolStorage {
@@ -77,6 +79,7 @@ export default function SystemHealthPage() {
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
+          <SkeletonCard />
         </div>
       ) : (
         <>
@@ -104,7 +107,20 @@ export default function SystemHealthPage() {
               accent="amber"
               hint={`${mb(data.disk.totalMb - data.disk.freeMb)} of ${mb(data.disk.totalMb)}`}
             />
-            <StatCard label="Schools" value={data.schools.count} icon={School} accent="emerald" hint={`avg ${mb(data.schools.avgStorageMbPerSchool)} each`} />
+            <StatCard
+              label="Schools"
+              value={data.schools.count}
+              icon={School}
+              accent="emerald"
+              hint={`avg ${mb(data.schools.avgStorageMbPerSchool)} each · ${mb(data.schools.committedStorageMb)} committed`}
+            />
+            <StatCard
+              label="DB Connections"
+              value={data.database.activeConnections}
+              icon={Database}
+              accent="rose"
+              hint={`of ${data.database.maxConnections} max`}
+            />
           </div>
 
           <Card>

@@ -2,7 +2,14 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '../../../generated/tenant-client';
 
-const MAX_CACHED_CLIENTS = 50;
+/**
+ * Every cached client opens its own Prisma connection pool — with many tenant schemas active,
+ * MAX_CACHED_CLIENTS × DB_POOL_PER_TENANT is the worst-case connection count this service alone can
+ * hold open against Postgres, so both are kept small and env-configurable (see docker-compose.prod.yml
+ * for the matching Postgres `max_connections` tuning these defaults are sized against).
+ */
+const MAX_CACHED_CLIENTS = Number(process.env.DB_MAX_CACHED_TENANT_CLIENTS ?? 15);
+const POOL_PER_TENANT = Number(process.env.DB_POOL_PER_TENANT ?? 3);
 
 /**
  * Opens (and caches, LRU-ish by insertion order) one PrismaClient per tenant schema.
@@ -32,6 +39,7 @@ export class TenantPrismaService implements OnModuleDestroy {
     const baseUrl = this.config.getOrThrow<string>('DATABASE_URL');
     const url = new URL(baseUrl);
     url.searchParams.set('schema', schemaName);
+    url.searchParams.set('connection_limit', String(POOL_PER_TENANT));
 
     client = new PrismaClient({ datasources: { db: { url: url.toString() } } });
     this.clients.set(schemaName, client);

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { readdirSync, statSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { computeTenantStorageBytes } from '../../common/storage-usage.util';
 import { randomInt } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
@@ -18,25 +19,10 @@ import { generateTempPassword } from '../../common/password.util';
 import { PlatformNotifierService } from '../messaging/platform-notifier.service';
 import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 import { PricingTiersService } from '../pricing-tiers/pricing-tiers.service';
+import { SystemHealthService } from '../system-health/system-health.service';
 import { JwtUserPayload } from '../../common/decorators/current-user.decorator';
 
 const CREATION_CODE_TTL_MS = 15 * 60 * 1000;
-
-function directorySizeBytes(dir: string): number {
-  let total = 0;
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return 0;
-  }
-  for (const entry of entries) {
-    const full = join(dir, entry);
-    const stat = statSync(full);
-    total += stat.isDirectory() ? directorySizeBytes(full) : stat.size;
-  }
-  return total;
-}
 
 @Injectable()
 export class TenantsService {
@@ -49,6 +35,7 @@ export class TenantsService {
     private readonly notifier: PlatformNotifierService,
     private readonly platformSettings: PlatformSettingsService,
     private readonly pricingTiers: PricingTiersService,
+    private readonly systemHealth: SystemHealthService,
   ) {}
 
   // Sub-Admins only see schools they personally created; every other role (Super Admin, Assistant
@@ -220,6 +207,18 @@ export class TenantsService {
       : null;
     const billingCycle = request.activationBillingCycle ?? 'MONTHLY';
 
+    // Real accounts with a tier-assigned storage limit must not promise more disk than the server
+    // actually has free — checked here, right before provisioning, rather than at requestCreate()
+    // time, so it reflects the disk's actual state at the moment of commitment.
+    if (!request.isDemo && request.storageLimitMb != null) {
+      const capacity = await this.systemHealth.checkCapacityForNewLimit(request.storageLimitMb);
+      if (!capacity.ok) {
+        throw new BadRequestException(
+          `The server doesn't have enough remaining disk capacity to safely support this school's ${request.storageLimitMb} MB storage allotment (${capacity.committedMb} MB already committed to other schools, only ${capacity.allowedMb} MB safely available). Free up space or lower the matching pricing tier's storage limit before confirming.`,
+        );
+      }
+    }
+
     // Demo accounts stay free/expiry-based and are usable immediately (ACTIVE). Real accounts are
     // created locked (PENDING_PAYMENT) — login is blocked (see AuthService.login) until the school
     // pays the activation fee via M-Pesa STK push from the link in the welcome email below.
@@ -346,6 +345,14 @@ export class TenantsService {
 
   async updateStorageLimit(id: string, storageLimitMb: number | null | undefined) {
     await this.findOne(id);
+    if (storageLimitMb != null) {
+      const capacity = await this.systemHealth.checkCapacityForNewLimit(storageLimitMb, id);
+      if (!capacity.ok) {
+        throw new BadRequestException(
+          `The server doesn't have enough remaining disk capacity for a ${storageLimitMb} MB limit on this school (${capacity.committedMb} MB already committed to other schools, only ${capacity.allowedMb} MB safely available). Free up space or choose a smaller limit.`,
+        );
+      }
+    }
     return this.platformPrisma.tenant.update({ where: { id }, data: { storageLimitMbOverride: storageLimitMb } });
   }
 
@@ -356,14 +363,10 @@ export class TenantsService {
   async getUsage(id: string) {
     const tenant = await this.findOne(id);
 
-    const dbSizeResult = await this.platformPrisma.$queryRaw<{ bytes: bigint | null }[]>`
-      SELECT COALESCE(SUM(pg_total_relation_size(quote_ident(schemaname) || '.' || quote_ident(tablename))), 0) AS bytes
-      FROM pg_tables
-      WHERE schemaname = ${tenant.schemaName}
-    `;
-    const databaseBytes = Number(dbSizeResult[0]?.bytes ?? 0);
-    const uploadsBytes = directorySizeBytes(join(process.cwd(), 'uploads', tenant.schemaName));
-    const totalBytes = databaseBytes + uploadsBytes;
+    const { databaseBytes, uploadsBytes, totalBytes } = await computeTenantStorageBytes(
+      this.platformPrisma,
+      tenant.schemaName,
+    );
     const limitMb = tenant.storageLimitMbOverride ?? null;
 
     return {

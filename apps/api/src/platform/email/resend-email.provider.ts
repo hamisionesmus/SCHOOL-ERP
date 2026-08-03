@@ -53,6 +53,7 @@ export class ResendEmailProvider implements EmailProvider {
         attachments: attachments?.map((a) => ({
           filename: a.filename,
           content: a.content.toString('base64'),
+          ...(a.cid ? { content_id: a.cid } : {}),
         })),
       }),
     });

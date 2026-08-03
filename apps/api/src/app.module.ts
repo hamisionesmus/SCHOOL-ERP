@@ -52,12 +52,22 @@ import { PlatformTicketsModule } from './platform/tickets/platform-tickets.modul
 import { PlatformFinanceModule } from './platform/finance/finance.module';
 import { PricingTiersModule } from './platform/pricing-tiers/pricing-tiers.module';
 import { SystemHealthModule } from './platform/system-health/system-health.module';
+import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }]),
+    // 'default' (unnamed) throttler is IP-keyed as before — protects against a single abusive IP.
+    // 'tenant' is keyed by tenantSchema for authenticated tenant-realm requests (see
+    // tenant-throttle-tracker.ts) — protects against one school's traffic spike starving another
+    // school sharing this same API process, which IP-keying alone can't do (many different parent/
+    // staff IPs at one busy school would otherwise each get their own separate budget). Both apply
+    // simultaneously; a request only needs to pass both to proceed.
+    ThrottlerModule.forRoot([
+      { name: 'default', ttl: 60000, limit: 120 },
+      { name: 'tenant', ttl: 60000, limit: 300, getTracker: tenantOrIpTracker },
+    ]),
     PrismaModule,
     UserDirectoryModule,
     AuthModule,

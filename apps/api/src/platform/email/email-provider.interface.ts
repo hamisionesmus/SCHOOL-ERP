@@ -7,6 +7,9 @@ export interface EmailAttachment {
   filename: string;
   content: Buffer;
   contentType: string;
+  /** When set, the attachment is inline and referenced from the HTML body via `cid:<value>`
+   * instead of appearing as a downloadable attachment (used for the embedded logo). */
+  cid?: string;
 }
 
 /**

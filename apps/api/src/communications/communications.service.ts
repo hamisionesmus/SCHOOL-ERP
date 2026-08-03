@@ -4,7 +4,7 @@ import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { SMS_PROVIDER, SmsProvider } from './providers/sms-provider.interface';
 import { EMAIL_PROVIDER, EmailProvider } from '../platform/email/email-provider.interface';
 import { PlatformSettingsService } from '../platform/platform-settings/platform-settings.service';
-import { wrapWithLogo } from '../platform/messaging/render-email-html';
+import { wrapWithLogo, buildLogoAttachment } from '../platform/messaging/render-email-html';
 
 @Injectable()
 export class CommunicationsService {
@@ -24,10 +24,14 @@ export class CommunicationsService {
     const recipient = await db.user.findUnique({ where: { id: recipientUserId } });
     if (!recipient?.email) return;
     const settings = await this.platformSettings.get();
-    const logoUrl = settings.loginLogoUrl
-      ? `${process.env.API_ORIGIN ?? 'http://localhost:4000'}${settings.loginLogoUrl}`
-      : null;
-    await this.emailProvider.send(recipient.email, subject, body, undefined, wrapWithLogo(body, logoUrl));
+    const logoAttachment = await buildLogoAttachment(settings.loginLogoUrl);
+    await this.emailProvider.send(
+      recipient.email,
+      subject,
+      body,
+      logoAttachment ? [logoAttachment] : undefined,
+      wrapWithLogo(body, !!logoAttachment),
+    );
   }
 
   /** Sends via the configured SmsProvider and logs the attempt as an SmsMessage row regardless of

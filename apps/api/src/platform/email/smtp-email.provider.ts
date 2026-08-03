@@ -66,6 +66,7 @@ export class SmtpEmailProvider implements EmailProvider {
           filename: a.filename,
           content: a.content,
           contentType: a.contentType,
+          cid: a.cid,
         })),
       });
       return { success: true, providerMessageId: info.messageId };

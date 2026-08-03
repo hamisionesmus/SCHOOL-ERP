@@ -7,6 +7,11 @@ import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 
 const UPLOADS_DIR = join(process.cwd(), 'uploads');
 
+// Fraction of currently-free disk that new storage-limit commitments are allowed to consume —
+// the remaining 20% stays reserved for the OS, Postgres's own growth, logs, and backups, none of
+// which are counted in "committed" school storage. See checkCapacityForNewLimit().
+const CAPACITY_SAFETY_FRACTION = 0.8;
+
 /**
  * Real container-level CPU/RAM/disk figures (via Node's `os` module and `fs.promises.statfs`,
  * available on Node 20+) plus platform-derived capacity estimates. This container has no artificial
@@ -21,12 +26,13 @@ export class SystemHealthService {
   ) {}
 
   async overview() {
-    const [cpu, memory, disk, schools, dailyActiveLogins] = await Promise.all([
+    const [cpu, memory, disk, schools, dailyActiveLogins, database] = await Promise.all([
       this.cpuStats(),
       this.memoryStats(),
       this.diskStats(),
       this.schoolsStorageStats(),
       this.dailyActiveLoginsLast7Days(),
+      this.databaseConnectionStats(),
     ]);
 
     // Disk is almost always the binding constraint for an app like this (CPU/RAM scale with request
@@ -43,6 +49,61 @@ export class SystemHealthService {
       disk,
       schools: { ...schools, estimatedRemainingCapacity },
       dailyActiveLogins,
+      database,
+    };
+  }
+
+  /** The committed-vs-actual gap: `committedStorageMb` (sum of every school's non-null
+   * `storageLimitMbOverride` — what's been promised) vs. `totalStorageMb` (what's actually used
+   * today, from schoolsStorageStats()). Lets a Super Admin see the gap building up before it turns
+   * into a hard rejection at checkCapacityForNewLimit(). */
+  private async committedStorageMb(): Promise<number> {
+    const result = await this.platformPrisma.tenant.aggregate({
+      where: { deletedAt: null, storageLimitMbOverride: { not: null } },
+      _sum: { storageLimitMbOverride: true },
+    });
+    return result._sum.storageLimitMbOverride ?? 0;
+  }
+
+  /** Guards against promising more storage than the server can physically deliver. Sums every
+   * school's currently-committed limit (excluding the tenant being (re)assigned, if any, so an
+   * override doesn't double-count against itself), and rejects if adding `newLimitMb` would push
+   * total commitments past CAPACITY_SAFETY_FRACTION of currently-free disk — the remaining slice
+   * stays reserved for the OS/Postgres/logs/backups, which aren't part of "committed school storage."
+   * Called from TenantsService at both tenant-creation time and on the manual override endpoint, so
+   * neither path can promise space the disk doesn't actually have. */
+  async checkCapacityForNewLimit(
+    newLimitMb: number,
+    excludeTenantId?: string,
+  ): Promise<{ ok: boolean; freeMb: number; committedMb: number; allowedMb: number }> {
+    const [disk, committedRows] = await Promise.all([
+      this.diskStats(),
+      this.platformPrisma.tenant.aggregate({
+        where: {
+          deletedAt: null,
+          storageLimitMbOverride: { not: null },
+          ...(excludeTenantId ? { id: { not: excludeTenantId } } : {}),
+        },
+        _sum: { storageLimitMbOverride: true },
+      }),
+    ]);
+    const committedMb = committedRows._sum.storageLimitMbOverride ?? 0;
+    const allowedMb = Math.floor(disk.freeMb * CAPACITY_SAFETY_FRACTION);
+    return { ok: committedMb + newLimitMb <= allowedMb, freeMb: disk.freeMb, committedMb, allowedMb };
+  }
+
+  /** Real-time concurrency signal — how close the platform is to Postgres's connection ceiling,
+   * which is the concrete risk that motivated the connection-pool tuning in TenantPrismaService/
+   * PlatformPrismaService (a busy multi-tenant moment could otherwise exhaust connections and start
+   * failing logins/requests platform-wide). Two cheap queries, not a heavy monitoring subsystem. */
+  private async databaseConnectionStats(): Promise<{ activeConnections: number; maxConnections: number }> {
+    const [activeRows, maxRows] = await Promise.all([
+      this.platformPrisma.$queryRaw<{ count: bigint }[]>`SELECT count(*) AS count FROM pg_stat_activity`,
+      this.platformPrisma.$queryRaw<{ setting: string }[]>`SHOW max_connections`,
+    ]);
+    return {
+      activeConnections: Number(activeRows[0]?.count ?? 0),
+      maxConnections: Number(maxRows[0]?.setting ?? 0),
     };
   }
 
@@ -83,7 +144,8 @@ export class SystemHealthService {
       where: { deletedAt: null },
       select: { schemaName: true },
     });
-    if (tenants.length === 0) return { count: 0, totalStorageMb: 0, avgStorageMbPerSchool: 0 };
+    const committedStorageMb = await this.committedStorageMb();
+    if (tenants.length === 0) return { count: 0, totalStorageMb: 0, avgStorageMbPerSchool: 0, committedStorageMb };
 
     const schemaNames = tenants.map((t) => t.schemaName);
     const dbSizeResult = await this.platformPrisma.$queryRaw<{ bytes: bigint | null }[]>`
@@ -99,6 +161,7 @@ export class SystemHealthService {
       count: tenants.length,
       totalStorageMb: totalMb,
       avgStorageMbPerSchool: Math.round((totalMb / tenants.length) * 100) / 100,
+      committedStorageMb,
     };
   }
 

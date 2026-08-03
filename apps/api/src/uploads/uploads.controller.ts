@@ -16,7 +16,7 @@ export class UploadsController {
   @Post()
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
-  upload(@CurrentUser() user: JwtUserPayload, @UploadedFile() file?: Express.Multer.File) {
+  async upload(@CurrentUser() user: JwtUserPayload, @UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('No file provided');
     const scope = user.realm === 'tenant' ? user.tenantSchema! : 'platform';
     return this.uploadsService.save(scope, file);
