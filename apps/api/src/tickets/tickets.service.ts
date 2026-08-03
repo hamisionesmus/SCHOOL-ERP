@@ -53,7 +53,7 @@ export class TicketsService {
       where: { userRoles: { some: { role: { name: 'School Administrator' } } } },
       select: { id: true },
     });
-    const smsBody = `School ERP: new ${ticket.priority.toLowerCase()} priority ticket — "${ticket.subject}". Please review.`;
+    const smsBody = `Hamzone Technologies: new ${ticket.priority.toLowerCase()} priority ticket — "${ticket.subject}". Please review.`;
     const emailSubject = `New support ticket — ${ticket.subject}`;
     const emailBody = `A new ${ticket.priority.toLowerCase()} priority ticket was submitted by ${ticket.submittedBy.fullName}.\n\nSubject: ${ticket.subject}\nDescription: ${ticket.description}\n\nReview it in your dashboard.`;
     await Promise.all(
@@ -155,7 +155,7 @@ export class TicketsService {
     await this.communications.sendToUserId(
       user.tenantSchema!,
       ticket.submittedByUserId,
-      `School ERP: your ticket "${ticket.subject}" has been resolved. We'd love your feedback — check your email for a quick survey link.`,
+      `Hamzone Technologies: your ticket "${ticket.subject}" has been resolved. We'd love your feedback — check your email for a quick survey link.`,
     );
     this.ticketsGateway.emitStatusChange(id, 'RESOLVED');
 

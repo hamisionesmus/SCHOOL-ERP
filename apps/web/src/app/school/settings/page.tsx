@@ -10,7 +10,7 @@ import { daysUntil, formatCountdown, countdownTone } from '@/lib/date';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface SchoolSettings {
@@ -150,59 +150,72 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Branding</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-5 flex items-center gap-4">
-            {settings.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={`${API_ORIGIN}${settings.logoUrl}`}
-                alt="School logo"
-                className="h-16 w-16 rounded-lg border border-slate-200 object-cover"
-              />
-            ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-slate-300 text-xs text-slate-400">
-                No logo
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          updateSettings.mutate(new FormData(e.currentTarget));
+        }}
+        className="flex flex-col gap-6"
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle>School Identity</CardTitle>
+            <CardDescription>Your logo and name — shown in the sidebar and on report cards.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex items-center gap-4">
+              {settings.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`${API_ORIGIN}${settings.logoUrl}`}
+                  alt="School logo"
+                  className="h-16 w-16 rounded-lg border border-slate-200 object-cover"
+                />
+              ) : (
+                <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-slate-300 text-xs text-slate-400">
+                  No logo
+                </div>
+              )}
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadLogo.mutate(file);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploading ? 'Uploading...' : 'Upload logo'}
+                </Button>
+                <p className="mt-1 text-xs text-slate-400">JPG, PNG, or WEBP, up to 5MB. Saves immediately.</p>
               </div>
-            )}
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadLogo.mutate(file);
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={uploading}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {uploading ? 'Uploading...' : 'Upload logo'}
-              </Button>
-              <p className="mt-1 text-xs text-slate-400">JPG, PNG, or WEBP, up to 5MB.</p>
             </div>
-          </div>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              updateSettings.mutate(new FormData(e.currentTarget));
-            }}
-            className="grid grid-cols-2 gap-3"
-          >
-            <div className="col-span-2 flex flex-col gap-1">
+            <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">School name</label>
               <Input name="name" defaultValue={settings.name} required />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Theme Colors</CardTitle>
+            <CardDescription>
+              Reskins the app shell only — card content stays white with the usual text colors, and
+              sidebar text/hover colors are computed automatically for contrast, so any color you pick
+              here stays readable.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Brand color</label>
               <input
@@ -211,10 +224,6 @@ export default function SettingsPage() {
                 defaultValue={settings.primaryColor ?? '#2563eb'}
                 className="h-10 w-full rounded-md border border-slate-300"
               />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-slate-700">SMS sender ID</label>
-              <Input name="smsSenderId" defaultValue={settings.smsSenderId ?? ''} placeholder="SCHOOLNAME" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Sidebar color</label>
@@ -234,24 +243,34 @@ export default function SettingsPage() {
                 className="h-10 w-full rounded-md border border-slate-300"
               />
             </div>
-            <p className="col-span-2 -mt-1 text-xs text-slate-400">
-              Sidebar/background colors reskin the app shell only — card content stays white with the
-              usual text colors, and sidebar text/hover colors are computed automatically for
-              contrast, so any color you pick here stays readable.
-            </p>
-            <div className="col-span-2 flex flex-col gap-1">
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>About Your School</CardTitle>
+            <CardDescription>
+              Mission, vision, motto, and logo appear on downloadable student report cards.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Address</label>
               <Input name="address" defaultValue={settings.address ?? ''} />
             </div>
-            <div className="col-span-2 flex flex-col gap-1">
+            <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Website</label>
               <Input name="website" defaultValue={settings.website ?? ''} />
             </div>
-            <div className="col-span-2 flex flex-col gap-1">
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <label className="text-sm font-medium text-slate-700">SMS sender ID</label>
+              <Input name="smsSenderId" defaultValue={settings.smsSenderId ?? ''} placeholder="SCHOOLNAME" />
+            </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
               <label className="text-sm font-medium text-slate-700">Motto</label>
               <Input name="motto" defaultValue={settings.motto ?? ''} placeholder="Excellence Through Character" />
             </div>
-            <div className="col-span-2 flex flex-col gap-1">
+            <div className="flex flex-col gap-1 sm:col-span-2">
               <label className="text-sm font-medium text-slate-700">Mission</label>
               <textarea
                 name="mission"
@@ -260,7 +279,7 @@ export default function SettingsPage() {
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
-            <div className="col-span-2 flex flex-col gap-1">
+            <div className="flex flex-col gap-1 sm:col-span-2">
               <label className="text-sm font-medium text-slate-700">Vision</label>
               <textarea
                 name="vision"
@@ -269,7 +288,18 @@ export default function SettingsPage() {
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
             </div>
-            <div className="flex flex-col gap-1">
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Academic Configuration</CardTitle>
+            <CardDescription>
+              Scores at or above the pass mark render green on the report card; below it renders red.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex max-w-xs flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Report card pass mark (%)</label>
               <Input
                 name="passMarkPercent"
@@ -279,19 +309,16 @@ export default function SettingsPage() {
                 defaultValue={settings.passMarkPercent}
               />
             </div>
-            <p className="col-span-2 text-xs text-slate-500">
-              Mission, vision, motto, and logo appear on downloadable student report cards. Scores at
-              or above the pass mark render green on the report card; below it renders red.
-            </p>
-            {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
-            <div className="col-span-2">
-              <Button type="submit" disabled={updateSettings.isPending}>
-                {updateSettings.isPending ? 'Saving...' : 'Save changes'}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <div>
+          <Button type="submit" disabled={updateSettings.isPending}>
+            {updateSettings.isPending ? 'Saving...' : 'Save changes'}
+          </Button>
+        </div>
+      </form>
 
       <Card>
         <CardHeader>

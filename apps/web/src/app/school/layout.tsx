@@ -24,26 +24,30 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
   const router = useRouter();
   const pathname = usePathname();
 
-  const { data: branding } = useQuery({
+  const brandingQuery = useQuery({
     queryKey: ['branding'],
     queryFn: () => apiFetch<SchoolBranding>('/settings'),
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });
+  const branding = brandingQuery.data;
 
   // First-time onboarding: a School Administrator whose school hasn't saved Settings yet gets
   // steered there (branding review, payment reference, password change) before anything else.
   const canManageSettings = !!user?.permissions?.includes('SETTINGS:MANAGE');
+  const needsSettingsRedirect =
+    canManageSettings && !!branding && !branding.settingsConfigured && pathname !== '/school/settings';
+
   useEffect(() => {
-    if (
-      canManageSettings &&
-      branding &&
-      !branding.settingsConfigured &&
-      pathname !== '/school/settings'
-    ) {
-      router.replace('/school/settings');
-    }
-  }, [canManageSettings, branding, pathname, router]);
+    if (needsSettingsRedirect) router.replace('/school/settings');
+  }, [needsSettingsRedirect, router]);
+
+  // Suppresses the "Dashboard flashes, then jumps to Settings" glitch: while we don't yet know
+  // whether a redirect is coming (branding still loading) or we've already decided one is needed,
+  // hold off on painting {children} at all — the wrong page (Dashboard) must never render even for
+  // one frame before the redirect fires. Only applies to users who could possibly be redirected.
+  const holdForRedirectDecision =
+    canManageSettings && pathname !== '/school/settings' && (brandingQuery.isLoading || needsSettingsRedirect);
 
   if (!user) return null;
 
@@ -72,7 +76,15 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
           </div>
         </header>
         <main className="flex-1 overflow-y-auto px-6 py-8 lg:px-10">
-          <div className="mx-auto w-full max-w-5xl">{children}</div>
+          <div className="mx-auto w-full max-w-5xl">
+            {holdForRedirectDecision ? (
+              <div className="flex h-40 items-center justify-center">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+              </div>
+            ) : (
+              children
+            )}
+          </div>
         </main>
       </div>
     </div>

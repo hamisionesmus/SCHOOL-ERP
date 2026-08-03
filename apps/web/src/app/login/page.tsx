@@ -134,7 +134,7 @@ export default function LoginPage() {
               <label className="text-xs font-medium uppercase tracking-wide text-slate-400">Email</label>
               <Input
                 type="email"
-                placeholder="you@school.ac.ke"
+                placeholder="name@gmail.com"
                 disabled={busy}
                 className="h-11 border-white/10 bg-white/5 text-white placeholder:text-slate-500 transition-colors focus-visible:ring-emerald-500"
                 {...register('email')}

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, extname } from 'node:path';
 
-const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.svg', '.ico']);
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 
 /**
@@ -16,7 +16,7 @@ export class UploadsService {
   save(scope: string, file: Express.Multer.File): { url: string } {
     const ext = extname(file.originalname).toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(ext)) {
-      throw new BadRequestException('Only JPG, PNG, or WEBP images are allowed');
+      throw new BadRequestException('Only JPG, PNG, WEBP, SVG, or ICO images are allowed');
     }
     if (file.size > MAX_BYTES) {
       throw new BadRequestException('File must be under 5MB');

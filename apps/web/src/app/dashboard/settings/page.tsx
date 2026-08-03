@@ -727,11 +727,19 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
     onError: (err) => notifyError(err, 'Failed to request settings change'),
   });
 
+  // Saved immediately, no OTP round trip — see PlatformSettingsController.updateBrandingImages's
+  // doc comment for why. Uploading and walking away now actually takes effect, matching how the
+  // avatar upload on the Profile page already behaves.
   async function uploadImage(file: File, field: 'loginLogoUrl' | 'faviconUrl', setBusy: (v: boolean) => void) {
     setBusy(true);
     try {
       const { url } = await apiUpload(file);
+      await apiFetch('/platform/settings/branding-images', {
+        method: 'POST',
+        body: JSON.stringify({ [field]: url }),
+      });
       setForm((f) => ({ ...f, [field]: url }));
+      notifySuccess(field === 'loginLogoUrl' ? 'Login logo updated' : 'Favicon updated');
     } catch (err) {
       notifyError(err, 'Upload failed');
     } finally {
@@ -771,7 +779,15 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
                 {uploadingLogo ? 'Uploading...' : 'Change logo'}
               </Button>
               {form.loginLogoUrl && (
-                <Button type="button" variant="ghost" size="sm" onClick={() => setForm((f) => ({ ...f, loginLogoUrl: '' }))}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    await apiFetch('/platform/settings/branding-images', { method: 'POST', body: JSON.stringify({ loginLogoUrl: '' }) });
+                    setForm((f) => ({ ...f, loginLogoUrl: '' }));
+                  }}
+                >
                   Reset
                 </Button>
               )}
@@ -807,7 +823,15 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
                 {uploadingFavicon ? 'Uploading...' : 'Change favicon'}
               </Button>
               {form.faviconUrl && (
-                <Button type="button" variant="ghost" size="sm" onClick={() => setForm((f) => ({ ...f, faviconUrl: '' }))}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    await apiFetch('/platform/settings/branding-images', { method: 'POST', body: JSON.stringify({ faviconUrl: '' }) });
+                    setForm((f) => ({ ...f, faviconUrl: '' }));
+                  }}
+                >
                   Reset
                 </Button>
               )}

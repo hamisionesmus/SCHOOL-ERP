@@ -90,7 +90,7 @@ export class PlatformTicketsService {
       await this.communications.sendToUserId(
         tenant.schemaName,
         ticket.submittedByUserId,
-        `School ERP: platform support replied to your ticket "${ticket.subject}".`,
+        `Hamzone Technologies: platform support replied to your ticket "${ticket.subject}".`,
       );
     }
 
@@ -163,7 +163,7 @@ export class PlatformTicketsService {
       await this.communications.sendToUserId(
         tenant.schemaName,
         ticket.submittedByUserId,
-        `School ERP: your ticket "${ticket.subject}" has been resolved. We'd love your feedback — check your email for a quick survey link.`,
+        `Hamzone Technologies: your ticket "${ticket.subject}" has been resolved. We'd love your feedback — check your email for a quick survey link.`,
       );
     }
     this.ticketsGateway.emitStatusChange(escalation.ticketId, 'RESOLVED');
