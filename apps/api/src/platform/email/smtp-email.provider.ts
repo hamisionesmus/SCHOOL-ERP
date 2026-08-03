@@ -33,7 +33,10 @@ export class SmtpEmailProvider implements EmailProvider {
         port: Number(this.config.get<string>('SMTP_PORT') ?? 25),
         secure: false,
         // The relay only accepts mail from inside the docker network for domains it's configured
-        // to sign for — no auth needed, same trust boundary as talking to `postgres:5432`.
+        // to sign for — no auth needed, same trust boundary as talking to `postgres:5432`. Its
+        // opportunistic STARTTLS cert is self-signed (boky/postfix generates one internally); that's
+        // fine to trust since this connection never leaves the private docker network.
+        tls: { rejectUnauthorized: false },
       });
     }
     return this.transporter;

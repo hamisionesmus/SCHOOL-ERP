@@ -64,10 +64,11 @@ mail reliably lands in an inbox instead of spam (or gets rejected outright):
 1. **DKIM.** The relay auto-generates a keypair on first boot and signs every outbound message.
    Read the public key out of the running container and add it as a DNS TXT record:
    ```bash
-   docker compose -f docker-compose.prod.yml exec postfix cat /etc/opendkim/keys/myschoolapp.xyz/mail.txt
+   docker compose -f docker-compose.prod.yml exec postfix cat /etc/opendkim/keys/myschoolapp.xyz.txt
    ```
-   That prints the exact `mail._domainkey.myschoolapp.xyz` TXT record value — add it verbatim in
-   your DNS zone.
+   That prints the `mail._domainkey.myschoolapp.xyz` TXT record split across quoted chunks
+   (standard BIND-zone-file format) — concatenate the `p=...` parts into one string when adding it
+   to a DNS panel that wants a single value rather than the split form.
 2. **PTR (reverse DNS) for the VPS's own IP.** This is set by whoever controls the IP allocation —
    your VPS/hosting provider, not your domain's DNS zone — usually via a support ticket or an rDNS
    field in their control panel. Ask for the VPS's IP to reverse-resolve to `mail.myschoolapp.xyz`
