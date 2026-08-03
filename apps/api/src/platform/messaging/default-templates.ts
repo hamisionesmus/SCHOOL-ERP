@@ -11,7 +11,9 @@ export type MessageTemplateKey =
   | 'SETTINGS_OTP'
   | 'SUB_ADMIN_WELCOME'
   | 'TICKET_ESCALATED'
-  | 'TICKET_ASSIGNED';
+  | 'TICKET_ASSIGNED'
+  | 'TICKET_RESOLVED'
+  | 'TICKET_FEEDBACK_RECEIVED';
 
 export interface MessageTemplateContent {
   subject?: string;
@@ -126,5 +128,19 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
     emailBody:
       'You\'ve been assigned an escalated support ticket from "{{schoolName}}".\n\nSubject: {{subject}}\nPriority: {{priority}}\n\nView and resolve it here: {{dashboardUrl}}',
     smsBody: 'School ERP: you\'ve been assigned a ticket from "{{schoolName}}" — "{{subject}}". {{dashboardUrl}}',
+  },
+  TICKET_RESOLVED: {
+    variables: ['subject', 'resolutionNote', 'surveyUrl'],
+    subject: 'Your support ticket has been resolved — {{subject}}',
+    emailBody:
+      'Your support ticket "{{subject}}" has been resolved.\n\n{{resolutionNote}}\n\nWe\'d love to know how we did — it only takes a minute: {{surveyUrl}}',
+    smsBody: 'School ERP: your ticket "{{subject}}" has been resolved. Quick feedback: {{surveyUrl}}',
+  },
+  TICKET_FEEDBACK_RECEIVED: {
+    variables: ['schoolName', 'subject', 'rating', 'dashboardUrl'],
+    subject: 'New ticket feedback — {{schoolName}}',
+    emailBody:
+      '"{{schoolName}}" left feedback on their resolved ticket "{{subject}}": {{rating}}/5.\n\nView it here: {{dashboardUrl}}',
+    smsBody: 'School ERP: "{{schoolName}}" rated their resolved ticket "{{subject}}" {{rating}}/5 — view in dashboard.',
   },
 };

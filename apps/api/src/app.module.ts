@@ -50,6 +50,8 @@ import { PlatformNotificationsModule } from './platform/notifications/platform-n
 import { TicketsModule } from './tickets/tickets.module';
 import { PlatformTicketsModule } from './platform/tickets/platform-tickets.module';
 import { PlatformFinanceModule } from './platform/finance/finance.module';
+import { PricingTiersModule } from './platform/pricing-tiers/pricing-tiers.module';
+import { SystemHealthModule } from './platform/system-health/system-health.module';
 
 @Module({
   imports: [
@@ -103,6 +105,8 @@ import { PlatformFinanceModule } from './platform/finance/finance.module';
     TicketsModule,
     PlatformTicketsModule,
     PlatformFinanceModule,
+    PricingTiersModule,
+    SystemHealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

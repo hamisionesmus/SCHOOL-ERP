@@ -107,6 +107,21 @@ export class NotificationsService {
       );
     }
 
+    if (perms.includes('TICKET:MANAGE')) {
+      tasks.push(
+        db.ticket.count({ where: { status: 'OPEN' } }).then((n) => {
+          if (n > 0) {
+            items.push({
+              id: 'tickets-open',
+              message: `${n} open ticket${n === 1 ? '' : 's'} awaiting a reply`,
+              href: '/school/tickets',
+              tone: 'warning',
+            });
+          }
+        }),
+      );
+    }
+
     if (perms.includes('FINANCE:EDIT') || perms.includes('FINANCE:APPROVE_INVOICE')) {
       tasks.push(
         db.invoice

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsInt, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
 import { KENYA_COUNTIES } from '../../../common/kenya-counties';
 
 export class RequestTenantDto {
@@ -61,32 +61,43 @@ export class RequestTenantDto {
   @IsString()
   planId?: string;
 
-  @ApiPropertyOptional({ description: 'Create as a time-boxed demo account instead of a normal school' })
-  @IsOptional()
-  @IsBoolean()
-  isDemo?: boolean;
+  @ApiProperty({
+    description:
+      'real: paid, activation-fee-gated. demo: time-boxed trial, free. test: same as demo but deletable — see TenantsService.',
+    enum: ['real', 'demo', 'test'],
+  })
+  @IsIn(['real', 'demo', 'test'])
+  accountType!: 'real' | 'demo' | 'test';
 
-  @ApiPropertyOptional({ description: 'Demo lifetime in hours (e.g. 24 for 1 day, 4 for 4 hours) — required when isDemo is true' })
+  @ApiPropertyOptional({ description: 'Demo/test lifetime in hours (e.g. 24 for 1 day, 4 for 4 hours) — required when accountType is demo or test' })
   @IsOptional()
   @IsInt()
   @Min(1)
   demoDurationHours?: number;
 
   @ApiPropertyOptional({
-    description:
-      'One-time activation fee in KES the school must pay via M-Pesa STK push before login works — required for non-demo requests, ignored for demo requests.',
-    example: 5000,
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  activationFeeKes?: number;
-
-  @ApiPropertyOptional({
-    description: 'Which billing period the activation fee covers — required for non-demo requests.',
+    description: 'Which billing period the activation fee covers — required for real accounts.',
     enum: ['MONTHLY', 'HALF_YEARLY', 'YEARLY'],
   })
   @IsOptional()
   @IsIn(['MONTHLY', 'HALF_YEARLY', 'YEARLY'])
   activationBillingCycle?: 'MONTHLY' | 'HALF_YEARLY' | 'YEARLY';
+
+  @ApiPropertyOptional({ description: 'Expected student count — required for real accounts, drives the computed activation fee.' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  studentCount?: number;
+
+  @ApiPropertyOptional({ description: 'Expected teacher count — required for real accounts, drives the computed activation fee.' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  teacherCount?: number;
+
+  @ApiPropertyOptional({ description: 'Expected non-teaching-staff count — required for real accounts, drives the computed activation fee.' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  nonTeachingStaffCount?: number;
 }

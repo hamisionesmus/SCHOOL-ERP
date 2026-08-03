@@ -3,10 +3,11 @@ import { TicketsController } from './tickets.controller';
 import { TicketsService } from './tickets.service';
 import { CommunicationsModule } from '../communications/communications.module';
 import { MessagingModule } from '../platform/messaging/messaging.module';
+import { FeedbackModule } from '../platform/feedback/feedback.module';
 import { TicketsGatewayModule } from './tickets-gateway.module';
 
 @Module({
-  imports: [CommunicationsModule, MessagingModule, TicketsGatewayModule],
+  imports: [CommunicationsModule, MessagingModule, FeedbackModule, TicketsGatewayModule],
   controllers: [TicketsController],
   providers: [TicketsService],
 })

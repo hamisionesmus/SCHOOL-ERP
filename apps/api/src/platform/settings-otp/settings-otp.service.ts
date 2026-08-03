@@ -8,7 +8,7 @@ import { UpdatePlatformSettingsDto } from '../platform-settings/dto/update-platf
 
 const CODE_TTL_MS = 15 * 60 * 1000;
 
-export type SettingsChangeScope = 'SETTINGS' | 'TEMPLATES' | 'PROFILE' | 'ADMINS';
+export type SettingsChangeScope = 'SETTINGS' | 'TEMPLATES' | 'PROFILE' | 'ADMINS' | 'PRICING_TIERS';
 
 const PAYMENT_FIELDS = ['bankName', 'bankAccountName', 'bankAccountNumber', 'paybillNumber', 'paybillAccountName', 'stkEnabled', 'bankTransferEnabled', 'paybillEnabled'];
 const NOTIFICATION_FIELDS = ['smsEnabled', 'emailEnabled', 'demoReminderDaysBefore', 'renewalReminderDaysBefore'];
@@ -49,6 +49,8 @@ function describeOperation(scope: SettingsChangeScope, changes: object): string 
       const name = (changes as { fullName?: string }).fullName;
       return name ? `invite ${name} as a new admin` : 'invite a new admin';
     }
+    case 'PRICING_TIERS':
+      return 'update the activation-fee pricing tiers';
     default:
       return 'change platform settings';
   }

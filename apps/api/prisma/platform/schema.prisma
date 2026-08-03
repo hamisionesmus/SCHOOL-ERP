@@ -48,6 +48,11 @@ enum FinanceEntryType {
   OUT
 }
 
+enum FeedbackContext {
+  DEMO_EXPIRY
+  TICKET_RESOLUTION
+}
+
 enum BillingCycle {
   MONTHLY
   HALF_YEARLY
@@ -152,6 +157,11 @@ model Tenant {
   // since this environment has no scheduler; see docs/SRS.md §4.1.
   isDemo                 Boolean           @default(false)
   demoExpiresAt          DateTime?
+  // Disposable variant of a demo account — same expiry/reminder/feedback machinery as isDemo
+  // (always true alongside isDemo), the only difference is a delete button in the UI and a distinct
+  // "TEST" badge. Deletion is hard-guarded server-side to isTest tenants only, regardless of caller
+  // — see TenantsService.deleteTestTenant().
+  isTest                 Boolean           @default(false)
   // Dedupe flags for RemindersService's daily job — set once a reminder fires so it isn't re-sent
   // every day of the window; renewalReminderSentAt is cleared back to null whenever currentPeriodEnd
   // moves forward (a new payment clears the way for the next cycle's reminder).
@@ -215,6 +225,9 @@ model TenantCreationRequest {
   // Demo/trial requests: isDemo + demoDurationHours (from the Super Admin's day/hour picker) get
   // applied to the resulting Tenant on confirmation — see TenantsService.confirmCreate().
   isDemo            Boolean   @default(false)
+  // Disposable variant of a demo request — see Tenant.isTest's doc comment. Always paired with
+  // isDemo: true when set.
+  isTest            Boolean   @default(false)
   demoDurationHours Int?
   // One-time activation fee the Super Admin sets for this specific school (not tied to the
   // recurring subscriptionPlan price) — required for non-demo requests. Becomes the amount on the
@@ -224,6 +237,12 @@ model TenantCreationRequest {
   // requests, used to compute the first PlatformInvoice's periodEnd and the Tenant's own
   // billingCycle at creation (previously hardcoded to 30 days / MONTHLY regardless of this field).
   activationBillingCycle BillingCycle?
+  // Expected headcount for non-demo requests — drives the server-computed activationFeeKes via
+  // PricingTiersService.computeFee() (the client never supplies the fee directly). Nullable since
+  // demo/test requests never set these.
+  studentCount           Int?
+  teacherCount           Int?
+  nonTeachingStaffCount  Int?
   // Carried through to the resulting Tenant on confirmation — see TenantsService.confirmCreate().
   county            String?
   town              String?
@@ -442,6 +461,12 @@ model TenantFeedback {
   rating                  Int?
   improvements            String?
   interestedInRealAccount Boolean?
+  // Which survey this came from — the original demo-expiry nudge, or a post-support-ticket
+  // satisfaction check. Both share this one model/public-submit flow; only the token payload and
+  // the page copy differ per context. Defaults to DEMO_EXPIRY since that's the original use case.
+  context                 FeedbackContext @default(DEMO_EXPIRY)
+  ticketEscalationId      String?
+  ticketEscalation        PlatformTicketEscalation? @relation(fields: [ticketEscalationId], references: [id])
   createdAt               DateTime @default(now())
 }
 
@@ -570,6 +595,8 @@ model PlatformTicketEscalation {
   resolvedAt       DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  feedback         TenantFeedback[]
 }
 
 // A manual money-in/money-out log (salaries, hosting costs, one-off revenue not captured by
@@ -585,4 +612,18 @@ model PlatformFinanceEntry {
   recordedByUserId String
   recordedBy      PlatformUser      @relation(fields: [recordedByUserId], references: [id])
   createdAt       DateTime          @default(now())
+}
+
+// One row per activation-fee headcount range (e.g. "1-100 people: KES 5,000"). Managed as a full
+// list replace (delete-all + recreate) from the Pricing Tiers settings tab, not per-row CRUD — see
+// PricingTiersService. maxHeadcount null means "no upper bound" (the top-open tier). The fee for a
+// real (non-demo) school is always computed server-side from these via computeFee(), never trusted
+// from the client — see TenantsService.requestCreate().
+model PricingTier {
+  id            String   @id @default(uuid())
+  minHeadcount  Int
+  maxHeadcount  Int?
+  priceKes      Decimal
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

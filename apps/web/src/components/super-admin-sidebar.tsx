@@ -16,6 +16,8 @@ import {
   Landmark,
   Users,
   LifeBuoy,
+  MessageSquareHeart,
+  Activity,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -26,6 +28,8 @@ const SUPER_ADMIN_NAV = [
   { href: '/dashboard/admins', label: 'Admins', icon: Users },
   { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
   { href: '/dashboard/finance', label: 'Finance', icon: Landmark },
+  { href: '/dashboard/feedback', label: 'Feedback', icon: MessageSquareHeart },
+  { href: '/dashboard/system-health', label: 'System Health', icon: Activity },
   { href: '/dashboard/settings', label: 'Platform Settings', icon: Wallet },
   { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
   { href: '/dashboard/backups', label: 'Backups', icon: DatabaseBackup },
@@ -39,11 +43,13 @@ const SUB_ADMIN_NAV = [
   { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
 ];
 
-// Sits above Sub-Admin: school creation (self-confirmed) + finance recording, but no
-// Tickets/Admins/Settings/Security/Backups — see docs/RBAC.md.
+// Sits above Sub-Admin: school creation (self-confirmed) + finance recording + system health (same
+// visibility tier as Finance), but no Tickets/Admins/Settings/Security/Backups/Feedback — see
+// docs/RBAC.md.
 const ASSISTANT_SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
   { href: '/dashboard/finance', label: 'Finance', icon: Landmark },
+  { href: '/dashboard/system-health', label: 'System Health', icon: Activity },
 ];
 
 const COLLAPSE_STORAGE_KEY = 'school-erp:sa-sidebar-collapsed';

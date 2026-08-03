@@ -4,6 +4,7 @@ import { PlatformPrismaService } from '../common/prisma/platform-prisma.service'
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { CommunicationsService } from '../communications/communications.service';
 import { PlatformNotifierService } from '../platform/messaging/platform-notifier.service';
+import { FeedbackService } from '../platform/feedback/feedback.service';
 import { TicketsGateway } from './tickets.gateway';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { CreateTicketCommentDto } from './dto/create-comment.dto';
@@ -28,6 +29,7 @@ export class TicketsService {
     private readonly platformPrisma: PlatformPrismaService,
     private readonly communications: CommunicationsService,
     private readonly platformNotifier: PlatformNotifierService,
+    private readonly feedback: FeedbackService,
     private readonly ticketsGateway: TicketsGateway,
   ) {}
 
@@ -44,21 +46,24 @@ export class TicketsService {
       include: TICKET_INCLUDE,
     });
 
-    if (ticket.priority === 'HIGH' || ticket.priority === 'URGENT') {
-      const admins = await db.user.findMany({
-        where: { userRoles: { some: { role: { name: 'School Administrator' } } } },
-        select: { id: true },
-      });
-      await Promise.all(
-        admins.map((a) =>
-          this.communications.sendToUserId(
-            user.tenantSchema!,
-            a.id,
-            `School ERP: new ${ticket.priority} priority ticket — "${ticket.subject}". Please review.`,
-          ),
-        ),
-      );
-    }
+    // Every priority notifies School Administrators now (previously HIGH/URGENT-only, silence for
+    // NORMAL/LOW) via both channels — a ticket sitting unnoticed is exactly the "helpful" gap being
+    // closed here.
+    const admins = await db.user.findMany({
+      where: { userRoles: { some: { role: { name: 'School Administrator' } } } },
+      select: { id: true },
+    });
+    const smsBody = `School ERP: new ${ticket.priority.toLowerCase()} priority ticket — "${ticket.subject}". Please review.`;
+    const emailSubject = `New support ticket — ${ticket.subject}`;
+    const emailBody = `A new ${ticket.priority.toLowerCase()} priority ticket was submitted by ${ticket.submittedBy.fullName}.\n\nSubject: ${ticket.subject}\nDescription: ${ticket.description}\n\nReview it in your dashboard.`;
+    await Promise.all(
+      admins.map((a) =>
+        Promise.all([
+          this.communications.sendToUserId(user.tenantSchema!, a.id, smsBody),
+          this.communications.sendEmailToUserId(user.tenantSchema!, a.id, emailSubject, emailBody),
+        ]),
+      ),
+    );
 
     return ticket;
   }
@@ -119,7 +124,7 @@ export class TicketsService {
   async resolve(user: JwtUserPayload, id: string, dto: ResolveTicketDto) {
     if (!(user.permissions ?? []).includes('TICKET:MANAGE')) throw new ForbiddenException();
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
-    const ticket = await db.ticket.findUnique({ where: { id } });
+    const ticket = await db.ticket.findUnique({ where: { id }, include: TICKET_INCLUDE });
     if (!ticket) throw new NotFoundException('Ticket not found');
     if (ticket.status !== 'OPEN' && ticket.status !== 'ESCALATED') {
       throw new BadRequestException('This ticket is already resolved');
@@ -136,10 +141,21 @@ export class TicketsService {
       include: TICKET_INCLUDE,
     });
 
+    const tenant = await this.platformPrisma.tenant.findFirst({ where: { schemaName: user.tenantSchema! } });
+    if (tenant) {
+      const surveyToken = await this.feedback.signFeedbackToken(tenant.id, 'TICKET_RESOLUTION', {
+        subject: ticket.subject,
+      });
+      const surveyUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/feedback/${surveyToken}`;
+      await this.platformNotifier.notify('TICKET_RESOLVED', {
+        to: { email: ticket.submittedBy.email, phone: null },
+        vars: { subject: ticket.subject, resolutionNote: dto.resolutionNote ?? 'No additional notes.', surveyUrl },
+      });
+    }
     await this.communications.sendToUserId(
       user.tenantSchema!,
       ticket.submittedByUserId,
-      `School ERP: your ticket "${ticket.subject}" has been resolved.`,
+      `School ERP: your ticket "${ticket.subject}" has been resolved. We'd love your feedback — check your email for a quick survey link.`,
     );
     this.ticketsGateway.emitStatusChange(id, 'RESOLVED');
 

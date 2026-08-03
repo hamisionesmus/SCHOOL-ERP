@@ -32,6 +32,7 @@ interface Tenant {
   county: string | null;
   town: string | null;
   createdBy: { fullName: string } | null;
+  isTest: boolean;
 }
 interface TenantUsage {
   totalMb: number;
@@ -104,6 +105,8 @@ export default function DashboardPage() {
   const [confirmTarget, setConfirmTarget] = useState<{ id: string; name: string; action: 'suspend' | 'activate' } | null>(
     null,
   );
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -136,6 +139,19 @@ export default function DashboardPage() {
     onError: (err) => {
       notifyError(err, 'Failed to update school status');
       setConfirmTarget(null);
+    },
+  });
+
+  const deleteTest = useMutation({
+    mutationFn: (id: string) => apiFetch(`/platform/tenants/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      notifySuccess('Test school deleted');
+      setDeleteTarget(null);
+      setDeleteConfirmText('');
+    },
+    onError: (err) => {
+      notifyError(err, 'Failed to delete school');
     },
   });
 
@@ -342,7 +358,14 @@ export default function DashboardPage() {
                       </td>
                       <td className="py-2 text-slate-500">{t.slug}</td>
                       <td className="py-2">
-                        <Badge status={t.status} />
+                        <div className="flex items-center gap-1.5">
+                          <Badge status={t.status} />
+                          {t.isTest && (
+                            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                              Test
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2">
                         <UsageCell tenantId={t.id} />
@@ -382,6 +405,18 @@ export default function DashboardPage() {
                                 Suspend
                               </Button>
                             ))}
+                          {t.isTest && (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => {
+                                setDeleteTarget({ id: t.id, name: t.name });
+                                setDeleteConfirmText('');
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -414,6 +449,37 @@ export default function DashboardPage() {
         onConfirm={() => confirmTarget && toggleStatus.mutate({ id: confirmTarget.id, action: confirmTarget.action })}
         onCancel={() => setConfirmTarget(null)}
       />
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[100] flex animate-fade-in items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm animate-scale-in rounded-2xl bg-white p-6 text-center shadow-2xl">
+            <h3 className="text-lg font-semibold text-slate-900">Delete {deleteTarget.name}?</h3>
+            <p className="mt-1.5 text-sm text-slate-500">
+              This permanently removes the school&apos;s data, schema, and uploads. This cannot be undone. Type{' '}
+              <strong>{deleteTarget.name}</strong> below to confirm.
+            </p>
+            <Input
+              className="mt-4"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={deleteTarget.name}
+            />
+            <div className="mt-6 flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setDeleteTarget(null)} disabled={deleteTest.isPending}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                disabled={deleteConfirmText !== deleteTarget.name || deleteTest.isPending}
+                onClick={() => deleteTest.mutate(deleteTarget.id)}
+              >
+                {deleteTest.isPending ? 'Deleting...' : 'Delete permanently'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { TenantsService } from './tenants.service';
@@ -24,13 +24,25 @@ export class TenantsController {
   ) {}
 
   @Get()
-  list(@Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('q') q?: string) {
-    return this.tenantsService.list(page ? Number(page) : undefined, pageSize ? Number(pageSize) : undefined, q);
+  list(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('q') q?: string,
+    @CurrentUser() user?: JwtUserPayload,
+  ) {
+    return this.tenantsService.list(page ? Number(page) : undefined, pageSize ? Number(pageSize) : undefined, q, user);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.tenantsService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: JwtUserPayload) {
+    return this.tenantsService.findOne(id, user);
+  }
+
+  // Hard-guarded server-side to isTest tenants only (see TenantsService.deleteTestTenant) —
+  // Sub-Admins/Assistant Super Admins may only delete tenants they created themselves.
+  @Delete(':id')
+  deleteTestTenant(@Param('id') id: string, @CurrentUser() user: JwtUserPayload) {
+    return this.tenantsService.deleteTestTenant(id, user);
   }
 
   @Get(':id/usage')
@@ -46,6 +58,9 @@ export class TenantsController {
   // Second way to trigger STK Push (alongside the school opening the activation link
   // themselves): lets whoever's managing this school in the dashboard push the prompt straight to a
   // phone right here, without waiting on the school to act on the emailed/texted link.
+  // Super-Admin-only: this bypasses the school's own activation page entirely, so it's a more
+  // consequential action than plain creation — same trust boundary as suspend/activate below.
+  @RequirePlatformRole('SUPER_ADMIN')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post(':id/initiate-stk')
   initiateStk(@Param('id') id: string, @Body() dto: InitiateActivationPaymentDto) {

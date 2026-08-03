@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
@@ -35,12 +35,11 @@ const detailsSchema = z.object({
   adminFullName: z.string().min(2),
   adminPassword: z.string().min(8),
   adminPhone: z.string().min(9, 'Required — an OTP is sent here to verify the admin'),
-  accountType: z.enum(['demo', 'real']),
+  accountType: z.enum(['demo', 'real', 'test']),
   demoDurationHours: z.string().optional(),
-  activationFeeKes: z
-    .string()
-    .optional()
-    .refine((v) => !v || Number(v) > 0, 'Must be a positive amount'),
+  studentCount: z.string().optional(),
+  teacherCount: z.string().optional(),
+  nonTeachingStaffCount: z.string().optional(),
   activationBillingCycle: z.enum(['MONTHLY', 'HALF_YEARLY', 'YEARLY']).optional(),
 });
 type DetailsValues = z.infer<typeof detailsSchema>;
@@ -50,6 +49,12 @@ interface RequestResult {
   expiresAt: string;
   devCode?: string;
   devAdminOtp?: string;
+}
+
+interface PricingTier {
+  minHeadcount: number;
+  maxHeadcount: number | null;
+  priceKes: string;
 }
 
 export function CreateSchoolDialog() {
@@ -72,8 +77,27 @@ export function CreateSchoolDialog() {
     defaultValues: { accountType: 'real', activationBillingCycle: 'MONTHLY' },
   });
   const accountType = watch('accountType');
-  const isDemo = accountType === 'demo';
+  const isDemo = accountType === 'demo' || accountType === 'test';
+  const isReal = accountType === 'real';
   const county = watch('county');
+  const studentCount = watch('studentCount');
+  const teacherCount = watch('teacherCount');
+  const nonTeachingStaffCount = watch('nonTeachingStaffCount');
+
+  const tiersQuery = useQuery({
+    queryKey: ['pricing-tiers'],
+    queryFn: () => apiFetch<PricingTier[]>('/platform/pricing-tiers'),
+    enabled: isReal,
+  });
+
+  const totalHeadcount = (Number(studentCount) || 0) + (Number(teacherCount) || 0) + (Number(nonTeachingStaffCount) || 0);
+  const estimatedFeeKes = useMemo(() => {
+    if (!isReal || totalHeadcount <= 0 || !tiersQuery.data) return null;
+    const match = tiersQuery.data.find(
+      (t) => totalHeadcount >= t.minHeadcount && (t.maxHeadcount === null || totalHeadcount <= t.maxHeadcount),
+    );
+    return match ? Number(match.priceKes) : undefined; // undefined = no tier covers this headcount
+  }, [isReal, totalHeadcount, tiersQuery.data]);
 
   const requestCreate = useMutation({
     mutationFn: (values: DetailsValues) =>
@@ -89,10 +113,12 @@ export function CreateSchoolDialog() {
           adminFullName: values.adminFullName,
           adminPassword: values.adminPassword,
           adminPhone: values.adminPhone,
-          isDemo,
+          accountType: values.accountType,
           demoDurationHours: isDemo && values.demoDurationHours ? Number(values.demoDurationHours) : undefined,
-          activationFeeKes: isDemo ? undefined : values.activationFeeKes ? Number(values.activationFeeKes) : undefined,
-          activationBillingCycle: isDemo ? undefined : values.activationBillingCycle,
+          studentCount: isReal && values.studentCount ? Number(values.studentCount) : undefined,
+          teacherCount: isReal && values.teacherCount ? Number(values.teacherCount) : undefined,
+          nonTeachingStaffCount: isReal && values.nonTeachingStaffCount ? Number(values.nonTeachingStaffCount) : undefined,
+          activationBillingCycle: isReal ? values.activationBillingCycle : undefined,
         }),
       }),
     onSuccess: (result, values) => {
@@ -146,12 +172,16 @@ export function CreateSchoolDialog() {
         {!pending ? (
           <form
             onSubmit={handleSubmit((v) => {
-              if (!isDemo && !v.activationFeeKes) {
-                setError('Activation fee is required for a real account');
+              if (isReal && (!v.studentCount || !v.teacherCount || !v.nonTeachingStaffCount)) {
+                setError('Student, teacher, and non-teaching-staff counts are required for a real account');
+                return;
+              }
+              if (isReal && estimatedFeeKes === undefined) {
+                setError('No pricing tier covers this headcount — ask the Super Admin to configure pricing tiers in Settings');
                 return;
               }
               if (isDemo && !v.demoDurationHours) {
-                setError('Demo duration is required');
+                setError(`${accountType === 'test' ? 'Test' : 'Demo'} duration is required`);
                 return;
               }
               setError(null);
@@ -220,10 +250,11 @@ export function CreateSchoolDialog() {
                   >
                     <option value="real">Real account</option>
                     <option value="demo">Demo account</option>
+                    <option value="test">Test account</option>
                   </select>
                 </Field>
-                {isDemo ? (
-                  <Field label="Demo duration" error={errors.demoDurationHours?.message}>
+                {isDemo && (
+                  <Field label={`${accountType === 'test' ? 'Test' : 'Demo'} duration`} error={errors.demoDurationHours?.message}>
                     <select
                       className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
                       {...register('demoDurationHours')}
@@ -236,12 +267,8 @@ export function CreateSchoolDialog() {
                       ))}
                     </select>
                   </Field>
-                ) : (
-                  <Field label="Activation fee (KES)" error={errors.activationFeeKes?.message}>
-                    <Input type="number" min={1} placeholder="5000" {...register('activationFeeKes')} />
-                  </Field>
                 )}
-                {!isDemo && (
+                {isReal && (
                   <Field label="Billing cycle">
                     <select
                       className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
@@ -254,10 +281,34 @@ export function CreateSchoolDialog() {
                   </Field>
                 )}
               </div>
-              {!isDemo && (
+              {accountType === 'test' && (
                 <p className="mt-1.5 text-xs text-slate-500">
-                  The school pays this via M-Pesa, bank, or paybill before sign-in is unlocked.
+                  Behaves exactly like a demo account, but can be deleted later — useful for internal testing.
                 </p>
+              )}
+              {isReal && (
+                <>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <Field label="Students">
+                      <Input type="number" min={0} placeholder="0" {...register('studentCount')} />
+                    </Field>
+                    <Field label="Teachers">
+                      <Input type="number" min={0} placeholder="0" {...register('teacherCount')} />
+                    </Field>
+                    <Field label="Non-teaching staff">
+                      <Input type="number" min={0} placeholder="0" {...register('nonTeachingStaffCount')} />
+                    </Field>
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    {totalHeadcount <= 0
+                      ? 'The activation fee is computed automatically from the expected headcount.'
+                      : estimatedFeeKes === undefined
+                        ? 'No pricing tier covers this headcount — configure pricing tiers in Settings first.'
+                        : estimatedFeeKes === null
+                          ? 'Loading pricing tiers…'
+                          : `Estimated activation fee: KES ${estimatedFeeKes.toLocaleString()} — paid via M-Pesa, bank, or paybill before sign-in is unlocked.`}
+                  </p>
+                </>
               )}
 
               {error && <p className="mt-3 text-sm text-red-600">{error}</p>}

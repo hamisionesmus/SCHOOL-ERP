@@ -18,6 +18,7 @@ const TABS = [
   { key: 'templates', label: 'Message Templates' },
   { key: 'api', label: 'API & Payment Config' },
   { key: 'branding', label: 'Branding' },
+  { key: 'pricing', label: 'Pricing Tiers' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -59,6 +60,12 @@ interface PlatformSettings {
   loginHelperText: string | null;
   loginFooterText: string | null;
   builtByText: string | null;
+}
+
+interface PricingTier {
+  minHeadcount: number;
+  maxHeadcount: number | null;
+  priceKes: string;
 }
 
 interface EffectiveTemplate {
@@ -116,6 +123,10 @@ export default function PlatformSettingsPage() {
     queryKey: ['platform-message-templates'],
     queryFn: () => apiFetch<EffectiveTemplate[]>('/platform/message-templates'),
   });
+  const pricingTiersQuery = useQuery({
+    queryKey: ['pricing-tiers'],
+    queryFn: () => apiFetch<PricingTier[]>('/platform/pricing-tiers'),
+  });
 
   const confirmChange = useMutation({
     mutationFn: () =>
@@ -126,6 +137,7 @@ export default function PlatformSettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platform-settings'] });
       queryClient.invalidateQueries({ queryKey: ['platform-message-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['pricing-tiers'] });
       setDataVersion((v) => v + 1);
       notifySuccess(`${pending!.label} saved`);
       setPending(null);
@@ -176,6 +188,9 @@ export default function PlatformSettingsPage() {
           {tab === 'api' && <ApiConfigTab key={dataVersion} data={settingsQuery.data} onRequested={onRequested} />}
           {tab === 'branding' && <BrandingTab key={dataVersion} data={settingsQuery.data} onRequested={onRequested} />}
         </>
+      )}
+      {tab === 'pricing' && (
+        <PricingTiersTab key={dataVersion} tiers={pricingTiersQuery.data} loading={pricingTiersQuery.isLoading} onRequested={onRequested} />
       )}
       {tab === 'templates' && (
         <TemplatesTab
@@ -878,6 +893,130 @@ function BrandingTab({ data, onRequested }: { data?: PlatformSettings; onRequest
       <div>
         <Button onClick={() => requestSave.mutate()} disabled={requestSave.isPending}>
           {requestSave.isPending ? 'Sending code...' : 'Save branding'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PricingTiersTab({
+  tiers,
+  loading,
+  onRequested,
+}: {
+  tiers?: PricingTier[];
+  loading: boolean;
+  onRequested: OnRequested;
+}) {
+  const [rows, setRows] = useState<{ minHeadcount: string; maxHeadcount: string; priceKes: string }[]>([]);
+  const hasSynced = useRef(false);
+
+  useEffect(() => {
+    if (tiers && !hasSynced.current) {
+      hasSynced.current = true;
+      setRows(
+        tiers.length > 0
+          ? tiers.map((t) => ({
+              minHeadcount: String(t.minHeadcount),
+              maxHeadcount: t.maxHeadcount === null ? '' : String(t.maxHeadcount),
+              priceKes: t.priceKes,
+            }))
+          : [{ minHeadcount: '1', maxHeadcount: '', priceKes: '' }],
+      );
+    }
+  }, [tiers]);
+
+  const requestSave = useMutation({
+    mutationFn: () =>
+      apiFetch<OtpRequestResult>('/platform/pricing-tiers/request-update', {
+        method: 'POST',
+        body: JSON.stringify({
+          tiers: rows.map((r) => ({
+            minHeadcount: Number(r.minHeadcount),
+            maxHeadcount: r.maxHeadcount === '' ? undefined : Number(r.maxHeadcount),
+            priceKes: Number(r.priceKes),
+          })),
+        }),
+      }),
+    onSuccess: (result) => onRequested(result, '/platform/pricing-tiers/confirm-update', 'Pricing Tiers'),
+    onError: (err) => notifyError(err, 'Failed to request pricing-tier change'),
+  });
+
+  if (loading) return <Skeleton className="h-64 w-full" />;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Activation-fee pricing tiers</CardTitle>
+          <CardDescription>
+            The activation fee for a real school is computed automatically from its expected headcount
+            (students + teachers + non-teaching staff summed) against these ranges — never typed in by
+            hand. Leave &quot;up to&quot; blank on the last row for a top-open tier (no upper bound).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {rows.map((row, i) => (
+            <div key={i} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">From (people)</label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={row.minHeadcount}
+                  onChange={(e) => setRows((r) => r.map((x, j) => (j === i ? { ...x, minHeadcount: e.target.value } : x)))}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">Up to (optional)</label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="No limit"
+                  value={row.maxHeadcount}
+                  onChange={(e) => setRows((r) => r.map((x, j) => (j === i ? { ...x, maxHeadcount: e.target.value } : x)))}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-slate-700">Price (KES)</label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="5000"
+                  value={row.priceKes}
+                  onChange={(e) => setRows((r) => r.map((x, j) => (j === i ? { ...x, priceKes: e.target.value } : x)))}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={rows.length <= 1}
+                onClick={() => setRows((r) => r.filter((_, j) => j !== i))}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setRows((r) => [...r, { minHeadcount: '', maxHeadcount: '', priceKes: '' }])}
+            >
+              + Add tier
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div>
+        <Button
+          onClick={() => requestSave.mutate()}
+          disabled={requestSave.isPending || rows.some((r) => !r.minHeadcount || !r.priceKes)}
+        >
+          {requestSave.isPending ? 'Sending code...' : 'Save pricing tiers'}
         </Button>
       </div>
     </div>

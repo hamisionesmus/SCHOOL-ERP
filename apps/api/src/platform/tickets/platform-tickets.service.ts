@@ -4,6 +4,7 @@ import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { JwtUserPayload } from '../../common/decorators/current-user.decorator';
 import { PlatformNotifierService } from '../messaging/platform-notifier.service';
 import { CommunicationsService } from '../../communications/communications.service';
+import { FeedbackService } from '../feedback/feedback.service';
 import { TicketsGateway } from '../../tickets/tickets.gateway';
 
 const ESCALATION_INCLUDE = {
@@ -24,6 +25,7 @@ export class PlatformTicketsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifier: PlatformNotifierService,
     private readonly communications: CommunicationsService,
+    private readonly feedback: FeedbackService,
     private readonly ticketsGateway: TicketsGateway,
   ) {}
 
@@ -146,12 +148,22 @@ export class PlatformTicketsService {
 
     const ticket = await this.tenantPrisma.forSchema(tenant.schemaName).ticket.findUnique({
       where: { id: escalation.ticketId },
+      include: { submittedBy: { select: { email: true } } },
     });
     if (ticket) {
+      const surveyToken = await this.feedback.signFeedbackToken(tenant.id, 'TICKET_RESOLUTION', {
+        escalationId: id,
+        subject: ticket.subject,
+      });
+      const surveyUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/feedback/${surveyToken}`;
+      await this.notifier.notify('TICKET_RESOLVED', {
+        to: { email: ticket.submittedBy.email, phone: null },
+        vars: { subject: ticket.subject, resolutionNote: resolutionNote ?? 'No additional notes.', surveyUrl },
+      });
       await this.communications.sendToUserId(
         tenant.schemaName,
         ticket.submittedByUserId,
-        `School ERP: your ticket "${ticket.subject}" has been resolved.`,
+        `School ERP: your ticket "${ticket.subject}" has been resolved. We'd love your feedback — check your email for a quick survey link.`,
       );
     }
     this.ticketsGateway.emitStatusChange(escalation.ticketId, 'RESOLVED');

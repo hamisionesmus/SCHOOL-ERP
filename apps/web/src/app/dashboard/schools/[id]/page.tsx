@@ -259,21 +259,23 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
               {linkCopied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
             </button>
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <Input
-              placeholder="Phone to push STK to, e.g. 0712345678"
-              value={stkPhone}
-              onChange={(e) => setStkPhone(e.target.value)}
-              className="h-9 bg-white text-xs"
-            />
-            <Button
-              size="sm"
-              disabled={stkPhone.length < 9 || initiateStk.isPending}
-              onClick={() => initiateStk.mutate()}
-            >
-              {initiateStk.isPending ? 'Sending...' : 'Send STK Push'}
-            </Button>
-          </div>
+          {isSuperAdmin && (
+            <div className="mt-3 flex items-center gap-2">
+              <Input
+                placeholder="Phone to push STK to, e.g. 0712345678"
+                value={stkPhone}
+                onChange={(e) => setStkPhone(e.target.value)}
+                className="h-9 bg-white text-xs"
+              />
+              <Button
+                size="sm"
+                disabled={stkPhone.length < 9 || initiateStk.isPending}
+                onClick={() => initiateStk.mutate()}
+              >
+                {initiateStk.isPending ? 'Sending...' : 'Send STK Push'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -335,6 +337,8 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
           </dl>
         </CardContent>
       </Card>
+
+      <FeedbackCard tenantId={tenant.id} />
 
       {isSuperAdmin && (
         <Card>
@@ -447,6 +451,46 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
         </div>
       )}
     </div>
+  );
+}
+
+interface TenantFeedbackRow {
+  id: string;
+  rating: number | null;
+  improvements: string | null;
+  interestedInRealAccount: boolean | null;
+  context: 'DEMO_EXPIRY' | 'TICKET_RESOLUTION';
+  createdAt: string;
+}
+
+function FeedbackCard({ tenantId }: { tenantId: string }) {
+  const { data } = useQuery({
+    queryKey: ['tenant-feedback', tenantId],
+    queryFn: () => apiFetch<TenantFeedbackRow[]>(`/platform/tenants/${tenantId}/feedback`),
+  });
+
+  if (!data || data.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Feedback from this school</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {data.map((f) => (
+          <div key={f.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-slate-900">{f.rating ? `${f.rating}/5` : 'No rating'}</span>
+              <span className="text-xs text-slate-400">
+                {f.context === 'TICKET_RESOLUTION' ? 'Ticket feedback' : 'Demo survey'} ·{' '}
+                {new Date(f.createdAt).toLocaleDateString()}
+              </span>
+            </div>
+            {f.improvements && <p className="mt-1 text-slate-600">{f.improvements}</p>}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 

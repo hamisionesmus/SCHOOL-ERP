@@ -5,9 +5,10 @@ import { TenantProvisioningService } from './tenant-provisioning.service';
 import { ActivationModule } from '../activation/activation.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
+import { PricingTiersModule } from '../pricing-tiers/pricing-tiers.module';
 
 @Module({
-  imports: [ActivationModule, MessagingModule, PlatformSettingsModule],
+  imports: [ActivationModule, MessagingModule, PlatformSettingsModule, PricingTiersModule],
   controllers: [TenantsController],
   providers: [TenantsService, TenantProvisioningService],
 })

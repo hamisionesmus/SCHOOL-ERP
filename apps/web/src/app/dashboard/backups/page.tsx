@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Database, Archive, Download, HardDrive, Clock, FolderArchive } from 'lucide-react';
+import { Database, Archive, Download, HardDrive, Clock, FolderArchive, Timer } from 'lucide-react';
 import { apiFetch, API_ORIGIN } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
@@ -50,6 +50,17 @@ interface BackupStats {
   totalCount: number;
   totalSizeBytes: number;
   lastBackupAt: string | null;
+  nextBackupAt: string | null;
+}
+
+function formatCountdownToNext(iso: string | null | undefined) {
+  if (!iso) return 'Unknown';
+  const minutes = Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 60_000));
+  if (minutes < 1) return 'Any moment now';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return `${hours}h ${rem}m`;
 }
 
 export default function BackupsPage() {
@@ -114,13 +125,14 @@ export default function BackupsPage() {
       </div>
 
       {statsQuery.isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <StatCard label="Total backups" value={statsQuery.data?.totalCount ?? 0} icon={FolderArchive} accent="blue" />
           <StatCard
             label="Total size"
@@ -137,6 +149,13 @@ export default function BackupsPage() {
             }
             icon={Clock}
             accent="emerald"
+          />
+          <StatCard
+            label="Next backup in"
+            value={0}
+            formatValue={() => formatCountdownToNext(statsQuery.data?.nextBackupAt)}
+            icon={Timer}
+            accent="amber"
           />
         </div>
       )}

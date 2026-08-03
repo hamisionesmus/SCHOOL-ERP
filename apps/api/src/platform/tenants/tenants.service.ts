@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { readdirSync, statSync } from 'node:fs';
+import { readdirSync, statSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomInt } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
@@ -17,6 +17,8 @@ import { CYCLE_DAYS } from '../billing/cycle.util';
 import { generateTempPassword } from '../../common/password.util';
 import { PlatformNotifierService } from '../messaging/platform-notifier.service';
 import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
+import { PricingTiersService } from '../pricing-tiers/pricing-tiers.service';
+import { JwtUserPayload } from '../../common/decorators/current-user.decorator';
 
 const CREATION_CODE_TTL_MS = 15 * 60 * 1000;
 
@@ -46,11 +48,20 @@ export class TenantsService {
     private readonly activationService: ActivationService,
     private readonly notifier: PlatformNotifierService,
     private readonly platformSettings: PlatformSettingsService,
+    private readonly pricingTiers: PricingTiersService,
   ) {}
 
-  async list(page = 1, pageSize = 20, q?: string) {
+  // Sub-Admins only see schools they personally created; every other role (Super Admin, Assistant
+  // Super Admin) sees the full platform — Assistant Super Admin deliberately keeps full visibility
+  // per its existing "sits above Sub-Admin" design (see PlatformRole doc comment in schema.prisma).
+  private scopeToOwnSchools(user?: JwtUserPayload) {
+    return user?.role === 'SUB_ADMIN' ? { createdById: user.sub } : {};
+  }
+
+  async list(page = 1, pageSize = 20, q?: string, user?: JwtUserPayload) {
     const where = {
       deletedAt: null,
+      ...this.scopeToOwnSchools(user),
       ...(q
         ? {
             OR: [
@@ -73,9 +84,9 @@ export class TenantsService {
     return { data, meta: { page, pageSize, total } };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, user?: JwtUserPayload) {
     const tenant = await this.platformPrisma.tenant.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...this.scopeToOwnSchools(user) },
       include: { createdBy: { select: { fullName: true } } },
     });
     if (!tenant) throw new NotFoundException('School not found');
@@ -100,15 +111,28 @@ export class TenantsService {
   async requestCreate(dto: RequestTenantDto, requestedByUserId: string) {
     const existing = await this.platformPrisma.tenant.findUnique({ where: { slug: dto.slug } });
     if (existing) throw new BadRequestException('A school with this slug already exists');
-    if (dto.isDemo && !dto.demoDurationHours) {
-      throw new BadRequestException('demoDurationHours is required for a demo account');
+
+    const isDemo = dto.accountType === 'demo' || dto.accountType === 'test';
+    const isTest = dto.accountType === 'test';
+    const isReal = dto.accountType === 'real';
+
+    if (isDemo && !dto.demoDurationHours) {
+      throw new BadRequestException('demoDurationHours is required for a demo or test account');
     }
-    if (!dto.isDemo && !dto.activationFeeKes) {
-      throw new BadRequestException('activationFeeKes is required for a non-demo school');
+    if (isReal && !dto.activationBillingCycle) {
+      throw new BadRequestException('activationBillingCycle is required for a real school');
     }
-    if (!dto.isDemo && !dto.activationBillingCycle) {
-      throw new BadRequestException('activationBillingCycle is required for a non-demo school');
+    if (isReal && (dto.studentCount == null || dto.teacherCount == null || dto.nonTeachingStaffCount == null)) {
+      throw new BadRequestException('studentCount, teacherCount, and nonTeachingStaffCount are required for a real school');
     }
+
+    // Server-computed, never trusted from the client — see PricingTiersService.computeFee(). The
+    // frontend's displayed "estimated fee" is only a preview using the same tier list.
+    const activationFeeKes = isReal
+      ? await this.pricingTiers.computeFee(
+          (dto.studentCount ?? 0) + (dto.teacherCount ?? 0) + (dto.nonTeachingStaffCount ?? 0),
+        )
+      : undefined;
 
     const requester = await this.platformPrisma.platformUser.findUnique({ where: { id: requestedByUserId } });
     if (!requester) throw new UnauthorizedException();
@@ -129,10 +153,14 @@ export class TenantsService {
         adminPhone: dto.adminPhone,
         adminPasswordHash,
         planId: dto.planId,
-        isDemo: !!dto.isDemo,
+        isDemo,
+        isTest,
         demoDurationHours: dto.demoDurationHours,
-        activationFeeKes: dto.isDemo ? undefined : dto.activationFeeKes,
-        activationBillingCycle: dto.isDemo ? undefined : dto.activationBillingCycle,
+        activationFeeKes,
+        activationBillingCycle: isReal ? dto.activationBillingCycle : undefined,
+        studentCount: dto.studentCount,
+        teacherCount: dto.teacherCount,
+        nonTeachingStaffCount: dto.nonTeachingStaffCount,
         county: dto.county,
         town: dto.town,
         expiresAt: new Date(Date.now() + CREATION_CODE_TTL_MS),
@@ -150,7 +178,7 @@ export class TenantsService {
           schoolName: dto.name,
           slug: dto.slug,
           code,
-          demoNote: dto.isDemo ? ` as a ${dto.demoDurationHours}-hour demo account` : '',
+          demoNote: isDemo ? ` as a ${dto.demoDurationHours}-hour ${isTest ? 'test' : 'demo'} account` : '',
           requestedByName: requester.fullName,
         },
       });
@@ -198,6 +226,7 @@ export class TenantsService {
         billingCycle,
         currentPeriodEnd: request.isDemo ? new Date(Date.now() + 30 * 86_400_000) : null,
         isDemo: request.isDemo,
+        isTest: request.isTest,
         demoExpiresAt,
         contactEmail: request.adminEmail,
         contactPhone: request.adminPhone,
@@ -332,5 +361,41 @@ export class TenantsService {
       limitMb,
       usagePct: limitMb ? Math.round(((totalBytes / 1024 / 1024) / limitMb) * 1000) / 10 : null,
     };
+  }
+
+  /** Permanently removes a Test tenant — schema, uploads, and every platform-schema row that
+   * references it. Hard-guarded to isTest tenants only, unconditionally (not just a UI affordance):
+   * a Demo or Real tenant can never reach this path even via a direct API call. Sub-Admins and
+   * Assistant Super Admins may only delete tenants they themselves created; Super Admin can delete
+   * any test tenant — same visibility boundary as scopeToOwnSchools(). */
+  async deleteTestTenant(id: string, user: JwtUserPayload) {
+    const tenant = await this.platformPrisma.tenant.findUnique({ where: { id } });
+    if (!tenant) throw new NotFoundException('School not found');
+    if (!tenant.isTest) {
+      throw new BadRequestException('Only Test accounts can be deleted — Demo and Real schools must be suspended instead');
+    }
+    if (user.role !== 'SUPER_ADMIN' && tenant.createdById !== user.sub) {
+      throw new BadRequestException('You can only delete test schools you created yourself');
+    }
+
+    await this.platformPrisma.$transaction([
+      this.platformPrisma.platformPayment.deleteMany({ where: { invoice: { tenantId: id } } }),
+      this.platformPrisma.platformMpesaStkRequest.deleteMany({ where: { tenantId: id } }),
+      this.platformPrisma.platformPaymentProof.deleteMany({ where: { tenantId: id } }),
+      this.platformPrisma.platformInvoice.deleteMany({ where: { tenantId: id } }),
+      this.platformPrisma.tenantFeedback.deleteMany({ where: { tenantId: id } }),
+      this.platformPrisma.platformTicketEscalation.deleteMany({ where: { tenantId: id } }),
+      this.platformPrisma.auditLogAccessRequest.deleteMany({ where: { tenantId: id } }),
+      this.platformPrisma.tenant.delete({ where: { id } }),
+    ]);
+
+    await this.platformPrisma.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${tenant.schemaName}" CASCADE`);
+    try {
+      rmSync(join(process.cwd(), 'uploads', tenant.schemaName), { recursive: true, force: true });
+    } catch {
+      // Best-effort — a missing uploads folder (e.g. school never uploaded anything) isn't an error.
+    }
+
+    return { deleted: true };
   }
 }

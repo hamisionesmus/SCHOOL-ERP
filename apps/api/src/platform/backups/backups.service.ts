@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,6 +20,8 @@ export class BackupsService {
   private readonly logger = new Logger('Backups');
   private readonly backupsDir = join(process.cwd(), 'backups');
   private readonly archiveDir = join(this.backupsDir, 'archive');
+
+  constructor(private readonly scheduler: SchedulerRegistry) {}
 
   private filesIn(dir: string, archived: boolean): BackupFile[] {
     if (!existsSync(dir)) return [];
@@ -55,7 +57,24 @@ export class BackupsService {
       totalCount: all.length,
       totalSizeBytes: all.reduce((sum, f) => sum + f.sizeBytes, 0),
       lastBackupAt: all[0]?.createdAt ?? null,
+      nextBackupAt: this.nextBackupAt(),
     };
+  }
+
+  /** Exact next-fire time from the cron job's own schedule, not an approximated "top of the next
+   * hour" guess — nextDate() may return a Luxon DateTime (cron v3, used by @nestjs/schedule v6) or a
+   * plain Date depending on version, so this normalizes either shape. */
+  private nextBackupAt(): string | null {
+    try {
+      const job = this.scheduler.getCronJob('hourlyBackup');
+      const next = job.nextDate();
+      const date = typeof (next as { toJSDate?: () => Date }).toJSDate === 'function'
+        ? (next as { toJSDate: () => Date }).toJSDate()
+        : (next as unknown as Date);
+      return date.toISOString();
+    } catch {
+      return null;
+    }
   }
 
   /** Resolves a backup filename to an absolute path for download, rejecting anything that isn't a
@@ -92,7 +111,7 @@ export class BackupsService {
     return { started: true };
   }
 
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron(CronExpression.EVERY_HOUR, { name: 'hourlyBackup' })
   hourlyBackup() {
     this.logger.log('Starting scheduled hourly backup...');
     this.trigger();

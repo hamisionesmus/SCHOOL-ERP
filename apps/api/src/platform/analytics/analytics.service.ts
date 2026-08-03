@@ -5,27 +5,35 @@ import { PlatformPrismaService } from '../../common/prisma/platform-prisma.servi
 export class AnalyticsService {
   constructor(private readonly platformPrisma: PlatformPrismaService) {}
 
-  async revenueOverview() {
+  /** ownerId scopes every figure to schools that PlatformUser created — used only for a SUB_ADMIN
+   * caller (see AnalyticsController), who per the platform's visibility rules can only see revenue
+   * for schools they personally brought onto the platform, not the whole platform's earnings.
+   * Assistant Super Admin and Super Admin always call this with ownerId undefined (full visibility). */
+  async revenueOverview(ownerId?: string) {
+    const tenantScope = ownerId ? { createdById: ownerId } : {};
     const [totalRevenueAgg, tenantsByStatus, byCycle, monthly, outstandingAgg, demoCount, totalSchools] =
       await Promise.all([
-        this.platformPrisma.platformPayment.aggregate({ _sum: { amount: true } }),
+        this.platformPrisma.platformPayment.aggregate({
+          _sum: { amount: true },
+          where: ownerId ? { invoice: { tenant: tenantScope } } : {},
+        }),
         this.platformPrisma.tenant.groupBy({
           by: ['status'],
-          where: { deletedAt: null },
+          where: { deletedAt: null, ...tenantScope },
           _count: { _all: true },
         }),
         this.platformPrisma.platformInvoice.groupBy({
           by: ['billingCycle'],
-          where: { status: 'PAID' },
+          where: { status: 'PAID', ...(ownerId ? { tenant: tenantScope } : {}) },
           _sum: { amount: true },
         }),
-        this.monthlyRevenue(),
+        this.monthlyRevenue(ownerId),
         this.platformPrisma.platformInvoice.aggregate({
-          where: { status: { in: ['PENDING', 'OVERDUE'] } },
+          where: { status: { in: ['PENDING', 'OVERDUE'] }, ...(ownerId ? { tenant: tenantScope } : {}) },
           _sum: { amount: true },
         }),
-        this.platformPrisma.tenant.count({ where: { deletedAt: null, isDemo: true } }),
-        this.platformPrisma.tenant.count({ where: { deletedAt: null } }),
+        this.platformPrisma.tenant.count({ where: { deletedAt: null, isDemo: true, ...tenantScope } }),
+        this.platformPrisma.tenant.count({ where: { deletedAt: null, ...tenantScope } }),
       ]);
 
     const statusCounts: Record<string, number> = { ACTIVE: 0, SUSPENDED: 0, TRIAL: 0 };
@@ -49,14 +57,14 @@ export class AnalyticsService {
 
   /** Last 12 calendar months, sum of payments recorded in each — a lightweight in-memory bucket
    * rather than a raw SQL date_trunc, since payment volume at this app's scale is small. */
-  private async monthlyRevenue() {
+  private async monthlyRevenue(ownerId?: string) {
     const since = new Date();
     since.setMonth(since.getMonth() - 11);
     since.setDate(1);
     since.setHours(0, 0, 0, 0);
 
     const payments = await this.platformPrisma.platformPayment.findMany({
-      where: { createdAt: { gte: since } },
+      where: { createdAt: { gte: since }, ...(ownerId ? { invoice: { tenant: { createdById: ownerId } } } : {}) },
       select: { amount: true, createdAt: true },
     });
 
@@ -74,10 +82,10 @@ export class AnalyticsService {
     return Array.from(buckets.entries()).map(([month, amount]) => ({ month, amount }));
   }
 
-  async schoolsByCounty() {
+  async schoolsByCounty(ownerId?: string) {
     const rows = await this.platformPrisma.tenant.groupBy({
       by: ['county'],
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...(ownerId ? { createdById: ownerId } : {}) },
       _count: { _all: true },
     });
     return rows
