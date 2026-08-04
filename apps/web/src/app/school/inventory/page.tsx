@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface Item {
   id: string;
@@ -26,6 +27,17 @@ export default function InventoryPage() {
   const [showForm, setShowForm] = useState(false);
   const [movementDrafts, setMovementDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<{ name: string; category: string; unit: string; reorderLevel: string }>('inventory-item');
+  const itemDraft = loadDraft();
+  const [itemName, setItemName] = useState(itemDraft?.name ?? '');
+  const [itemCategory, setItemCategory] = useState(itemDraft?.category ?? '');
+  const [itemUnit, setItemUnit] = useState(itemDraft?.unit ?? '');
+  const [itemReorderLevel, setItemReorderLevel] = useState(itemDraft?.reorderLevel ?? '');
+
+  useEffect(() => {
+    saveDraft({ name: itemName, category: itemCategory, unit: itemUnit, reorderLevel: itemReorderLevel });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemName, itemCategory, itemUnit, itemReorderLevel]);
 
   const { data: items, isLoading } = useQuery({
     queryKey: ['inventory-items'],
@@ -34,20 +46,25 @@ export default function InventoryPage() {
   });
 
   const createItem = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/inventory/items', {
         method: 'POST',
         body: JSON.stringify({
-          name: fd.get('name'),
-          category: fd.get('category'),
-          unit: fd.get('unit'),
-          reorderLevel: Number(fd.get('reorderLevel')) || 0,
+          name: itemName,
+          category: itemCategory,
+          unit: itemUnit,
+          reorderLevel: Number(itemReorderLevel) || 0,
         }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory-items'] });
       setShowForm(false);
       setError(null);
+      setItemName('');
+      setItemCategory('');
+      setItemUnit('');
+      setItemReorderLevel('');
+      clearDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to add item'),
   });
@@ -77,14 +94,14 @@ export default function InventoryPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createItem.mutate(new FormData(e.currentTarget));
+                createItem.mutate();
               }}
               className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
             >
-              <Input name="name" placeholder="Item name" required className="col-span-2" />
-              <Input name="category" placeholder="Category" required />
-              <Input name="unit" placeholder="Unit (pcs, kg...)" required />
-              <Input name="reorderLevel" type="number" min={0} placeholder="Reorder level" />
+              <Input value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="Item name" required className="col-span-2" />
+              <Input value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} placeholder="Category" required />
+              <Input value={itemUnit} onChange={(e) => setItemUnit(e.target.value)} placeholder="Unit (pcs, kg...)" required />
+              <Input value={itemReorderLevel} onChange={(e) => setItemReorderLevel(e.target.value)} type="number" min={0} placeholder="Reorder level" />
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
               <div className="col-span-2">
                 <Button type="submit" disabled={createItem.isPending}>

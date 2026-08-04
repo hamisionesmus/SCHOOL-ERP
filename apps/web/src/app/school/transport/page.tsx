@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface UserRef {
   id: string;
@@ -46,6 +47,27 @@ export default function TransportPage() {
   const [showRouteForm, setShowRouteForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { loadDraft: loadVehicleDraft, saveDraft: saveVehicleDraft, clearDraft: clearVehicleDraft } =
+    useDraftState<{ plateNumber: string; capacity: string }>('transport-vehicle');
+  const vehicleDraft = loadVehicleDraft();
+  const [vehiclePlateNumber, setVehiclePlateNumber] = useState(vehicleDraft?.plateNumber ?? '');
+  const [vehicleCapacity, setVehicleCapacity] = useState(vehicleDraft?.capacity ?? '');
+  const { loadDraft: loadRouteDraft, saveDraft: saveRouteDraft, clearDraft: clearRouteDraft } =
+    useDraftState<{ name: string; vehicleId: string; estimatedMinutes: string }>('transport-route');
+  const routeDraft = loadRouteDraft();
+  const [routeName, setRouteName] = useState(routeDraft?.name ?? '');
+  const [routeVehicleId, setRouteVehicleId] = useState(routeDraft?.vehicleId ?? '');
+  const [routeEstimatedMinutes, setRouteEstimatedMinutes] = useState(routeDraft?.estimatedMinutes ?? '');
+
+  useEffect(() => {
+    saveVehicleDraft({ plateNumber: vehiclePlateNumber, capacity: vehicleCapacity });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehiclePlateNumber, vehicleCapacity]);
+
+  useEffect(() => {
+    saveRouteDraft({ name: routeName, vehicleId: routeVehicleId, estimatedMinutes: routeEstimatedMinutes });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeName, routeVehicleId, routeEstimatedMinutes]);
 
   const canManage = user?.permissions?.includes('TRANSPORT:MANAGE');
 
@@ -71,34 +93,40 @@ export default function TransportPage() {
   });
 
   const createVehicle = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/transport/vehicles', {
         method: 'POST',
-        body: JSON.stringify({ plateNumber: fd.get('plateNumber'), capacity: Number(fd.get('capacity')) }),
+        body: JSON.stringify({ plateNumber: vehiclePlateNumber, capacity: Number(vehicleCapacity) }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vehicles'] });
       setShowVehicleForm(false);
       setError(null);
+      setVehiclePlateNumber('');
+      setVehicleCapacity('');
+      clearVehicleDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to add vehicle'),
   });
 
   const createRoute = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/transport/routes', {
         method: 'POST',
         body: JSON.stringify({
-          name: fd.get('name'),
-          description: fd.get('description') || undefined,
-          vehicleId: fd.get('vehicleId') || undefined,
-          estimatedMinutes: fd.get('estimatedMinutes') ? Number(fd.get('estimatedMinutes')) : undefined,
+          name: routeName,
+          vehicleId: routeVehicleId || undefined,
+          estimatedMinutes: routeEstimatedMinutes ? Number(routeEstimatedMinutes) : undefined,
         }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routes'] });
       setShowRouteForm(false);
       setError(null);
+      setRouteName('');
+      setRouteVehicleId('');
+      setRouteEstimatedMinutes('');
+      clearRouteDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to add route'),
   });
@@ -139,12 +167,12 @@ export default function TransportPage() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    createVehicle.mutate(new FormData(e.currentTarget));
+                    createVehicle.mutate();
                   }}
                   className="mb-3 flex flex-col gap-2 rounded-lg border border-slate-200 p-3"
                 >
-                  <Input name="plateNumber" placeholder="Plate number" required />
-                  <Input name="capacity" type="number" min={1} placeholder="Capacity" required />
+                  <Input value={vehiclePlateNumber} onChange={(e) => setVehiclePlateNumber(e.target.value)} placeholder="Plate number" required />
+                  <Input value={vehicleCapacity} onChange={(e) => setVehicleCapacity(e.target.value)} type="number" min={1} placeholder="Capacity" required />
                   <Button type="submit" size="sm" disabled={createVehicle.isPending}>
                     Save
                   </Button>
@@ -172,12 +200,16 @@ export default function TransportPage() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    createRoute.mutate(new FormData(e.currentTarget));
+                    createRoute.mutate();
                   }}
                   className="mb-3 flex flex-col gap-2 rounded-lg border border-slate-200 p-3"
                 >
-                  <Input name="name" placeholder="Route name" required />
-                  <select name="vehicleId" className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+                  <Input value={routeName} onChange={(e) => setRouteName(e.target.value)} placeholder="Route name" required />
+                  <select
+                    value={routeVehicleId}
+                    onChange={(e) => setRouteVehicleId(e.target.value)}
+                    className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+                  >
                     <option value="">Vehicle (optional)</option>
                     {vehicles?.map((v) => (
                       <option key={v.id} value={v.id}>
@@ -186,7 +218,8 @@ export default function TransportPage() {
                     ))}
                   </select>
                   <Input
-                    name="estimatedMinutes"
+                    value={routeEstimatedMinutes}
+                    onChange={(e) => setRouteEstimatedMinutes(e.target.value)}
                     type="number"
                     min={1}
                     placeholder="Est. travel time (minutes, for pickup SMS)"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -12,6 +12,7 @@ import { Pagination } from '@/components/ui/pagination';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { cn } from '@/lib/utils';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface Student {
   id: string;
@@ -27,11 +28,18 @@ interface DisciplineCase {
   createdAt: string;
 }
 
+type CaseDraft = { studentId: string; category: string; description: string; actionTaken: string };
+
 export default function DisciplinePage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<CaseDraft>('discipline-case');
+  const draft = loadDraft();
+  const [category, setCategory] = useState(draft?.category ?? '');
+  const [description, setDescription] = useState(draft?.description ?? '');
+  const [actionTaken, setActionTaken] = useState(draft?.actionTaken ?? '');
 
   const canManage = user?.permissions?.includes('DISCIPLINE:MANAGE');
 
@@ -47,14 +55,14 @@ export default function DisciplinePage() {
   });
 
   const createCase = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/discipline/cases', {
         method: 'POST',
         body: JSON.stringify({
-          studentId: fd.get('studentId'),
-          category: fd.get('category'),
-          description: fd.get('description'),
-          actionTaken: fd.get('actionTaken') || undefined,
+          studentId,
+          category,
+          description,
+          actionTaken: actionTaken || undefined,
         }),
       }),
     onSuccess: () => {
@@ -62,11 +70,20 @@ export default function DisciplinePage() {
       setShowForm(false);
       setError(null);
       setStudentId('');
+      setCategory('');
+      setDescription('');
+      setActionTaken('');
+      clearDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to log case'),
   });
 
-  const [studentId, setStudentId] = useState('');
+  const [studentId, setStudentId] = useState(draft?.studentId ?? '');
+
+  useEffect(() => {
+    saveDraft({ studentId, category, description, actionTaken });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentId, category, description, actionTaken]);
 
   // No initialSortKey: the API already orders newest-first, so leaving sort unset preserves that
   // default instead of the hook's ascending sort silently flipping it to oldest-first on load.
@@ -90,7 +107,7 @@ export default function DisciplinePage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createCase.mutate(new FormData(e.currentTarget));
+                createCase.mutate();
               }}
               className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
             >
@@ -103,15 +120,20 @@ export default function DisciplinePage() {
                 className="col-span-2"
                 options={(students ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
               />
-              <select name="category" required className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm">
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                required
+                className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm"
+              >
                 <option value="">Category</option>
                 <option value="WARNING">Warning</option>
                 <option value="DETENTION">Detention</option>
                 <option value="SUSPENSION">Suspension</option>
                 <option value="POSITIVE_BEHAVIOR">Positive behavior</option>
               </select>
-              <Input name="description" placeholder="Description" required className="col-span-2" />
-              <Input name="actionTaken" placeholder="Action taken (optional)" className="col-span-2" />
+              <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" required className="col-span-2" />
+              <Input value={actionTaken} onChange={(e) => setActionTaken(e.target.value)} placeholder="Action taken (optional)" className="col-span-2" />
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
               <p className="col-span-2 text-xs text-slate-500">
                 Saving this notifies the student&apos;s primary guardian by SMS.

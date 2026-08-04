@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 import { API_ORIGIN } from './api';
 import { getAccessToken } from './auth';
@@ -34,8 +35,12 @@ const pendingListeners = new Set<(snapshot: PresenceSnapshot) => void>();
 /** Mount once per authenticated session — at the layout level (apps/web/src/app/dashboard/layout.tsx
  * and apps/web/src/app/school/layout.tsx), not per-page, so the connection persists across in-app
  * navigation and only ends on tab-close/logout. Connect = online, disconnect = offline, reflected
- * server-side within a Socket.IO ping-timeout of it actually happening. */
+ * server-side within a Socket.IO ping-timeout of it actually happening. Also reports every route
+ * change as a page-view (see PresenceGateway's 'activity:pageview' handler) — folded into this same
+ * hook rather than a second thing every layout has to remember to mount. */
 export function usePresenceOnline() {
+  const pathname = usePathname();
+
   useEffect(() => {
     const token = getAccessToken();
     if (!token) return;
@@ -43,6 +48,7 @@ export function usePresenceOnline() {
     const socket = io(`${API_ORIGIN}/presence`, { auth: { token }, transports: ['websocket', 'polling'] });
     activeSocket = socket;
     pendingListeners.forEach((cb) => socket.on('presence:snapshot', cb));
+    socket.on('connect', () => socket.emit('activity:pageview', { path: window.location.pathname }));
 
     return () => {
       pendingListeners.forEach((cb) => socket.off('presence:snapshot', cb));
@@ -50,6 +56,11 @@ export function usePresenceOnline() {
       if (activeSocket === socket) activeSocket = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!pathname) return;
+    activeSocket?.emit('activity:pageview', { path: pathname });
+  }, [pathname]);
 }
 
 /** Subscribes to live presence updates on the already-open singleton socket. Queues the listener if

@@ -261,6 +261,10 @@ model PlatformUser {
   // Used to SMS the school-creation confirmation code (alongside email) and other admin alerts.
   // Seeded from SUPER_ADMIN_PHONE — see prisma/seed.ts.
   phone            String?
+  // Where a Sub-Admin/Assistant Super Admin's restricted "contact Billing/Partnerships/Info"
+  // messages appear to come from and get replied to — distinct from `email` (their login identity).
+  // Falls back to `email` when unset. See MailboxesService.contact()/mailbox-keys.ts.
+  contactEmail     String?
   passwordHash     String
   fullName         String
   avatarUrl        String?
@@ -704,4 +708,40 @@ model PlatformEmailMessage {
   createdAt    DateTime @default(now())
 
   @@index([threadId, createdAt])
+}
+
+// One row per online "session" — created the moment a user goes from offline to online (their
+// first tab connecting), closed when their last tab disconnects. Backs the 24h presence history
+// view (PresenceService.history()); pruned after 7 days by a daily cron (see PresenceGateway) so
+// this doesn't grow forever. Denormalized fullName/role/schoolName the same way PresenceService's
+// in-memory registry already does, so history reads don't need a join back through Tenant/PlatformUser
+// for a user who may have since been removed or renamed.
+model PresenceSession {
+  id             String    @id @default(uuid())
+  realm          String
+  userId         String
+  fullName       String
+  role           String?
+  roles          Json?
+  tenantSlug     String?
+  schoolName     String?
+  connectedAt    DateTime  @default(now())
+  disconnectedAt DateTime?
+
+  activities     PresenceActivity[]
+
+  @@index([connectedAt])
+}
+
+// Page/module visits during one PresenceSession — deliberately page-level, not literal click/element
+// tracking (see the plan's scope note): meaningful proof of what was used, without the noise and
+// privacy exposure of full clickstream capture across every parent/student account too.
+model PresenceActivity {
+  id         String   @id @default(uuid())
+  sessionId  String
+  session    PresenceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  path       String
+  occurredAt DateTime @default(now())
+
+  @@index([sessionId, occurredAt])
 }

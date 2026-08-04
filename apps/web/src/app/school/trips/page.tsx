@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch } from '@/lib/api';
@@ -15,6 +15,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { cn } from '@/lib/utils';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface UserRef {
   id: string;
@@ -68,12 +69,26 @@ function CountdownBadge({ tripDate }: { tripDate: string }) {
   );
 }
 
+type TripDraft = { title: string; description: string; destination: string; tripDate: string; costPerStudent: string };
+
 export default function TripsPage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [registerStudentId, setRegisterStudentId] = useState<Record<string, string>>({});
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<TripDraft>('trips-propose');
+  const draft = loadDraft();
+  const [title, setTitle] = useState(draft?.title ?? '');
+  const [description, setDescription] = useState(draft?.description ?? '');
+  const [destination, setDestination] = useState(draft?.destination ?? '');
+  const [tripDate, setTripDate] = useState(draft?.tripDate ?? '');
+  const [costPerStudent, setCostPerStudent] = useState(draft?.costPerStudent ?? '');
+
+  useEffect(() => {
+    saveDraft({ title, description, destination, tripDate, costPerStudent });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, description, destination, tripDate, costPerStudent]);
   const [reviewTarget, setReviewTarget] = useState<{ id: string; title: string; action: 'approve' | 'reject' } | null>(
     null,
   );
@@ -106,22 +121,28 @@ export default function TripsPage() {
   };
 
   const propose = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/trips', {
         method: 'POST',
         body: JSON.stringify({
-          title: fd.get('title'),
-          description: fd.get('description') || undefined,
-          destination: fd.get('destination'),
-          tripDate: fd.get('tripDate'),
-          costPerStudent: Number(fd.get('costPerStudent')),
+          title,
+          description: description || undefined,
+          destination,
+          tripDate,
+          costPerStudent: Number(costPerStudent),
         }),
       }),
-    onSuccess: (_data, fd) => {
+    onSuccess: () => {
       invalidate();
       setShowForm(false);
       setError(null);
-      notifySuccess(`"${fd.get('title')}" submitted for approval`);
+      notifySuccess(`"${title}" submitted for approval`);
+      setTitle('');
+      setDescription('');
+      setDestination('');
+      setTripDate('');
+      setCostPerStudent('');
+      clearDraft();
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Failed to propose trip');
@@ -191,15 +212,15 @@ export default function TripsPage() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  propose.mutate(new FormData(e.currentTarget));
+                  propose.mutate();
                 }}
                 className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4 animate-float-up"
               >
-                <Input name="title" placeholder="Trip title" required className="col-span-2" />
-                <Input name="destination" placeholder="Destination" required />
-                <Input name="tripDate" type="date" required />
-                <Input name="costPerStudent" type="number" min={1} placeholder="Cost per student (KES)" required />
-                <Input name="description" placeholder="Description (optional)" className="col-span-2" />
+                <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Trip title" required className="col-span-2" />
+                <Input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Destination" required />
+                <Input value={tripDate} onChange={(e) => setTripDate(e.target.value)} type="date" required />
+                <Input value={costPerStudent} onChange={(e) => setCostPerStudent(e.target.value)} type="number" min={1} placeholder="Cost per student (KES)" required />
+                <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" className="col-span-2" />
                 {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
                 <div className="col-span-2">
                   <Button type="submit" disabled={propose.isPending}>

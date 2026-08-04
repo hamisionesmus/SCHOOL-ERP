@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -11,6 +11,7 @@ import { Pagination } from '@/components/ui/pagination';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface Book {
   id: string;
@@ -40,6 +41,17 @@ export default function LibraryPage() {
   const [showBookForm, setShowBookForm] = useState(false);
   const [showLoanForm, setShowLoanForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<{ title: string; author: string; isbn: string; totalCopies: string }>('library-book');
+  const bookDraft = loadDraft();
+  const [bookTitle, setBookTitle] = useState(bookDraft?.title ?? '');
+  const [bookAuthor, setBookAuthor] = useState(bookDraft?.author ?? '');
+  const [bookIsbn, setBookIsbn] = useState(bookDraft?.isbn ?? '');
+  const [bookTotalCopies, setBookTotalCopies] = useState(bookDraft?.totalCopies ?? '');
+
+  useEffect(() => {
+    saveDraft({ title: bookTitle, author: bookAuthor, isbn: bookIsbn, totalCopies: bookTotalCopies });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookTitle, bookAuthor, bookIsbn, bookTotalCopies]);
 
   const canManage = user?.permissions?.includes('LIBRARY:MANAGE');
 
@@ -60,20 +72,25 @@ export default function LibraryPage() {
   });
 
   const createBook = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/library/books', {
         method: 'POST',
         body: JSON.stringify({
-          title: fd.get('title'),
-          author: fd.get('author'),
-          isbn: fd.get('isbn') || undefined,
-          totalCopies: Number(fd.get('totalCopies')),
+          title: bookTitle,
+          author: bookAuthor,
+          isbn: bookIsbn || undefined,
+          totalCopies: Number(bookTotalCopies),
         }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['books'] });
       setShowBookForm(false);
       setError(null);
+      setBookTitle('');
+      setBookAuthor('');
+      setBookIsbn('');
+      setBookTotalCopies('');
+      clearDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to add book'),
   });
@@ -129,14 +146,14 @@ export default function LibraryPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createBook.mutate(new FormData(e.currentTarget));
+                createBook.mutate();
               }}
               className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
             >
-              <Input name="title" placeholder="Title" required className="col-span-2" />
-              <Input name="author" placeholder="Author" required />
-              <Input name="isbn" placeholder="ISBN (optional)" />
-              <Input name="totalCopies" type="number" min={1} placeholder="Copies" required />
+              <Input value={bookTitle} onChange={(e) => setBookTitle(e.target.value)} placeholder="Title" required className="col-span-2" />
+              <Input value={bookAuthor} onChange={(e) => setBookAuthor(e.target.value)} placeholder="Author" required />
+              <Input value={bookIsbn} onChange={(e) => setBookIsbn(e.target.value)} placeholder="ISBN (optional)" />
+              <Input value={bookTotalCopies} onChange={(e) => setBookTotalCopies(e.target.value)} type="number" min={1} placeholder="Copies" required />
               <div className="col-span-2">
                 <Button type="submit" disabled={createBook.isPending}>
                   {createBook.isPending ? 'Saving...' : 'Add book'}

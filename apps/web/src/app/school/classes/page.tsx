@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch } from '@/lib/api';
@@ -13,6 +13,7 @@ import { SortableTh } from '@/components/ui/sortable-th';
 import { Pagination } from '@/components/ui/pagination';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface GradeLevel {
   id: string;
@@ -47,6 +48,11 @@ export default function ClassesPage() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<{ name: string; gradeLevelId: string; academicYearId: string; classTeacherId: string }>('classes-create');
+  const draft = loadDraft();
+  const [className, setClassName] = useState(draft?.name ?? '');
+  const [classGradeLevelId, setClassGradeLevelId] = useState(draft?.gradeLevelId ?? '');
+  const [classAcademicYearId, setClassAcademicYearId] = useState(draft?.academicYearId ?? '');
 
   const canManage = !!user?.permissions?.includes('TENANT:MANAGE_USERS');
 
@@ -78,21 +84,25 @@ export default function ClassesPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['classes'] });
 
   const createClass = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/classes', {
         method: 'POST',
         body: JSON.stringify({
-          name: fd.get('name'),
-          gradeLevelId: fd.get('gradeLevelId'),
-          academicYearId: fd.get('academicYearId'),
-          classTeacherId: fd.get('classTeacherId') || undefined,
+          name: className,
+          gradeLevelId: classGradeLevelId,
+          academicYearId: classAcademicYearId,
+          classTeacherId: newClassTeacherId || undefined,
         }),
       }),
     onSuccess: () => {
       invalidate();
       setShowForm(false);
       setError(null);
+      setClassName('');
+      setClassGradeLevelId('');
+      setClassAcademicYearId('');
       setNewClassTeacherId('');
+      clearDraft();
       notifySuccess('Class created');
     },
     onError: (err) => {
@@ -101,7 +111,12 @@ export default function ClassesPage() {
     },
   });
 
-  const [newClassTeacherId, setNewClassTeacherId] = useState('');
+  const [newClassTeacherId, setNewClassTeacherId] = useState(draft?.classTeacherId ?? '');
+
+  useEffect(() => {
+    saveDraft({ name: className, gradeLevelId: classGradeLevelId, academicYearId: classAcademicYearId, classTeacherId: newClassTeacherId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [className, classGradeLevelId, classAcademicYearId, newClassTeacherId]);
 
   const assignTeacher = useMutation({
     mutationFn: ({ classId, classTeacherId }: { classId: string; classTeacherId: string | null }) =>
@@ -132,12 +147,17 @@ export default function ClassesPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              createClass.mutate(new FormData(e.currentTarget));
+              createClass.mutate();
             }}
             className="mb-6 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4 animate-float-up"
           >
-            <Input name="name" placeholder="Class name, e.g. Grade 5 Blue" required className="col-span-2" />
-            <select name="gradeLevelId" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+            <Input value={className} onChange={(e) => setClassName(e.target.value)} placeholder="Class name, e.g. Grade 5 Blue" required className="col-span-2" />
+            <select
+              value={classGradeLevelId}
+              onChange={(e) => setClassGradeLevelId(e.target.value)}
+              required
+              className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+            >
               <option value="">Grade level</option>
               {gradeLevels?.map((g) => (
                 <option key={g.id} value={g.id}>
@@ -145,7 +165,12 @@ export default function ClassesPage() {
                 </option>
               ))}
             </select>
-            <select name="academicYearId" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+            <select
+              value={classAcademicYearId}
+              onChange={(e) => setClassAcademicYearId(e.target.value)}
+              required
+              className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+            >
               <option value="">Academic year</option>
               {academicYears?.map((y) => (
                 <option key={y.id} value={y.id}>

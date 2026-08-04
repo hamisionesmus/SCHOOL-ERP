@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { useSession } from '@/lib/use-session';
@@ -14,6 +14,7 @@ import { MapPicker } from '@/components/ui/map-picker';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface GradeLevel {
   id: string;
@@ -202,14 +203,40 @@ function EditStudentDialog({
   );
 }
 
+type StudentDraft = {
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: string;
+  gradeLevelId: string;
+  addressLine: string;
+  landmark: string;
+  createLat: number | null;
+  createLng: number | null;
+};
+
 export default function StudentsPage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [createLat, setCreateLat] = useState<number | null>(null);
-  const [createLng, setCreateLng] = useState<number | null>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<StudentDraft>('students-admission');
+  const draft = loadDraft();
+  const [firstName, setFirstName] = useState(draft?.firstName ?? '');
+  const [lastName, setLastName] = useState(draft?.lastName ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState(draft?.dateOfBirth ?? '');
+  const [gender, setGender] = useState(draft?.gender ?? '');
+  const [gradeLevelId, setGradeLevelId] = useState(draft?.gradeLevelId ?? '');
+  const [addressLine, setAddressLine] = useState(draft?.addressLine ?? '');
+  const [landmark, setLandmark] = useState(draft?.landmark ?? '');
+  const [createLat, setCreateLat] = useState<number | null>(draft?.createLat ?? null);
+  const [createLng, setCreateLng] = useState<number | null>(draft?.createLng ?? null);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+
+  useEffect(() => {
+    saveDraft({ firstName, lastName, dateOfBirth, gender, gradeLevelId, addressLine, landmark, createLat, createLng });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstName, lastName, dateOfBirth, gender, gradeLevelId, addressLine, landmark, createLat, createLng]);
 
   const { data: gradeLevels } = useQuery({
     queryKey: ['grade-levels'],
@@ -239,17 +266,17 @@ export default function StudentsPage() {
   const table = useTableControls(filtered, { pageSize: 10, initialSortKey: 'lastName' });
 
   const createStudent = useMutation({
-    mutationFn: (formData: FormData) =>
+    mutationFn: () =>
       apiFetch<Student>('/students', {
         method: 'POST',
         body: JSON.stringify({
-          firstName: formData.get('firstName'),
-          lastName: formData.get('lastName'),
-          dateOfBirth: formData.get('dateOfBirth'),
-          gender: formData.get('gender'),
-          gradeLevelId: formData.get('gradeLevelId'),
-          addressLine: formData.get('addressLine') || undefined,
-          landmark: formData.get('landmark') || undefined,
+          firstName,
+          lastName,
+          dateOfBirth,
+          gender,
+          gradeLevelId,
+          addressLine: addressLine || undefined,
+          landmark: landmark || undefined,
           latitude: createLat ?? undefined,
           longitude: createLng ?? undefined,
         }),
@@ -259,8 +286,16 @@ export default function StudentsPage() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setShowForm(false);
       setError(null);
+      setFirstName('');
+      setLastName('');
+      setDateOfBirth('');
+      setGender('');
+      setGradeLevelId('');
+      setAddressLine('');
+      setLandmark('');
       setCreateLat(null);
       setCreateLng(null);
+      clearDraft();
       notifySuccess(`${s.firstName} ${s.lastName} added`);
     },
     onError: (err) => {
@@ -290,21 +325,27 @@ export default function StudentsPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createStudent.mutate(new FormData(e.currentTarget));
+                createStudent.mutate();
               }}
               className="mb-6 flex flex-col gap-3 rounded-lg border border-slate-200 p-4 animate-float-up"
             >
               <div className="grid grid-cols-2 gap-3">
-                <Input name="firstName" placeholder="First name" required />
-                <Input name="lastName" placeholder="Last name" required />
-                <Input name="dateOfBirth" type="date" required />
-                <select name="gender" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+                <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" required />
+                <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" required />
+                <Input value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} type="date" required />
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  required
+                  className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+                >
                   <option value="">Gender</option>
                   <option value="MALE">Male</option>
                   <option value="FEMALE">Female</option>
                 </select>
                 <select
-                  name="gradeLevelId"
+                  value={gradeLevelId}
+                  onChange={(e) => setGradeLevelId(e.target.value)}
                   required
                   className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm"
                 >
@@ -319,8 +360,8 @@ export default function StudentsPage() {
 
               <hr className="border-slate-200" />
               <p className="text-xs font-medium uppercase text-slate-400">Home location (for transport)</p>
-              <Input name="addressLine" placeholder="Address — apartment, estate, plot, etc." />
-              <Input name="landmark" placeholder="Nearby landmark (optional)" />
+              <Input value={addressLine} onChange={(e) => setAddressLine(e.target.value)} placeholder="Address — apartment, estate, plot, etc." />
+              <Input value={landmark} onChange={(e) => setLandmark(e.target.value)} placeholder="Nearby landmark (optional)" />
               <MapPicker
                 latitude={createLat}
                 longitude={createLng}

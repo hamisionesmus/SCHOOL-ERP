@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { cn } from '@/lib/utils';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface SchoolClass {
   id: string;
@@ -29,11 +30,24 @@ interface Assignment {
   submissions?: Submission[];
 }
 
+type AssignmentDraft = { classId: string; title: string; description: string; dueDate: string };
+
 export default function HomeworkPage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<AssignmentDraft>('homework-assign');
+  const draft = loadDraft();
+  const [classId, setClassId] = useState(draft?.classId ?? '');
+  const [title, setTitle] = useState(draft?.title ?? '');
+  const [description, setDescription] = useState(draft?.description ?? '');
+  const [dueDate, setDueDate] = useState(draft?.dueDate ?? '');
+
+  useEffect(() => {
+    saveDraft({ classId, title, description, dueDate });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId, title, description, dueDate]);
 
   const canAssign = user?.permissions?.includes('HOMEWORK:ASSIGN');
   const isStudent = user?.permissions?.includes('STUDENT:VIEW_OWN_RECORD');
@@ -51,20 +65,20 @@ export default function HomeworkPage() {
   });
 
   const createAssignment = useMutation({
-    mutationFn: (formData: FormData) =>
+    mutationFn: () =>
       apiFetch('/homework', {
         method: 'POST',
-        body: JSON.stringify({
-          classId: formData.get('classId'),
-          title: formData.get('title'),
-          description: formData.get('description'),
-          dueDate: formData.get('dueDate'),
-        }),
+        body: JSON.stringify({ classId, title, description, dueDate }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['homework'] });
       setShowForm(false);
       setError(null);
+      setClassId('');
+      setTitle('');
+      setDescription('');
+      setDueDate('');
+      clearDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to assign homework'),
   });
@@ -95,12 +109,13 @@ export default function HomeworkPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createAssignment.mutate(new FormData(e.currentTarget));
+                createAssignment.mutate();
               }}
               className="mb-6 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
             >
               <select
-                name="classId"
+                value={classId}
+                onChange={(e) => setClassId(e.target.value)}
                 required
                 className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm"
               >
@@ -111,9 +126,9 @@ export default function HomeworkPage() {
                   </option>
                 ))}
               </select>
-              <Input name="title" placeholder="Title" required className="col-span-2" />
-              <Input name="description" placeholder="Description (optional)" className="col-span-2" />
-              <Input name="dueDate" type="date" required />
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" required className="col-span-2" />
+              <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" className="col-span-2" />
+              <Input value={dueDate} onChange={(e) => setDueDate(e.target.value)} type="date" required />
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
               <div className="col-span-2">
                 <Button type="submit" disabled={createAssignment.isPending}>

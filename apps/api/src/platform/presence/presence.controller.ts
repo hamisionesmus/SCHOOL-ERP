@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -19,5 +19,10 @@ export class PresenceController {
   @Get()
   snapshot() {
     return this.presence.snapshot();
+  }
+
+  @Get('history')
+  history(@Query('hours') hours?: string) {
+    return this.presence.history(hours ? Number(hours) : undefined);
   }
 }

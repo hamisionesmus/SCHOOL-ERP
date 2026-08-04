@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LifeBuoy, X } from 'lucide-react';
 import { useSession } from '@/lib/use-session';
@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { useTicketSocket } from '@/lib/ticket-socket';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 const CATEGORIES = ['TECHNICAL', 'BILLING', 'ACCOUNT', 'GENERAL', 'COMPLAINT', 'OTHER'] as const;
 const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
@@ -61,6 +62,17 @@ export default function TicketsPage() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<{ subject: string; description: string; category: string; priority: string }>('tickets-new');
+  const draft = loadDraft();
+  const [subject, setSubject] = useState(draft?.subject ?? '');
+  const [description, setDescription] = useState(draft?.description ?? '');
+  const [category, setCategory] = useState(draft?.category ?? '');
+  const [priority, setPriority] = useState(draft?.priority ?? 'NORMAL');
+
+  useEffect(() => {
+    saveDraft({ subject, description, category, priority });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subject, description, category, priority]);
 
   const canManage = !!user?.permissions?.includes('TICKET:MANAGE');
 
@@ -71,20 +83,20 @@ export default function TicketsPage() {
   });
 
   const createTicket = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/tickets', {
         method: 'POST',
-        body: JSON.stringify({
-          subject: fd.get('subject'),
-          description: fd.get('description'),
-          category: fd.get('category'),
-          priority: fd.get('priority'),
-        }),
+        body: JSON.stringify({ subject, description, category, priority }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       setShowForm(false);
       setError(null);
+      setSubject('');
+      setDescription('');
+      setCategory('');
+      setPriority('NORMAL');
+      clearDraft();
       notifySuccess('Ticket submitted');
     },
     onError: (err) => {
@@ -121,20 +133,26 @@ export default function TicketsPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createTicket.mutate(new FormData(e.currentTarget));
+                createTicket.mutate();
               }}
               className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2"
             >
-              <Input name="subject" placeholder="Subject" required className="sm:col-span-2" />
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" required className="sm:col-span-2" />
               <textarea
-                name="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe the issue..."
                 required
                 minLength={10}
                 rows={3}
                 className="sm:col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
-              <select name="category" required defaultValue="" className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                required
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+              >
                 <option value="" disabled>
                   Category
                 </option>
@@ -144,7 +162,11 @@ export default function TicketsPage() {
                   </option>
                 ))}
               </select>
-              <select name="priority" defaultValue="NORMAL" className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+              >
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>
                     {p.charAt(0) + p.slice(1).toLowerCase()}

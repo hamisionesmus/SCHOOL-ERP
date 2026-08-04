@@ -1,7 +1,16 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import {
+  ConnectedSocket,
+  MessageBody,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtUserPayload } from '../../common/decorators/current-user.decorator';
 import { PresenceService } from './presence.service';
@@ -45,7 +54,8 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
         await client.join('admins');
       }
 
-      const wentOnline = await this.presence.register(payload);
+      const { wentOnline, sessionId } = await this.presence.register(payload);
+      client.data.sessionId = sessionId;
       if (wentOnline) await this.broadcastSnapshot();
     } catch {
       this.logger.warn('Rejected presence socket connection: invalid or expired token');
@@ -56,12 +66,24 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   async handleDisconnect(client: Socket) {
     const user: JwtUserPayload | undefined = client.data.user;
     if (!user) return;
-    const wentOffline = this.presence.unregister(user);
+    const wentOffline = await this.presence.unregister(user);
     if (wentOffline) await this.broadcastSnapshot();
+  }
+
+  @SubscribeMessage('activity:pageview')
+  async onPageview(@ConnectedSocket() client: Socket, @MessageBody() body: { path: string }) {
+    const sessionId: string | undefined = client.data.sessionId;
+    if (!sessionId || !body?.path) return;
+    await this.presence.logActivity(sessionId, body.path);
   }
 
   private async broadcastSnapshot() {
     const snapshot = await this.presence.snapshot();
     this.server.to('admins').emit('presence:snapshot', snapshot);
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async pruneOldSessions() {
+    await this.presence.pruneOldSessions();
   }
 }

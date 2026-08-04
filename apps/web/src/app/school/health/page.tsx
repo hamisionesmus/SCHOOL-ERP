@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError, API_ORIGIN } from '@/lib/api';
@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface Student {
   id: string;
@@ -47,6 +48,16 @@ export default function HealthPage() {
   const [showAlertForm, setShowAlertForm] = useState(false);
   const [showVisitForm, setShowVisitForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { loadDraft: loadAlertDraft, saveDraft: saveAlertDraft, clearDraft: clearAlertDraft } = useDraftState<{
+    studentId: string;
+    condition: string;
+    severity: string;
+    notes: string;
+  }>('health-alert');
+  const alertDraft = loadAlertDraft();
+  const [alertCondition, setAlertCondition] = useState(alertDraft?.condition ?? '');
+  const [alertSeverity, setAlertSeverity] = useState(alertDraft?.severity ?? '');
+  const [alertNotes, setAlertNotes] = useState(alertDraft?.notes ?? '');
 
   const canManage = user?.permissions?.includes('HEALTH:MANAGE');
   const canIssueSickSheet = user?.permissions?.includes('HEALTH:ISSUE_SICK_SHEET');
@@ -73,14 +84,14 @@ export default function HealthPage() {
   });
 
   const createAlert = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/health/medical-alerts', {
         method: 'POST',
         body: JSON.stringify({
-          studentId: fd.get('studentId'),
-          condition: fd.get('condition'),
-          severity: fd.get('severity'),
-          notes: fd.get('notes') || undefined,
+          studentId: alertStudentId,
+          condition: alertCondition,
+          severity: alertSeverity,
+          notes: alertNotes || undefined,
         }),
       }),
     onSuccess: () => {
@@ -88,6 +99,10 @@ export default function HealthPage() {
       setShowAlertForm(false);
       setError(null);
       setAlertStudentId('');
+      setAlertCondition('');
+      setAlertSeverity('');
+      setAlertNotes('');
+      clearAlertDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to add alert'),
   });
@@ -157,8 +172,14 @@ export default function HealthPage() {
 
   const [showSickSheetForm, setShowSickSheetForm] = useState(false);
   const [sickSheetStudentId, setSickSheetStudentId] = useState('');
-  const [alertStudentId, setAlertStudentId] = useState('');
+  const [alertStudentId, setAlertStudentId] = useState(alertDraft?.studentId ?? '');
   const [visitStudentId, setVisitStudentId] = useState('');
+
+  useEffect(() => {
+    saveAlertDraft({ studentId: alertStudentId, condition: alertCondition, severity: alertSeverity, notes: alertNotes });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertStudentId, alertCondition, alertSeverity, alertNotes]);
+
   const sickSheetsTable = useTableControls(sickSheets ?? [], { pageSize: 8 });
   const alertsTable = useTableControls(alerts ?? [], { pageSize: 8 });
   const visitsTable = useTableControls(visits ?? [], { pageSize: 8 });
@@ -265,7 +286,7 @@ export default function HealthPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createAlert.mutate(new FormData(e.currentTarget));
+                createAlert.mutate();
               }}
               className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
             >
@@ -278,14 +299,19 @@ export default function HealthPage() {
                 className="col-span-2"
                 options={(students ?? []).map((s) => ({ value: s.id, label: `${s.firstName} ${s.lastName}` }))}
               />
-              <Input name="condition" placeholder="Condition, e.g. Peanut allergy" required />
-              <select name="severity" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+              <Input value={alertCondition} onChange={(e) => setAlertCondition(e.target.value)} placeholder="Condition, e.g. Peanut allergy" required />
+              <select
+                value={alertSeverity}
+                onChange={(e) => setAlertSeverity(e.target.value)}
+                required
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+              >
                 <option value="">Severity</option>
                 <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>
                 <option value="HIGH">High</option>
               </select>
-              <Input name="notes" placeholder="Notes (optional)" className="col-span-2" />
+              <Input value={alertNotes} onChange={(e) => setAlertNotes(e.target.value)} placeholder="Notes (optional)" className="col-span-2" />
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
               <div className="col-span-2">
                 <Button type="submit" disabled={createAlert.isPending}>

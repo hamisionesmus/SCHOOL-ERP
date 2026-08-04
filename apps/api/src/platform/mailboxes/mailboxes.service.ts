@@ -7,7 +7,7 @@ import { PlatformPrismaService } from '../../common/prisma/platform-prisma.servi
 import { SettingsOtpService } from '../settings-otp/settings-otp.service';
 import { UpdateMailboxCredentialsDto } from './dto/update-mailbox-credentials.dto';
 import { SendEmailDto } from './dto/send-email.dto';
-import { MAILBOX_KEYS, MAILBOX_DEFAULTS, MailboxKey } from './mailbox-keys';
+import { MAILBOX_KEYS, MAILBOX_DEFAULTS, MailboxKey, CONTACTABLE_KEYS } from './mailbox-keys';
 
 function maskSecret(value: string | null | undefined): { set: boolean; preview: string | null } {
   if (!value) return { set: false, preview: null };
@@ -195,6 +195,45 @@ export class MailboxesService {
     }
   }
 
+  /** Shared thread-matching logic behind both the real IMAP-import path (importInboundMessage) and
+   * the internal contact-form path (contact()): match by In-Reply-To/References against a message
+   * we already have, else by participant+subject, else start a fresh thread. */
+  private async findOrCreateThread(
+    mailboxId: string,
+    participantEmail: string,
+    participantName: string | undefined,
+    subject: string,
+    candidateRefs: string[],
+    occurredAt: Date,
+  ) {
+    let thread = null as Awaited<ReturnType<typeof this.platformPrisma.platformEmailThread.findFirst>>;
+    if (candidateRefs.length > 0) {
+      const matched = await this.platformPrisma.platformEmailMessage.findFirst({
+        where: { messageId: { in: candidateRefs } },
+      });
+      if (matched) {
+        thread = await this.platformPrisma.platformEmailThread.findUnique({ where: { id: matched.threadId } });
+      }
+    }
+    if (!thread) {
+      thread = await this.platformPrisma.platformEmailThread.findFirst({
+        where: {
+          mailboxId,
+          participantEmail,
+          subject: { equals: normalizeSubject(subject), mode: 'insensitive' },
+        },
+        orderBy: { lastMessageAt: 'desc' },
+      });
+    }
+    if (!thread) {
+      return this.platformPrisma.platformEmailThread.create({
+        data: { mailboxId, subject: normalizeSubject(subject), participantEmail, participantName, lastMessageAt: occurredAt },
+      });
+    }
+    await this.platformPrisma.platformEmailThread.update({ where: { id: thread.id }, data: { lastMessageAt: occurredAt } });
+    return thread;
+  }
+
   private async importInboundMessage(mailbox: { id: string; key: string }, source: Buffer) {
     const parsed = await simpleParser(source);
     const messageId = parsed.messageId || undefined;
@@ -210,41 +249,14 @@ export class MailboxesService {
     const references = Array.isArray(parsed.references) ? parsed.references : parsed.references ? [parsed.references] : [];
     const candidateRefs = [parsed.inReplyTo, ...references].filter((v): v is string => !!v);
 
-    let thread = null as Awaited<ReturnType<typeof this.platformPrisma.platformEmailThread.findFirst>>;
-    if (candidateRefs.length > 0) {
-      const matched = await this.platformPrisma.platformEmailMessage.findFirst({
-        where: { messageId: { in: candidateRefs } },
-      });
-      if (matched) {
-        thread = await this.platformPrisma.platformEmailThread.findUnique({ where: { id: matched.threadId } });
-      }
-    }
-    if (!thread) {
-      thread = await this.platformPrisma.platformEmailThread.findFirst({
-        where: {
-          mailboxId: mailbox.id,
-          participantEmail: fromAddress,
-          subject: { equals: normalizeSubject(subject), mode: 'insensitive' },
-        },
-        orderBy: { lastMessageAt: 'desc' },
-      });
-    }
-    if (!thread) {
-      thread = await this.platformPrisma.platformEmailThread.create({
-        data: {
-          mailboxId: mailbox.id,
-          subject: normalizeSubject(subject),
-          participantEmail: fromAddress,
-          participantName: fromName,
-          lastMessageAt: parsed.date ?? new Date(),
-        },
-      });
-    } else {
-      await this.platformPrisma.platformEmailThread.update({
-        where: { id: thread.id },
-        data: { lastMessageAt: parsed.date ?? new Date() },
-      });
-    }
+    const thread = await this.findOrCreateThread(
+      mailbox.id,
+      fromAddress,
+      fromName,
+      subject,
+      candidateRefs,
+      parsed.date ?? new Date(),
+    );
 
     await this.platformPrisma.platformEmailMessage.create({
       data: {
@@ -259,6 +271,49 @@ export class MailboxesService {
         inReplyTo: parsed.inReplyTo || undefined,
         read: false,
       },
+    });
+  }
+
+  /** Internal message injection — no real SMTP send. Used by the restricted Sub-Admin/Assistant
+   * Super Admin "contact the platform team" flow: writes the message directly into the target
+   * mailbox's thread as if it had arrived by IMAP (direction: IN), sidestepping any From-spoofing
+   * concern entirely since no real email leaves this server for this leg. The *reply* — sent by
+   * whoever manages that mailbox, via sendMessage()'s real SMTP — is what genuinely reaches the
+   * sender's real inbox. */
+  async contact(key: MailboxKey, opts: { fromEmail: string; fromName?: string; subject: string; body: string }) {
+    const mailbox = await this.getOrCreate(key);
+    const thread = await this.findOrCreateThread(mailbox.id, opts.fromEmail, opts.fromName, opts.subject, [], new Date());
+    return this.platformPrisma.platformEmailMessage.create({
+      data: {
+        threadId: thread.id,
+        direction: 'IN',
+        fromAddress: opts.fromEmail,
+        toAddress: mailbox.address,
+        subject: opts.subject,
+        bodyText: opts.body,
+        read: false,
+      },
+    });
+  }
+
+  /** Resolves which address a Sub-Admin/Assistant Super Admin's restricted contact messages come
+   * from — their self-registered contactEmail if set, else their own login email. */
+  async resolveContactEmail(userId: string): Promise<string> {
+    const user = await this.platformPrisma.platformUser.findUniqueOrThrow({ where: { id: userId } });
+    return user.contactEmail ?? user.email;
+  }
+
+  /** A Sub-Admin/Assistant Super Admin's own conversations with Info/Partner/Billing — never the
+   * full inbox, only threads where they are the participant (see canRoleContactMailbox). */
+  async myThreads(contactEmail: string) {
+    return this.platformPrisma.platformEmailThread.findMany({
+      where: { participantEmail: contactEmail, mailbox: { key: { in: CONTACTABLE_KEYS as string[] } } },
+      include: {
+        mailbox: { select: { key: true, address: true, displayName: true } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+        _count: { select: { messages: { where: { direction: 'IN', read: false } } } },
+      },
+      orderBy: { lastMessageAt: 'desc' },
     });
   }
 

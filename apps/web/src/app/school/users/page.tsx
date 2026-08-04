@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { useSession } from '@/lib/use-session';
@@ -13,6 +13,7 @@ import { SkeletonTable } from '@/components/ui/skeleton';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface Role {
   id: string;
@@ -28,13 +29,24 @@ interface StaffUser {
   userRoles: { role: Role }[];
 }
 
+type StaffDraft = { fullName: string; email: string; selectedRoleIds: string[] };
+
 export default function UsersPage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<StaffDraft>('users-staff');
+  const draft = loadDraft();
+  const [fullName, setFullName] = useState(draft?.fullName ?? '');
+  const [email, setEmail] = useState(draft?.email ?? '');
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(draft?.selectedRoleIds ?? []);
   const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    saveDraft({ fullName, email, selectedRoleIds });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullName, email, selectedRoleIds]);
 
   const { data: roles } = useQuery({
     queryKey: ['roles'],
@@ -49,21 +61,19 @@ export default function UsersPage() {
   });
 
   const createUser = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: (password: FormDataEntryValue | null) =>
       apiFetch('/users', {
         method: 'POST',
-        body: JSON.stringify({
-          fullName: fd.get('fullName'),
-          email: fd.get('email'),
-          password: fd.get('password'),
-          roleIds: selectedRoleIds,
-        }),
+        body: JSON.stringify({ fullName, email, password, roleIds: selectedRoleIds }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setShowForm(false);
       setError(null);
+      setFullName('');
+      setEmail('');
       setSelectedRoleIds([]);
+      clearDraft();
       notifySuccess('Staff member added');
     },
     onError: (err) => {
@@ -105,13 +115,13 @@ export default function UsersPage() {
                 setError('Select at least one role');
                 return;
               }
-              createUser.mutate(new FormData(e.currentTarget));
+              createUser.mutate(new FormData(e.currentTarget).get('password'));
             }}
             className="mb-6 flex flex-col gap-3 rounded-lg border border-slate-200 p-4 animate-float-up"
           >
             <div className="grid grid-cols-2 gap-3">
-              <Input name="fullName" placeholder="Full name" required />
-              <Input name="email" type="email" placeholder="Email" required />
+              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" required />
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email" required />
               <Input name="password" type="password" placeholder="Temporary password" minLength={8} required className="col-span-2" />
             </div>
 

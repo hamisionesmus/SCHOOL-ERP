@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError, API_ORIGIN } from '@/lib/api';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface Subject {
   id: string;
@@ -75,6 +76,33 @@ export default function ExamsPage() {
   const [error, setError] = useState<string | null>(null);
   const [reportCardStudentId, setReportCardStudentId] = useState('');
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const { loadDraft: loadExamDraft, saveDraft: saveExamDraft, clearDraft: clearExamDraft } = useDraftState<{
+    name: string;
+    examType: string;
+    academicYearId: string;
+    term: string;
+    startDate: string;
+    endDate: string;
+  }>('exams-create');
+  const examDraft = loadExamDraft();
+  const [examName, setExamName] = useState(examDraft?.name ?? '');
+  const [examType, setExamType] = useState(examDraft?.examType ?? '');
+  const [examAcademicYearId, setExamAcademicYearId] = useState(examDraft?.academicYearId ?? '');
+  const [examTerm, setExamTerm] = useState(examDraft?.term ?? '');
+  const [examStartDate, setExamStartDate] = useState(examDraft?.startDate ?? '');
+  const [examEndDate, setExamEndDate] = useState(examDraft?.endDate ?? '');
+
+  useEffect(() => {
+    saveExamDraft({
+      name: examName,
+      examType,
+      academicYearId: examAcademicYearId,
+      term: examTerm,
+      startDate: examStartDate,
+      endDate: examEndDate,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examName, examType, examAcademicYearId, examTerm, examStartDate, examEndDate]);
 
   async function downloadReportCardPdf(examId: string, studentId: string) {
     setDownloadingPdf(true);
@@ -143,22 +171,29 @@ export default function ExamsPage() {
   const invalidateExamSubjects = () => queryClient.invalidateQueries({ queryKey: ['exam-subjects', selectedExamId] });
 
   const createExam = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/exams', {
         method: 'POST',
         body: JSON.stringify({
-          name: fd.get('name'),
-          examType: fd.get('examType'),
-          academicYearId: fd.get('academicYearId'),
-          term: Number(fd.get('term')),
-          startDate: fd.get('startDate'),
-          endDate: fd.get('endDate'),
+          name: examName,
+          examType,
+          academicYearId: examAcademicYearId,
+          term: Number(examTerm),
+          startDate: examStartDate,
+          endDate: examEndDate,
         }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exams'] });
       setShowExamForm(false);
       setError(null);
+      setExamName('');
+      setExamType('');
+      setExamAcademicYearId('');
+      setExamTerm('');
+      setExamStartDate('');
+      setExamEndDate('');
+      clearExamDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to create exam'),
   });
@@ -242,12 +277,17 @@ export default function ExamsPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createExam.mutate(new FormData(e.currentTarget));
+                createExam.mutate();
               }}
               className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
             >
-              <Input name="name" placeholder="Exam name, e.g. Term 2 CAT 1" required className="col-span-2" />
-              <select name="examType" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+              <Input value={examName} onChange={(e) => setExamName(e.target.value)} placeholder="Exam name, e.g. Term 2 CAT 1" required className="col-span-2" />
+              <select
+                value={examType}
+                onChange={(e) => setExamType(e.target.value)}
+                required
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+              >
                 <option value="">Type</option>
                 {['CAT', 'MIDTERM', 'ENDTERM', 'CBC_ASSESSMENT', 'PROJECT', 'PRACTICAL'].map((t) => (
                   <option key={t} value={t}>
@@ -255,9 +295,10 @@ export default function ExamsPage() {
                   </option>
                 ))}
               </select>
-              <Input name="term" type="number" min={1} placeholder="Term" required />
+              <Input value={examTerm} onChange={(e) => setExamTerm(e.target.value)} type="number" min={1} placeholder="Term" required />
               <select
-                name="academicYearId"
+                value={examAcademicYearId}
+                onChange={(e) => setExamAcademicYearId(e.target.value)}
                 required
                 className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm"
               >
@@ -268,8 +309,8 @@ export default function ExamsPage() {
                   </option>
                 ))}
               </select>
-              <Input name="startDate" type="date" required />
-              <Input name="endDate" type="date" required />
+              <Input value={examStartDate} onChange={(e) => setExamStartDate(e.target.value)} type="date" required />
+              <Input value={examEndDate} onChange={(e) => setExamEndDate(e.target.value)} type="date" required />
               <div className="col-span-2">
                 <Button type="submit" disabled={createExam.isPending}>
                   {createExam.isPending ? 'Saving...' : 'Create exam'}

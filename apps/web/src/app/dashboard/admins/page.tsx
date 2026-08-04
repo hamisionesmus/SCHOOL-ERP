@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { Search, Users, Crown, Shield } from 'lucide-react';
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { StatCard } from '@/components/ui/stat-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRequireSuperAdmin } from '@/lib/require-super-admin';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface Admin {
   id: string;
@@ -165,16 +166,31 @@ export default function AdminsPage() {
   );
 }
 
+type InviteAdminDraft = {
+  fullName: string;
+  email: string;
+  phone: string;
+  role: 'SUB_ADMIN' | 'ASSISTANT_SUPER_ADMIN';
+  gender: '' | 'MALE' | 'FEMALE' | 'OTHER';
+};
+
 function InviteAdminDialog({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<'SUB_ADMIN' | 'ASSISTANT_SUPER_ADMIN'>('SUB_ADMIN');
-  const [gender, setGender] = useState<'' | 'MALE' | 'FEMALE' | 'OTHER'>('');
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<InviteAdminDraft>('invite-admin');
+  const draft = loadDraft();
+  const [fullName, setFullName] = useState(draft?.fullName ?? '');
+  const [email, setEmail] = useState(draft?.email ?? '');
+  const [phone, setPhone] = useState(draft?.phone ?? '');
+  const [role, setRole] = useState<'SUB_ADMIN' | 'ASSISTANT_SUPER_ADMIN'>(draft?.role ?? 'SUB_ADMIN');
+  const [gender, setGender] = useState<'' | 'MALE' | 'FEMALE' | 'OTHER'>(draft?.gender ?? '');
   const [pending, setPending] = useState<RequestResult | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    saveDraft({ fullName, email, phone, role, gender });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullName, email, phone, role, gender]);
 
   const requestCreate = useMutation({
     mutationFn: () =>
@@ -200,6 +216,7 @@ function InviteAdminDialog({ onClose }: { onClose: () => void }) {
         body: JSON.stringify({ requestId: pending!.requestId, code }),
       }),
     onSuccess: () => {
+      clearDraft();
       queryClient.invalidateQueries({ queryKey: ['platform-admins'] });
       queryClient.invalidateQueries({ queryKey: ['platform-admins-analytics'] });
       notifySuccess(`${fullName} added as ${ROLE_LABELS[role]}`);

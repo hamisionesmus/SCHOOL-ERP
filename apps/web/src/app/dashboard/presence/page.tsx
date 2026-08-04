@@ -2,13 +2,86 @@
 
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Users, UserCheck, UserX, Radio } from 'lucide-react';
+import { Users, UserCheck, UserX, Radio, ChevronDown, ChevronRight, History } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { StatCard } from '@/components/ui/stat-card';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { useRequireFinanceAccess } from '@/lib/require-super-admin';
 import { onPresenceSnapshot, PresenceSnapshot, PresenceEntry } from '@/lib/presence-socket';
+
+interface SessionHistoryEntry {
+  id: string;
+  realm: 'platform' | 'tenant';
+  fullName: string;
+  role: string | null;
+  roles: string[] | null;
+  tenantSlug: string | null;
+  schoolName: string | null;
+  connectedAt: string;
+  disconnectedAt: string | null;
+  activities: { path: string; occurredAt: string }[];
+}
+
+function formatDuration(startIso: string, endIso: string | null) {
+  const ms = (endIso ? new Date(endIso).getTime() : Date.now()) - new Date(startIso).getTime();
+  const mins = Math.round(ms / 60_000);
+  if (mins < 1) return '<1m';
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ${mins % 60}m`;
+}
+
+function SessionRow({ session }: { session: SessionHistoryEntry }) {
+  const [open, setOpen] = useState(false);
+  const subtitle =
+    session.realm === 'platform'
+      ? (session.role ?? 'Platform team')
+      : `${session.roles?.join(', ') || 'Staff'} — ${session.schoolName ?? session.tenantSlug ?? 'Unknown school'}`;
+
+  return (
+    <div className="border-b border-slate-100 last:border-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3 px-2 py-2 text-left hover:bg-slate-50"
+      >
+        {open ? <ChevronDown size={14} className="flex-shrink-0 text-slate-400" /> : <ChevronRight size={14} className="flex-shrink-0 text-slate-400" />}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium text-slate-800">{session.fullName}</span>
+            <span className="truncate text-xs text-slate-400">— {subtitle}</span>
+          </div>
+          <p className="text-xs text-slate-400">
+            {new Date(session.connectedAt).toLocaleString()}
+            {session.disconnectedAt ? ` → ${new Date(session.disconnectedAt).toLocaleTimeString()}` : ''}
+            {' · '}
+            {formatDuration(session.connectedAt, session.disconnectedAt)}
+            {' · '}
+            {session.activities.length} page{session.activities.length === 1 ? '' : 's'} visited
+          </p>
+        </div>
+        {!session.disconnectedAt && (
+          <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+            Still online
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="ml-6 mb-2 flex flex-col gap-0.5 border-l border-slate-200 pl-3">
+          {session.activities.length === 0 ? (
+            <p className="text-xs text-slate-400">No page visits recorded for this session.</p>
+          ) : (
+            session.activities.map((a, i) => (
+              <p key={i} className="text-xs text-slate-500">
+                <span className="text-slate-400">{new Date(a.occurredAt).toLocaleTimeString()}</span> — {a.path}
+              </p>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function LiveDot() {
   return (
@@ -44,6 +117,12 @@ export default function PresencePage() {
   const [snapshot, setSnapshot] = useState<PresenceSnapshot | undefined>(undefined);
 
   useEffect(() => onPresenceSnapshot(setSnapshot), []);
+
+  const historyQuery = useQuery({
+    queryKey: ['presence-history'],
+    queryFn: () => apiFetch<SessionHistoryEntry[]>('/platform/presence/history?hours=24'),
+    refetchInterval: 60_000,
+  });
 
   const data = snapshot ?? initial;
 
@@ -121,6 +200,32 @@ export default function PresencePage() {
                         ))}
                       </div>
                     </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <History size={16} className="text-slate-400" />
+                Last 24 hours
+              </CardTitle>
+              <CardDescription>
+                Every session in the last day, who was online, when, and which pages they visited —
+                including people now offline. Click a row to see the pages they visited.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {historyQuery.isLoading ? (
+                <p className="text-sm text-slate-400">Loading…</p>
+              ) : !historyQuery.data || historyQuery.data.length === 0 ? (
+                <p className="text-sm text-slate-400">No sessions in the last 24 hours.</p>
+              ) : (
+                <div className="flex flex-col">
+                  {historyQuery.data.map((s) => (
+                    <SessionRow key={s.id} session={s} />
                   ))}
                 </div>
               )}

@@ -17,4 +17,11 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  // Where restricted contact-Billing/Partnerships/Info messages appear to come from (Sub-Admin/
+  // Assistant Super Admin) — falls back to `email` when unset. See MailboxesService.contact().
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  contactEmail?: string;
 }

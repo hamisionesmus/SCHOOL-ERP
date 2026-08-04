@@ -15,8 +15,9 @@ interface Profile {
   email: string;
   fullName: string;
   phone: string | null;
-  role: 'SUPER_ADMIN' | 'SUB_ADMIN';
+  role: 'SUPER_ADMIN' | 'SUB_ADMIN' | 'ASSISTANT_SUPER_ADMIN';
   avatarUrl: string | null;
+  contactEmail: string | null;
 }
 
 interface OtpRequestResult {
@@ -27,7 +28,7 @@ interface OtpRequestResult {
 
 export default function ProfilePage() {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ fullName: '', phone: '', email: '' });
+  const [form, setForm] = useState({ fullName: '', phone: '', email: '', contactEmail: '' });
   const [pending, setPending] = useState<OtpRequestResult | null>(null);
   const [code, setCode] = useState('');
 
@@ -47,16 +48,23 @@ export default function ProfilePage() {
         fullName: profileQuery.data.fullName,
         phone: profileQuery.data.phone ?? '',
         email: profileQuery.data.email,
+        contactEmail: profileQuery.data.contactEmail ?? '',
       });
     }
   }, [profileQuery.data]);
 
   const requestUpdate = useMutation({
-    mutationFn: () =>
-      apiFetch<OtpRequestResult>('/platform/me/request-update', {
+    mutationFn: () => {
+      // contactEmail is the only truly optional field here — omit it entirely when blank rather
+      // than sending an empty string, which would fail the DTO's @IsEmail() validator.
+      const { contactEmail, ...rest } = form;
+      const payload: Record<string, string> = { ...rest };
+      if (contactEmail) payload.contactEmail = contactEmail;
+      return apiFetch<OtpRequestResult>('/platform/me/request-update', {
         method: 'POST',
-        body: JSON.stringify(form),
-      }),
+        body: JSON.stringify(payload),
+      });
+    },
     onSuccess: (result) => {
       setPending(result);
       setCode('');
@@ -120,6 +128,24 @@ export default function ProfilePage() {
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               />
             </div>
+            {profileQuery.data?.role !== 'SUPER_ADMIN' && (
+              <div className="flex flex-col gap-1 sm:col-span-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Contact email (for messaging Billing/Partnerships/Info)
+                </label>
+                <Input
+                  type="email"
+                  placeholder={form.email || 'defaults to your login email above'}
+                  value={form.contactEmail}
+                  onChange={(e) => setForm((f) => ({ ...f, contactEmail: e.target.value }))}
+                />
+                <p className="text-xs text-slate-500">
+                  When you contact the platform team from the Inbox, this is the address your
+                  message appears to come from, and where replies go. Leave blank to use your login
+                  email above.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

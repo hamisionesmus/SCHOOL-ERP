@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError, API_ORIGIN } from '@/lib/api';
@@ -15,6 +15,7 @@ import { SortableTh } from '@/components/ui/sortable-th';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { cn } from '@/lib/utils';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface UserRef {
   id: string;
@@ -97,10 +98,23 @@ export default function HrPage() {
   );
 }
 
+type LeaveDraft = { leaveType: string; startDate: string; endDate: string; reason: string };
+
 function LeaveTab({ canReview }: { canReview: boolean }) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<LeaveDraft>('hr-leave');
+  const draft = loadDraft();
+  const [leaveType, setLeaveType] = useState(draft?.leaveType ?? '');
+  const [startDate, setStartDate] = useState(draft?.startDate ?? '');
+  const [endDate, setEndDate] = useState(draft?.endDate ?? '');
+  const [reason, setReason] = useState(draft?.reason ?? '');
+
+  useEffect(() => {
+    saveDraft({ leaveType, startDate, endDate, reason });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaveType, startDate, endDate, reason]);
 
   const { data: requests, isLoading } = useQuery({
     queryKey: ['leave-requests'],
@@ -108,20 +122,20 @@ function LeaveTab({ canReview }: { canReview: boolean }) {
   });
 
   const createRequest = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/hr/leave-requests', {
         method: 'POST',
-        body: JSON.stringify({
-          leaveType: fd.get('leaveType'),
-          startDate: fd.get('startDate'),
-          endDate: fd.get('endDate'),
-          reason: fd.get('reason') || undefined,
-        }),
+        body: JSON.stringify({ leaveType, startDate, endDate, reason: reason || undefined }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
       setShowForm(false);
       setError(null);
+      setLeaveType('');
+      setStartDate('');
+      setEndDate('');
+      setReason('');
+      clearDraft();
       notifySuccess('Leave request submitted');
     },
     onError: (err) => {
@@ -155,11 +169,16 @@ function LeaveTab({ canReview }: { canReview: boolean }) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              createRequest.mutate(new FormData(e.currentTarget));
+              createRequest.mutate();
             }}
             className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
           >
-            <select name="leaveType" required className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm">
+            <select
+              value={leaveType}
+              onChange={(e) => setLeaveType(e.target.value)}
+              required
+              className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm"
+            >
               <option value="">Leave type</option>
               <option value="Annual">Annual</option>
               <option value="Sick">Sick</option>
@@ -167,9 +186,9 @@ function LeaveTab({ canReview }: { canReview: boolean }) {
               <option value="Paternity">Paternity</option>
               <option value="Compassionate">Compassionate</option>
             </select>
-            <Input name="startDate" type="date" required />
-            <Input name="endDate" type="date" required />
-            <Input name="reason" placeholder="Reason (optional)" className="col-span-2" />
+            <Input value={startDate} onChange={(e) => setStartDate(e.target.value)} type="date" required />
+            <Input value={endDate} onChange={(e) => setEndDate(e.target.value)} type="date" required />
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" className="col-span-2" />
             {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
             <div className="col-span-2">
               <Button type="submit" disabled={createRequest.isPending}>

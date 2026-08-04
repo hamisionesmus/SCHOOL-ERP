@@ -2,16 +2,17 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Send, RefreshCw, Plus, Inbox as InboxIcon } from 'lucide-react';
+import { Send, RefreshCw, Plus, Inbox as InboxIcon, MessageCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { getSessionUser } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { useRequireFinanceAccess } from '@/lib/require-super-admin';
 
 type MailboxKey = 'INFO' | 'PARTNER' | 'BILLING' | 'PERSONAL';
+type TabKey = MailboxKey | 'MY_MESSAGES';
 
 interface MailboxSummary {
   key: MailboxKey;
@@ -49,6 +50,12 @@ interface ThreadDetail {
   messages: ThreadMessage[];
 }
 
+const CONTACTABLE_MAILBOXES: { key: MailboxKey; label: string }[] = [
+  { key: 'INFO', label: 'Info' },
+  { key: 'PARTNER', label: 'Partner' },
+  { key: 'BILLING', label: 'Billing' },
+];
+
 function timeAgo(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.round(diffMs / 60_000);
@@ -59,51 +66,40 @@ function timeAgo(iso: string) {
   return new Date(iso).toLocaleDateString();
 }
 
-// Real, reply-able correspondence — Info/Partner/Personal are Super-Admin-only, Billing is also
-// open to Assistant Super Admin (the backend enforces this; useRequireFinanceAccess only keeps
-// Sub-Admin out at the page level, matching the same visibility tier as Finance/System Health).
+// Real, reply-able correspondence. Super Admin sees all 4 mailboxes' full inboxes; Assistant Super
+// Admin sees Billing's full inbox plus a "My Messages" tab; Sub-Admin sees only "My Messages" — a
+// restricted contact-the-platform-team flow (Info/Partner/Billing only, their own threads only, no
+// full-inbox browsing). The backend is the real enforcement (canRoleAccessMailbox/
+// canRoleContactMailbox in mailbox-keys.ts); this page just decides what to render for each role.
 export default function InboxPage() {
-  useRequireFinanceAccess();
+  const role = getSessionUser()?.role;
+  const isSubAdmin = role === 'SUB_ADMIN';
+  const showMyMessagesTab = role === 'ASSISTANT_SUPER_ADMIN';
+
   const queryClient = useQueryClient();
-  const [activeKey, setActiveKey] = useState<MailboxKey | null>(null);
+  const [activeKey, setActiveKey] = useState<TabKey | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [replyBody, setReplyBody] = useState('');
   const [composeOpen, setComposeOpen] = useState(false);
 
   const mailboxesQuery = useQuery({
     queryKey: ['inbox-mailboxes'],
     queryFn: () => apiFetch<MailboxSummary[]>('/platform/mailboxes'),
+    enabled: !isSubAdmin,
   });
   const threadsQuery = useQuery({
     queryKey: ['inbox-threads'],
     queryFn: () => apiFetch<ThreadListItem[]>('/platform/mailboxes/threads'),
     refetchInterval: 30_000,
+    enabled: !isSubAdmin,
   });
 
   const mailboxes = mailboxesQuery.data ?? [];
-  const activeMailboxKey = activeKey ?? mailboxes[0]?.key ?? null;
-  const activeMailbox = mailboxes.find((m) => m.key === activeMailboxKey);
-  const threadsForTab = (threadsQuery.data ?? []).filter((t) => t.mailbox.key === activeMailboxKey);
-
-  const threadDetailQuery = useQuery({
-    queryKey: ['inbox-thread', selectedThreadId],
-    queryFn: () => apiFetch<ThreadDetail>(`/platform/mailboxes/threads/${selectedThreadId}`),
-    enabled: !!selectedThreadId,
-  });
-
-  function selectThread(id: string) {
-    setSelectedThreadId(id);
-    setReplyBody('');
-    apiFetch(`/platform/mailboxes/threads/${id}/read`, { method: 'POST' })
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ['inbox-threads'] });
-        queryClient.invalidateQueries({ queryKey: ['platform-notifications'] });
-      })
-      .catch(() => undefined);
-  }
+  const activeTab: TabKey | null = activeKey ?? mailboxes[0]?.key ?? null;
+  const activeMailbox = mailboxes.find((m) => m.key === activeTab);
+  const threadsForTab = (threadsQuery.data ?? []).filter((t) => t.mailbox.key === activeTab);
 
   const pollNow = useMutation({
-    mutationFn: () => apiFetch(`/platform/mailboxes/${activeMailboxKey}/poll-now`, { method: 'POST' }),
+    mutationFn: () => apiFetch(`/platform/mailboxes/${activeTab}/poll-now`, { method: 'POST' }),
     onSuccess: () => {
       notifySuccess('Checked for new mail');
       queryClient.invalidateQueries({ queryKey: ['inbox-threads'] });
@@ -111,20 +107,25 @@ export default function InboxPage() {
     onError: (err) => notifyError(err, 'Failed to check for new mail'),
   });
 
-  const sendReply = useMutation({
-    mutationFn: () =>
-      apiFetch(`/platform/mailboxes/threads/${selectedThreadId}/reply`, {
-        method: 'POST',
-        body: JSON.stringify({ body: replyBody }),
-      }),
-    onSuccess: () => {
-      setReplyBody('');
-      queryClient.invalidateQueries({ queryKey: ['inbox-thread', selectedThreadId] });
-      queryClient.invalidateQueries({ queryKey: ['inbox-threads'] });
-      notifySuccess('Reply sent');
-    },
-    onError: (err) => notifyError(err, 'Failed to send reply'),
-  });
+  if (isSubAdmin) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Inbox</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Contact Info, Partner, or Billing directly — replies land back here.
+          </p>
+        </div>
+        <MyMessagesPanel
+          selectedThreadId={selectedThreadId}
+          onSelectThread={setSelectedThreadId}
+          composeOpen={composeOpen}
+          onOpenCompose={() => setComposeOpen(true)}
+          onCloseCompose={() => setComposeOpen(false)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col gap-4">
@@ -135,10 +136,12 @@ export default function InboxPage() {
             Real correspondence from named mailboxes — replies land back here automatically.
           </p>
         </div>
-        <Button onClick={() => setComposeOpen(true)} disabled={mailboxes.length === 0}>
-          <Plus size={16} className="mr-1.5" />
-          Compose
-        </Button>
+        {activeTab !== 'MY_MESSAGES' && (
+          <Button onClick={() => setComposeOpen(true)} disabled={mailboxes.length === 0}>
+            <Plus size={16} className="mr-1.5" />
+            Compose
+          </Button>
+        )}
       </div>
 
       {mailboxesQuery.isLoading ? (
@@ -155,7 +158,7 @@ export default function InboxPage() {
                 }}
                 className={cn(
                   '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
-                  activeMailboxKey === m.key
+                  activeTab === m.key
                     ? 'border-slate-900 text-slate-900'
                     : 'border-transparent text-slate-500 hover:text-slate-700',
                 )}
@@ -163,129 +166,105 @@ export default function InboxPage() {
                 {m.displayName}
               </button>
             ))}
-          </div>
-
-          {activeMailbox && !activeMailbox.configured && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-              This mailbox isn&apos;t configured yet — add its SMTP/IMAP credentials in Platform
-              Settings → Mailboxes before sending or receiving mail here.
-            </div>
-          )}
-
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[320px_1fr]">
-            <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
-              <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-                <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  {threadsForTab.length} conversation{threadsForTab.length === 1 ? '' : 's'}
-                </span>
-                <button
-                  onClick={() => pollNow.mutate()}
-                  disabled={pollNow.isPending || !activeMailboxKey}
-                  className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900 disabled:opacity-50"
-                >
-                  <RefreshCw size={12} className={pollNow.isPending ? 'animate-spin' : undefined} />
-                  Check now
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                {threadsForTab.length === 0 ? (
-                  <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-slate-400">
-                    <InboxIcon size={24} />
-                    No conversations yet
-                  </div>
-                ) : (
-                  threadsForTab.map((t) => {
-                    const unread = t._count.messages > 0;
-                    return (
-                      <button
-                        key={t.id}
-                        onClick={() => selectThread(t.id)}
-                        className={cn(
-                          'flex w-full flex-col gap-0.5 border-b border-slate-100 px-3 py-2.5 text-left hover:bg-slate-50',
-                          selectedThreadId === t.id && 'bg-slate-50',
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={cn('truncate text-sm', unread ? 'font-semibold text-slate-900' : 'text-slate-700')}>
-                            {t.participantName || t.participantEmail}
-                          </span>
-                          <span className="flex-shrink-0 text-xs text-slate-400">{timeAgo(t.lastMessageAt)}</span>
-                        </div>
-                        <p className={cn('truncate text-xs', unread ? 'font-medium text-slate-700' : 'text-slate-500')}>
-                          {t.subject}
-                        </p>
-                        {t.messages[0] && (
-                          <p className="truncate text-xs text-slate-400">{t.messages[0].bodyText}</p>
-                        )}
-                      </button>
-                    );
-                  })
+            {showMyMessagesTab && (
+              <button
+                onClick={() => {
+                  setActiveKey('MY_MESSAGES');
+                  setSelectedThreadId(null);
+                }}
+                className={cn(
+                  '-mb-px flex items-center gap-1.5 border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+                  activeTab === 'MY_MESSAGES'
+                    ? 'border-slate-900 text-slate-900'
+                    : 'border-transparent text-slate-500 hover:text-slate-700',
                 )}
-              </div>
-            </div>
-
-            <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
-              {!selectedThreadId ? (
-                <div className="flex flex-1 items-center justify-center text-sm text-slate-400">
-                  Select a conversation
-                </div>
-              ) : threadDetailQuery.isLoading || !threadDetailQuery.data ? (
-                <div className="p-4">
-                  <Skeleton className="h-40 w-full" />
-                </div>
-              ) : (
-                <>
-                  <div className="border-b border-slate-200 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">{threadDetailQuery.data.subject}</p>
-                    <p className="text-xs text-slate-500">
-                      with {threadDetailQuery.data.participantEmail} · via {threadDetailQuery.data.mailbox.address}
-                    </p>
-                  </div>
-                  <div className="flex-1 overflow-y-auto px-4 py-3">
-                    <div className="flex flex-col gap-3">
-                      {threadDetailQuery.data.messages.map((m) => (
-                        <div
-                          key={m.id}
-                          className={cn(
-                            'max-w-[85%] rounded-lg px-3 py-2 text-sm',
-                            m.direction === 'OUT' ? 'ml-auto bg-slate-900 text-white' : 'bg-slate-100 text-slate-800',
-                          )}
-                        >
-                          <p className="whitespace-pre-wrap">{m.bodyText}</p>
-                          <p className={cn('mt-1 text-[11px]', m.direction === 'OUT' ? 'text-slate-300' : 'text-slate-400')}>
-                            {m.direction === 'OUT' ? (m.sentBy?.fullName ?? 'You') : m.fromAddress} ·{' '}
-                            {new Date(m.createdAt).toLocaleString()}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex items-end gap-2 border-t border-slate-200 p-3">
-                    <textarea
-                      value={replyBody}
-                      onChange={(e) => setReplyBody(e.target.value)}
-                      placeholder="Write a reply..."
-                      rows={2}
-                      className="flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
-                    />
-                    <Button
-                      onClick={() => sendReply.mutate()}
-                      disabled={sendReply.isPending || replyBody.trim().length === 0}
-                    >
-                      <Send size={14} />
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
+              >
+                <MessageCircle size={14} />
+                My Messages
+              </button>
+            )}
           </div>
+
+          {activeTab === 'MY_MESSAGES' ? (
+            <MyMessagesPanel
+              selectedThreadId={selectedThreadId}
+              onSelectThread={setSelectedThreadId}
+              composeOpen={composeOpen}
+              onOpenCompose={() => setComposeOpen(true)}
+              onCloseCompose={() => setComposeOpen(false)}
+            />
+          ) : (
+            <>
+              {activeMailbox && !activeMailbox.configured && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+                  This mailbox isn&apos;t configured yet — add its SMTP/IMAP credentials in Platform
+                  Settings → Mailboxes before sending or receiving mail here.
+                </div>
+              )}
+
+              <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[320px_1fr]">
+                <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                    <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      {threadsForTab.length} conversation{threadsForTab.length === 1 ? '' : 's'}
+                    </span>
+                    <button
+                      onClick={() => pollNow.mutate()}
+                      disabled={pollNow.isPending || !activeTab}
+                      className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900 disabled:opacity-50"
+                    >
+                      <RefreshCw size={12} className={pollNow.isPending ? 'animate-spin' : undefined} />
+                      Check now
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {threadsForTab.length === 0 ? (
+                      <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-slate-400">
+                        <InboxIcon size={24} />
+                        No conversations yet
+                      </div>
+                    ) : (
+                      threadsForTab.map((t) => {
+                        const unread = t._count.messages > 0;
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => setSelectedThreadId(t.id)}
+                            className={cn(
+                              'flex w-full flex-col gap-0.5 border-b border-slate-100 px-3 py-2.5 text-left hover:bg-slate-50',
+                              selectedThreadId === t.id && 'bg-slate-50',
+                            )}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={cn('truncate text-sm', unread ? 'font-semibold text-slate-900' : 'text-slate-700')}>
+                                {t.participantName || t.participantEmail}
+                              </span>
+                              <span className="flex-shrink-0 text-xs text-slate-400">{timeAgo(t.lastMessageAt)}</span>
+                            </div>
+                            <p className={cn('truncate text-xs', unread ? 'font-medium text-slate-700' : 'text-slate-500')}>
+                              {t.subject}
+                            </p>
+                            {t.messages[0] && (
+                              <p className="truncate text-xs text-slate-400">{t.messages[0].bodyText}</p>
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <ThreadDetailPane threadId={selectedThreadId} listQueryKey="inbox-threads" />
+              </div>
+            </>
+          )}
         </>
       )}
 
-      {composeOpen && (
+      {composeOpen && activeTab !== 'MY_MESSAGES' && (
         <ComposeDialog
           mailboxes={mailboxes}
-          defaultKey={activeMailboxKey}
+          defaultKey={activeTab}
           onClose={() => setComposeOpen(false)}
           onSent={() => {
             setComposeOpen(false);
@@ -293,6 +272,265 @@ export default function InboxPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** Shared between the full inbox and the restricted "My Messages" view — fetching + rendering one
+ * thread's message history and reply box is identical either way (the backend's per-thread access
+ * check already accepts both full-inbox access and thread-ownership). */
+function ThreadDetailPane({ threadId, listQueryKey }: { threadId: string | null; listQueryKey: string }) {
+  const queryClient = useQueryClient();
+  const [replyBody, setReplyBody] = useState('');
+
+  const threadDetailQuery = useQuery({
+    queryKey: ['inbox-thread', threadId],
+    queryFn: () => apiFetch<ThreadDetail>(`/platform/mailboxes/threads/${threadId}`),
+    enabled: !!threadId,
+  });
+
+  const sendReply = useMutation({
+    mutationFn: () =>
+      apiFetch(`/platform/mailboxes/threads/${threadId}/reply`, {
+        method: 'POST',
+        body: JSON.stringify({ body: replyBody }),
+      }),
+    onSuccess: () => {
+      setReplyBody('');
+      queryClient.invalidateQueries({ queryKey: ['inbox-thread', threadId] });
+      queryClient.invalidateQueries({ queryKey: [listQueryKey] });
+      notifySuccess('Reply sent');
+    },
+    onError: (err) => notifyError(err, 'Failed to send reply'),
+  });
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
+      {!threadId ? (
+        <div className="flex flex-1 items-center justify-center text-sm text-slate-400">Select a conversation</div>
+      ) : threadDetailQuery.isLoading || !threadDetailQuery.data ? (
+        <div className="p-4">
+          <Skeleton className="h-40 w-full" />
+        </div>
+      ) : (
+        <>
+          <div className="border-b border-slate-200 px-4 py-3">
+            <p className="text-sm font-semibold text-slate-900">{threadDetailQuery.data.subject}</p>
+            <p className="text-xs text-slate-500">
+              with {threadDetailQuery.data.participantEmail} · via {threadDetailQuery.data.mailbox.address}
+            </p>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-3">
+            <div className="flex flex-col gap-3">
+              {threadDetailQuery.data.messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={cn(
+                    'max-w-[85%] rounded-lg px-3 py-2 text-sm',
+                    m.direction === 'OUT' ? 'ml-auto bg-slate-900 text-white' : 'bg-slate-100 text-slate-800',
+                  )}
+                >
+                  <p className="whitespace-pre-wrap">{m.bodyText}</p>
+                  <p className={cn('mt-1 text-[11px]', m.direction === 'OUT' ? 'text-slate-300' : 'text-slate-400')}>
+                    {m.direction === 'OUT' ? (m.sentBy?.fullName ?? 'You') : m.fromAddress} ·{' '}
+                    {new Date(m.createdAt).toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-end gap-2 border-t border-slate-200 p-3">
+            <textarea
+              value={replyBody}
+              onChange={(e) => setReplyBody(e.target.value)}
+              placeholder="Write a reply..."
+              rows={2}
+              className="flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+            />
+            <Button onClick={() => sendReply.mutate()} disabled={sendReply.isPending || replyBody.trim().length === 0}>
+              <Send size={14} />
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The restricted view: only threads the current user themselves started with Info/Partner/Billing
+ * (GET /platform/mailboxes/my-threads, scoped server-side by their resolved contactEmail) — never
+ * the full mailbox inbox. Used standalone for Sub-Admin, and as an extra tab for Assistant Super
+ * Admin (who also keeps full Billing access separately). */
+function MyMessagesPanel({
+  selectedThreadId,
+  onSelectThread,
+  composeOpen,
+  onOpenCompose,
+  onCloseCompose,
+}: {
+  selectedThreadId: string | null;
+  onSelectThread: (id: string) => void;
+  composeOpen: boolean;
+  onOpenCompose: () => void;
+  onCloseCompose: () => void;
+}) {
+  const queryClient = useQueryClient();
+
+  const threadsQuery = useQuery({
+    queryKey: ['my-messages-threads'],
+    queryFn: () => apiFetch<ThreadListItem[]>('/platform/mailboxes/my-threads'),
+    refetchInterval: 30_000,
+  });
+
+  function selectThread(id: string) {
+    onSelectThread(id);
+    apiFetch(`/platform/mailboxes/threads/${id}/read`, { method: 'POST' })
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['my-messages-threads'] });
+        queryClient.invalidateQueries({ queryKey: ['platform-notifications'] });
+      })
+      .catch(() => undefined);
+  }
+
+  const threads = threadsQuery.data ?? [];
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onOpenCompose}>
+          <Plus size={16} className="mr-1.5" />
+          New message
+        </Button>
+      </div>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[320px_1fr]">
+        <div className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-3 py-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              {threads.length} conversation{threads.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {threadsQuery.isLoading ? (
+              <div className="p-3">
+                <Skeleton className="h-24 w-full" />
+              </div>
+            ) : threads.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-slate-400">
+                <InboxIcon size={24} />
+                No messages yet — start one with &quot;New message&quot;.
+              </div>
+            ) : (
+              threads.map((t) => {
+                const unread = t._count.messages > 0;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => selectThread(t.id)}
+                    className={cn(
+                      'flex w-full flex-col gap-0.5 border-b border-slate-100 px-3 py-2.5 text-left hover:bg-slate-50',
+                      selectedThreadId === t.id && 'bg-slate-50',
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={cn('truncate text-sm', unread ? 'font-semibold text-slate-900' : 'text-slate-700')}>
+                        {t.mailbox.displayName}
+                      </span>
+                      <span className="flex-shrink-0 text-xs text-slate-400">{timeAgo(t.lastMessageAt)}</span>
+                    </div>
+                    <p className={cn('truncate text-xs', unread ? 'font-medium text-slate-700' : 'text-slate-500')}>
+                      {t.subject}
+                    </p>
+                    {t.messages[0] && <p className="truncate text-xs text-slate-400">{t.messages[0].bodyText}</p>}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <ThreadDetailPane threadId={selectedThreadId} listQueryKey="my-messages-threads" />
+      </div>
+
+      {composeOpen && (
+        <MyMessagesComposeDialog
+          onClose={onCloseCompose}
+          onSent={() => {
+            onCloseCompose();
+            queryClient.invalidateQueries({ queryKey: ['my-messages-threads'] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function MyMessagesComposeDialog({ onClose, onSent }: { onClose: () => void; onSent: () => void }) {
+  const [key, setKey] = useState<MailboxKey>('INFO');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+
+  const send = useMutation({
+    mutationFn: () =>
+      apiFetch(`/platform/mailboxes/${key}/contact`, {
+        method: 'POST',
+        body: JSON.stringify({ subject, body }),
+      }),
+    onSuccess: () => {
+      notifySuccess('Message sent');
+      onSent();
+    },
+    onError: (err) => notifyError(err, 'Failed to send message'),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+        <h2 className="text-base font-semibold text-slate-900">Contact the platform team</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Sent using your registered contact email — set or change it on your{' '}
+          <a href="/dashboard/profile" className="underline">
+            Profile
+          </a>{' '}
+          page.
+        </p>
+        <div className="mt-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">To</label>
+            <select
+              className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+              value={key}
+              onChange={(e) => setKey(e.target.value as MailboxKey)}
+            >
+              {CONTACTABLE_MAILBOXES.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Subject</label>
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Message</label>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={6}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+            />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={() => send.mutate()} disabled={send.isPending || !subject || !body}>
+            {send.isPending ? 'Sending...' : 'Send'}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -367,10 +605,7 @@ function ComposeDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            onClick={() => send.mutate()}
-            disabled={send.isPending || !to || !subject || !body}
-          >
+          <Button onClick={() => send.mutate()} disabled={send.isPending || !to || !subject || !body}>
             {send.isPending ? 'Sending...' : 'Send'}
           </Button>
         </div>

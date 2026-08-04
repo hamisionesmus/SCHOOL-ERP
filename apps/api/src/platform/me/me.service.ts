@@ -15,7 +15,7 @@ export class MeService {
   async getProfile(userId: string) {
     const user = await this.platformPrisma.platformUser.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, fullName: true, phone: true, role: true, avatarUrl: true },
+      select: { id: true, email: true, fullName: true, phone: true, role: true, avatarUrl: true, contactEmail: true },
     });
     if (!user) throw new NotFoundException('User not found');
     return user;

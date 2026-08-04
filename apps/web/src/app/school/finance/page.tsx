@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { cn } from '@/lib/utils';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface GradeLevel {
   id: string;
@@ -56,6 +57,8 @@ interface Invoice {
   mpesaRequests?: MpesaRequest[];
 }
 
+type FeeStructureDraft = { name: string; gradeLevelId: string; academicYearId: string; term: string; amount: string };
+
 export default function FinancePage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
@@ -63,6 +66,18 @@ export default function FinancePage() {
   const [error, setError] = useState<string | null>(null);
   const [paymentDrafts, setPaymentDrafts] = useState<Record<string, string>>({});
   const [mpesaPhoneDrafts, setMpesaPhoneDrafts] = useState<Record<string, string>>({});
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<FeeStructureDraft>('finance-fee-structure');
+  const feeDraft = loadDraft();
+  const [feeName, setFeeName] = useState(feeDraft?.name ?? '');
+  const [feeGradeLevelId, setFeeGradeLevelId] = useState(feeDraft?.gradeLevelId ?? '');
+  const [feeAcademicYearId, setFeeAcademicYearId] = useState(feeDraft?.academicYearId ?? '');
+  const [feeTerm, setFeeTerm] = useState(feeDraft?.term ?? '');
+  const [feeAmount, setFeeAmount] = useState(feeDraft?.amount ?? '');
+
+  useEffect(() => {
+    saveDraft({ name: feeName, gradeLevelId: feeGradeLevelId, academicYearId: feeAcademicYearId, term: feeTerm, amount: feeAmount });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feeName, feeGradeLevelId, feeAcademicYearId, feeTerm, feeAmount]);
 
   const perms = user?.permissions ?? [];
   const isStaff = perms.includes('FINANCE:EDIT') || perms.includes('FINANCE:RECEIVE_PAYMENT');
@@ -92,21 +107,27 @@ export default function FinancePage() {
   const invalidateInvoices = () => queryClient.invalidateQueries({ queryKey: ['invoices'] });
 
   const createFeeStructure = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/finance/fee-structures', {
         method: 'POST',
         body: JSON.stringify({
-          name: fd.get('name'),
-          gradeLevelId: fd.get('gradeLevelId'),
-          academicYearId: fd.get('academicYearId'),
-          term: Number(fd.get('term')),
-          amount: Number(fd.get('amount')),
+          name: feeName,
+          gradeLevelId: feeGradeLevelId,
+          academicYearId: feeAcademicYearId,
+          term: Number(feeTerm),
+          amount: Number(feeAmount),
         }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fee-structures'] });
       setShowFeeForm(false);
       setError(null);
+      setFeeName('');
+      setFeeGradeLevelId('');
+      setFeeAcademicYearId('');
+      setFeeTerm('');
+      setFeeAmount('');
+      clearDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to create fee structure'),
   });
@@ -172,12 +193,17 @@ export default function FinancePage() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  createFeeStructure.mutate(new FormData(e.currentTarget));
+                  createFeeStructure.mutate();
                 }}
                 className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
               >
-                <Input name="name" placeholder="e.g. Grade 4 Term 2 Fees" required className="col-span-2" />
-                <select name="gradeLevelId" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+                <Input value={feeName} onChange={(e) => setFeeName(e.target.value)} placeholder="e.g. Grade 4 Term 2 Fees" required className="col-span-2" />
+                <select
+                  value={feeGradeLevelId}
+                  onChange={(e) => setFeeGradeLevelId(e.target.value)}
+                  required
+                  className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+                >
                   <option value="">Grade level</option>
                   {gradeLevels?.map((g) => (
                     <option key={g.id} value={g.id}>
@@ -186,7 +212,8 @@ export default function FinancePage() {
                   ))}
                 </select>
                 <select
-                  name="academicYearId"
+                  value={feeAcademicYearId}
+                  onChange={(e) => setFeeAcademicYearId(e.target.value)}
                   required
                   className="h-10 rounded-md border border-slate-300 px-3 text-sm"
                 >
@@ -197,8 +224,8 @@ export default function FinancePage() {
                     </option>
                   ))}
                 </select>
-                <Input name="term" type="number" min={1} placeholder="Term" required />
-                <Input name="amount" type="number" min={1} placeholder="Amount (KES)" required />
+                <Input value={feeTerm} onChange={(e) => setFeeTerm(e.target.value)} type="number" min={1} placeholder="Term" required />
+                <Input value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} type="number" min={1} placeholder="Amount (KES)" required />
                 <div className="col-span-2">
                   <Button type="submit" disabled={createFeeStructure.isPending}>
                     {createFeeStructure.isPending ? 'Saving...' : 'Create fee structure'}

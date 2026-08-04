@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface GradeLevel {
   id: string;
@@ -30,11 +31,37 @@ interface Application {
 
 const STATUS_OPTIONS = ['APPLIED', 'INTERVIEW', 'OFFERED', 'REJECTED', 'WAITLISTED'] as const;
 
+type ApplicationDraft = {
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: string;
+  gradeLevelId: string;
+  guardianName: string;
+  guardianEmail: string;
+  guardianPhone: string;
+};
+
 export default function AdmissionsPage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<ApplicationDraft>('admissions-application');
+  const draft = loadDraft();
+  const [firstName, setFirstName] = useState(draft?.firstName ?? '');
+  const [lastName, setLastName] = useState(draft?.lastName ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState(draft?.dateOfBirth ?? '');
+  const [gender, setGender] = useState(draft?.gender ?? '');
+  const [gradeLevelId, setGradeLevelId] = useState(draft?.gradeLevelId ?? '');
+  const [guardianName, setGuardianName] = useState(draft?.guardianName ?? '');
+  const [guardianEmail, setGuardianEmail] = useState(draft?.guardianEmail ?? '');
+  const [guardianPhone, setGuardianPhone] = useState(draft?.guardianPhone ?? '');
+
+  useEffect(() => {
+    saveDraft({ firstName, lastName, dateOfBirth, gender, gradeLevelId, guardianName, guardianEmail, guardianPhone });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstName, lastName, dateOfBirth, gender, gradeLevelId, guardianName, guardianEmail, guardianPhone]);
 
   const { data: gradeLevels } = useQuery({
     queryKey: ['grade-levels'],
@@ -51,24 +78,33 @@ export default function AdmissionsPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admissions'] });
 
   const createApplication = useMutation({
-    mutationFn: (formData: FormData) =>
+    mutationFn: () =>
       apiFetch('/admissions/applications', {
         method: 'POST',
         body: JSON.stringify({
-          firstName: formData.get('firstName'),
-          lastName: formData.get('lastName'),
-          dateOfBirth: formData.get('dateOfBirth'),
-          gender: formData.get('gender'),
-          gradeLevelId: formData.get('gradeLevelId'),
-          guardianName: formData.get('guardianName'),
-          guardianEmail: formData.get('guardianEmail'),
-          guardianPhone: formData.get('guardianPhone'),
+          firstName,
+          lastName,
+          dateOfBirth,
+          gender,
+          gradeLevelId,
+          guardianName,
+          guardianEmail,
+          guardianPhone,
         }),
       }),
     onSuccess: () => {
       invalidate();
       setShowForm(false);
       setError(null);
+      setFirstName('');
+      setLastName('');
+      setDateOfBirth('');
+      setGender('');
+      setGradeLevelId('');
+      setGuardianName('');
+      setGuardianEmail('');
+      setGuardianPhone('');
+      clearDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to create application'),
   });
@@ -105,20 +141,26 @@ export default function AdmissionsPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createApplication.mutate(new FormData(e.currentTarget));
+                createApplication.mutate();
               }}
               className="mb-6 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
             >
-              <Input name="firstName" placeholder="First name" required />
-              <Input name="lastName" placeholder="Last name" required />
-              <Input name="dateOfBirth" type="date" required />
-              <select name="gender" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+              <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" required />
+              <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" required />
+              <Input value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} type="date" required />
+              <select
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+                required
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+              >
                 <option value="">Gender</option>
                 <option value="MALE">Male</option>
                 <option value="FEMALE">Female</option>
               </select>
               <select
-                name="gradeLevelId"
+                value={gradeLevelId}
+                onChange={(e) => setGradeLevelId(e.target.value)}
                 required
                 className="col-span-2 h-10 rounded-md border border-slate-300 px-3 text-sm"
               >
@@ -129,9 +171,9 @@ export default function AdmissionsPage() {
                   </option>
                 ))}
               </select>
-              <Input name="guardianName" placeholder="Guardian full name" required className="col-span-2" />
-              <Input name="guardianEmail" type="email" placeholder="Guardian email" required />
-              <Input name="guardianPhone" placeholder="Guardian phone" required />
+              <Input value={guardianName} onChange={(e) => setGuardianName(e.target.value)} placeholder="Guardian full name" required className="col-span-2" />
+              <Input value={guardianEmail} onChange={(e) => setGuardianEmail(e.target.value)} type="email" placeholder="Guardian email" required />
+              <Input value={guardianPhone} onChange={(e) => setGuardianPhone(e.target.value)} placeholder="Guardian phone" required />
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
               <div className="col-span-2">
                 <Button type="submit" disabled={createApplication.isPending}>

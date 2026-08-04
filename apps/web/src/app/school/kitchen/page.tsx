@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch } from '@/lib/api';
@@ -12,6 +12,7 @@ import { SkeletonTable } from '@/components/ui/skeleton';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 const KITCHEN_CATEGORY = 'Kitchen';
 
@@ -42,6 +43,16 @@ export default function KitchenPage() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, { qty: string; reason: string }>>({});
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<{ name: string; unit: string; reorderLevel: string }>('kitchen-item');
+  const itemDraft = loadDraft();
+  const [itemName, setItemName] = useState(itemDraft?.name ?? '');
+  const [itemUnit, setItemUnit] = useState(itemDraft?.unit ?? '');
+  const [itemReorderLevel, setItemReorderLevel] = useState(itemDraft?.reorderLevel ?? '');
+
+  useEffect(() => {
+    saveDraft({ name: itemName, unit: itemUnit, reorderLevel: itemReorderLevel });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemName, itemUnit, itemReorderLevel]);
 
   const { data: items, isLoading } = useQuery({
     queryKey: ['kitchen-items'],
@@ -61,21 +72,25 @@ export default function KitchenPage() {
   };
 
   const createItem = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/inventory/items', {
         method: 'POST',
         body: JSON.stringify({
-          name: fd.get('name'),
+          name: itemName,
           category: KITCHEN_CATEGORY,
-          unit: fd.get('unit'),
-          reorderLevel: Number(fd.get('reorderLevel')) || 0,
+          unit: itemUnit,
+          reorderLevel: Number(itemReorderLevel) || 0,
         }),
       }),
-    onSuccess: (_data, fd) => {
+    onSuccess: () => {
       invalidate();
       setShowForm(false);
       setError(null);
-      notifySuccess(`${fd.get('name')} added to kitchen stock`);
+      notifySuccess(`${itemName} added to kitchen stock`);
+      setItemName('');
+      setItemUnit('');
+      setItemReorderLevel('');
+      clearDraft();
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Failed to add item');
@@ -115,12 +130,17 @@ export default function KitchenPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createItem.mutate(new FormData(e.currentTarget));
+                createItem.mutate();
               }}
               className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4 animate-float-up"
             >
-              <Input name="name" placeholder="Item name, e.g. Maize flour" required className="col-span-2" />
-              <select name="unit" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+              <Input value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="Item name, e.g. Maize flour" required className="col-span-2" />
+              <select
+                value={itemUnit}
+                onChange={(e) => setItemUnit(e.target.value)}
+                required
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+              >
                 <option value="">Unit</option>
                 <option value="kg">Kilograms (kg)</option>
                 <option value="litres">Litres</option>
@@ -128,7 +148,7 @@ export default function KitchenPage() {
                 <option value="pcs">Pieces</option>
                 <option value="crates">Crates</option>
               </select>
-              <Input name="reorderLevel" type="number" min={0} placeholder="Reorder level" />
+              <Input value={itemReorderLevel} onChange={(e) => setItemReorderLevel(e.target.value)} type="number" min={0} placeholder="Reorder level" />
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
               <div className="col-span-2">
                 <Button type="submit" disabled={createItem.isPending}>

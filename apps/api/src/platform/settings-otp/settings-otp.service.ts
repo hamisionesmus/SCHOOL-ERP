@@ -142,7 +142,7 @@ export class SettingsOtpService {
       return this.platformPrisma.platformUser.update({
         where: { id: requestedById },
         data: changes,
-        select: { id: true, email: true, phone: true, fullName: true, role: true },
+        select: { id: true, email: true, phone: true, fullName: true, role: true, contactEmail: true },
       });
     }
     throw new BadRequestException('This change scope must be confirmed through its own endpoint');

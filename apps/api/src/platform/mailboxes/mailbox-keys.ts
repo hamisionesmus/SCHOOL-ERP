@@ -28,3 +28,21 @@ export function accessibleMailboxKeys(role: string | undefined): readonly Mailbo
   if (role === 'ASSISTANT_SUPER_ADMIN') return ASSISTANT_SUPER_ADMIN_VISIBLE_KEYS;
   return [];
 }
+
+// The 3 mailboxes a Sub-Admin/Assistant Super Admin can *start a restricted conversation with*
+// (never PERSONAL — that's Hamisi's own address, not a platform team inbox).
+export const CONTACTABLE_KEYS: readonly MailboxKey[] = ['INFO', 'PARTNER', 'BILLING'];
+
+/** A separate, narrower authorization path from canRoleAccessMailbox() above: "can this role send a
+ * restricted contact-the-platform-team message to this mailbox," not "can this role browse the full
+ * inbox." Super Admin can do everything canRoleAccessMailbox already allows; Sub-Admin and Assistant
+ * Super Admin — who either have no or only partial full-inbox access — can additionally reach any
+ * contactable mailbox this way, scoped to only their own resulting thread (see
+ * MailboxesService.contact()/myThreads()). */
+export function canRoleContactMailbox(role: string | undefined, key: MailboxKey): boolean {
+  if (role === 'SUPER_ADMIN') return true;
+  if (role === 'ASSISTANT_SUPER_ADMIN' || role === 'SUB_ADMIN') {
+    return (CONTACTABLE_KEYS as string[]).includes(key);
+  }
+  return false;
+}

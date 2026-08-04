@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Download, FileText, Trash2 } from 'lucide-react';
 import { useSession } from '@/lib/use-session';
@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { cn } from '@/lib/utils';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface CalendarEvent {
   id: string;
@@ -76,6 +77,18 @@ export default function CalendarPage() {
   const [viewDate, setViewDate] = useState(() => new Date());
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<{ title: string; category: string; description: string; startDate: string; endDate: string }>('calendar-event');
+  const draft = loadDraft();
+  const [eventTitle, setEventTitle] = useState(draft?.title ?? '');
+  const [eventCategory, setEventCategory] = useState(draft?.category ?? '');
+  const [eventDescription, setEventDescription] = useState(draft?.description ?? '');
+  const [eventStartDate, setEventStartDate] = useState(draft?.startDate ?? '');
+  const [eventEndDate, setEventEndDate] = useState(draft?.endDate ?? '');
+
+  useEffect(() => {
+    saveDraft({ title: eventTitle, category: eventCategory, description: eventDescription, startDate: eventStartDate, endDate: eventEndDate });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventTitle, eventCategory, eventDescription, eventStartDate, eventEndDate]);
 
   const canManage = user?.permissions?.includes('CALENDAR:MANAGE');
   const year = viewDate.getFullYear();
@@ -88,21 +101,27 @@ export default function CalendarPage() {
   });
 
   const createEvent = useMutation({
-    mutationFn: (fd: FormData) =>
+    mutationFn: () =>
       apiFetch('/calendar/events', {
         method: 'POST',
         body: JSON.stringify({
-          title: fd.get('title'),
-          description: fd.get('description') || undefined,
-          category: fd.get('category'),
-          startDate: fd.get('startDate'),
-          endDate: fd.get('endDate') || undefined,
+          title: eventTitle,
+          description: eventDescription || undefined,
+          category: eventCategory,
+          startDate: eventStartDate,
+          endDate: eventEndDate || undefined,
         }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       setShowForm(false);
       setError(null);
+      setEventTitle('');
+      setEventCategory('');
+      setEventDescription('');
+      setEventStartDate('');
+      setEventEndDate('');
+      clearDraft();
       notifySuccess('Event added');
     },
     onError: (err) => {
@@ -199,12 +218,17 @@ export default function CalendarPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                createEvent.mutate(new FormData(e.currentTarget));
+                createEvent.mutate();
               }}
               className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-4"
             >
-              <Input name="title" placeholder="Event title" required className="col-span-2" />
-              <select name="category" required className="h-10 rounded-md border border-slate-300 px-3 text-sm">
+              <Input value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder="Event title" required className="col-span-2" />
+              <select
+                value={eventCategory}
+                onChange={(e) => setEventCategory(e.target.value)}
+                required
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+              >
                 <option value="">Category</option>
                 {Object.keys(CATEGORY_COLOR).map((c) => (
                   <option key={c} value={c}>
@@ -212,14 +236,14 @@ export default function CalendarPage() {
                   </option>
                 ))}
               </select>
-              <Input name="description" placeholder="Description (optional)" />
+              <Input value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} placeholder="Description (optional)" />
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-slate-500">Start date</label>
-                <Input name="startDate" type="date" required />
+                <Input value={eventStartDate} onChange={(e) => setEventStartDate(e.target.value)} type="date" required />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-slate-500">End date (optional)</label>
-                <Input name="endDate" type="date" />
+                <Input value={eventEndDate} onChange={(e) => setEventEndDate(e.target.value)} type="date" />
               </div>
               {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
               <div className="col-span-2">

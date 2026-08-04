@@ -1328,19 +1328,43 @@ function MailboxesTab({
   );
 }
 
+type MailboxFormState = {
+  address: string;
+  displayName: string;
+  smtpHost: string;
+  smtpPort: string;
+  smtpSecure: boolean;
+  imapHost: string;
+  imapPort: string;
+  imapSecure: boolean;
+  username: string;
+};
+
 function MailboxCard({ mailbox, onRequested }: { mailbox: Mailbox; onRequested: OnRequested }) {
-  const [form, setForm] = useState({
-    address: mailbox.address,
-    displayName: mailbox.displayName,
-    smtpHost: mailbox.smtpHost ?? '',
-    smtpPort: mailbox.smtpPort ? String(mailbox.smtpPort) : '',
-    smtpSecure: mailbox.smtpSecure,
-    imapHost: mailbox.imapHost ?? '',
-    imapPort: mailbox.imapPort ? String(mailbox.imapPort) : '',
-    imapSecure: mailbox.imapSecure,
-    username: mailbox.username ?? '',
+  // Password is deliberately excluded from draft persistence — same reasoning as every other
+  // secret field this session (create-school-dialog's admin password, the API Config tab's keys).
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<MailboxFormState>(`settings-mailbox-${mailbox.key}`);
+  const [form, setForm] = useState<MailboxFormState>(() => {
+    const fromServer = {
+      address: mailbox.address,
+      displayName: mailbox.displayName,
+      smtpHost: mailbox.smtpHost ?? '',
+      smtpPort: mailbox.smtpPort ? String(mailbox.smtpPort) : '',
+      smtpSecure: mailbox.smtpSecure,
+      imapHost: mailbox.imapHost ?? '',
+      imapPort: mailbox.imapPort ? String(mailbox.imapPort) : '',
+      imapSecure: mailbox.imapSecure,
+      username: mailbox.username ?? '',
+    };
+    const draft = loadDraft();
+    return draft ? { ...fromServer, ...draft } : fromServer;
   });
   const [password, setPassword] = useState('');
+
+  useEffect(() => {
+    saveDraft(form);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form]);
 
   const requestSave = useMutation({
     mutationFn: () => {
@@ -1364,6 +1388,7 @@ function MailboxCard({ mailbox, onRequested }: { mailbox: Mailbox; onRequested: 
     },
     onSuccess: (result) => {
       setPassword('');
+      clearDraft();
       onRequested(result, '/platform/mailboxes/confirm-update-credentials', `${mailbox.displayName} mailbox`);
     },
     onError: (err) => notifyError(err, 'Failed to request mailbox change'),

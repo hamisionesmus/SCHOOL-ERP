@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useDraftState } from '@/hooks/use-draft-state';
 
 interface SchoolClass {
   id: string;
@@ -38,12 +39,20 @@ interface SmsMessage {
 export default function AnnouncementsPage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
-  const [classId, setClassId] = useState('');
+  const { loadDraft, saveDraft, clearDraft } = useDraftState<{ classId: string; body: string }>('announcements-message');
+  const draft = loadDraft();
+  const [classId, setClassId] = useState(draft?.classId ?? '');
   const [guardians, setGuardians] = useState<GuardianUser[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [body, setBody] = useState('');
+  const [body, setBody] = useState(draft?.body ?? '');
   const [loadingGuardians, setLoadingGuardians] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const restoredGuardiansOnce = useRef(false);
+
+  useEffect(() => {
+    saveDraft({ classId, body });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId, body]);
 
   const canSend = user?.permissions?.includes('ANNOUNCEMENT:SEND_TO_PARENTS');
 
@@ -86,6 +95,15 @@ export default function AnnouncementsPage() {
     }
   }
 
+  // Re-derive the guardian list for a restored draft's classId once students load — the draft only
+  // stores classId/body, not the fetched guardian list itself.
+  useEffect(() => {
+    if (restoredGuardiansOnce.current || !classId || !students) return;
+    restoredGuardiansOnce.current = true;
+    loadGuardians(classId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students]);
+
   const sendAnnouncement = useMutation({
     mutationFn: () =>
       apiFetch('/communications/announcements', {
@@ -96,6 +114,7 @@ export default function AnnouncementsPage() {
       queryClient.invalidateQueries({ queryKey: ['messages'] });
       setBody('');
       setError(null);
+      clearDraft();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to send announcement'),
   });
