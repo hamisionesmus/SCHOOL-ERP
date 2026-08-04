@@ -94,8 +94,14 @@ export class MailboxesService {
   }
 
   /** Sends a new or reply message from the given mailbox's real identity, and mirrors it into the
-   * thread/message log so it shows up in-app exactly like an inbound message would. */
-  async sendMessage(key: MailboxKey, dto: SendEmailDto & { threadId?: string }, sentByUserId?: string) {
+   * thread/message log so it shows up in-app exactly like an inbound message would. `attachments`
+   * is internal-caller-only (e.g. BillingService attaching an invoice PDF) — never exposed on
+   * SendEmailDto, since the Compose UI has no file-upload affordance. */
+  async sendMessage(
+    key: MailboxKey,
+    dto: SendEmailDto & { threadId?: string; attachments?: { filename: string; content: Buffer; contentType: string }[] },
+    sentByUserId?: string,
+  ) {
     const mailbox = await this.getOrCreate(key);
     const transporter = this.getTransporter(mailbox);
     if (!transporter) {
@@ -121,6 +127,9 @@ export class MailboxesService {
       to: dto.to,
       subject: dto.subject,
       text: dto.body,
+      ...(dto.attachments?.length
+        ? { attachments: dto.attachments.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })) }
+        : {}),
       ...(lastInbound?.messageId
         ? { inReplyTo: lastInbound.messageId, references: lastInbound.messageId }
         : {}),

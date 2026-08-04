@@ -2,7 +2,8 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { PlatformPrismaService } from '../common/prisma/platform-prisma.service';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
-import { renderPlatformInvoicePdf } from '../platform/billing/invoice-pdf.util';
+import { renderPlatformInvoicePdf, buildPlatformInvoicePdfInput } from '../platform/billing/invoice-pdf.util';
+import { PlatformSettingsService } from '../platform/platform-settings/platform-settings.service';
 
 // The fields that actually make a school look "set up" — identity + report-card content. Excludes
 // purely cosmetic color pickers and the rarely-touched SMS sender ID, which aren't worth blocking
@@ -12,7 +13,10 @@ const REQUIRED_FIELDS = ['name', 'logoUrl', 'address', 'mission', 'vision', 'mot
 
 @Injectable()
 export class SettingsService {
-  constructor(private readonly platformPrisma: PlatformPrismaService) {}
+  constructor(
+    private readonly platformPrisma: PlatformPrismaService,
+    private readonly platformSettings: PlatformSettingsService,
+  ) {}
 
   async getSettings(user: JwtUserPayload) {
     const tenant = await this.platformPrisma.tenant.findFirst({
@@ -64,18 +68,9 @@ export class SettingsService {
       throw new ForbiddenException('No permission to view this invoice');
     }
 
-    const buffer = await renderPlatformInvoicePdf({
-      schoolName: tenant.name,
-      invoiceNumber: invoice.invoiceNumber,
-      billingCycle: invoice.billingCycle,
-      periodStart: invoice.periodStart,
-      periodEnd: invoice.periodEnd,
-      amount: invoice.amount,
-      dueDate: invoice.dueDate,
-      status: invoice.status,
-      payments: invoice.payments,
-      generatedAt: new Date(),
-    });
+    const settings = await this.platformSettings.get();
+    const pdfInput = buildPlatformInvoicePdfInput(invoice, tenant, settings);
+    const buffer = await renderPlatformInvoicePdf(pdfInput);
 
     const slug = (s: string) => s.trim().replace(/[^a-zA-Z0-9]+/g, '');
     return { buffer, filename: `${slug(tenant.name)}_${invoice.invoiceNumber}.pdf` };

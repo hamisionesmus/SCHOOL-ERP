@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, StreamableFile, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePlatformRole } from '../../common/decorators/require-platform-role.decorator';
@@ -7,6 +8,7 @@ import { CurrentUser, JwtUserPayload } from '../../common/decorators/current-use
 import { BillingService } from './billing.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
+import { PreviewInvoiceEmailDto } from './dto/preview-invoice-email.dto';
 
 @ApiTags('platform/billing')
 @ApiBearerAuth()
@@ -47,5 +49,11 @@ export class BillingController {
   @Post('tenants/:id/reset-admin-password')
   resetAdminPassword(@Param('id') id: string) {
     return this.billingService.resetSchoolAdminPassword(id);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('billing/preview-invoice-email')
+  previewInvoiceEmail(@Body() dto: PreviewInvoiceEmailDto) {
+    return this.billingService.previewInvoiceEmail(dto.to);
   }
 }

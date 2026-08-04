@@ -1,15 +1,19 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { MailboxesService } from '../mailboxes/mailboxes.service';
+import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
+import { EMAIL_PROVIDER, EmailProvider } from '../email/email-provider.interface';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { generateInvoiceNumber, generatePlatformReceiptNumber } from './invoice-number.util';
-import { renderPlatformInvoicePdf } from './invoice-pdf.util';
+import { renderPlatformInvoicePdf, buildPlatformInvoicePdfInput, PlatformInvoicePdfInput } from './invoice-pdf.util';
 import { CYCLE_DAYS } from './cycle.util';
 import { generateTempPassword } from '../../common/password.util';
 import { findSchoolAdmin } from '../../common/tenant-admin.util';
+
+const COMPANY_NAME = 'Hamzone Technologies';
 
 @Injectable()
 export class BillingService {
@@ -19,6 +23,8 @@ export class BillingService {
     private readonly platformPrisma: PlatformPrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly mailboxes: MailboxesService,
+    private readonly platformSettings: PlatformSettingsService,
+    @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
   ) {}
 
   private async findTenant(tenantId: string) {
@@ -66,10 +72,14 @@ export class BillingService {
       // with questions — and so the exchange shows up in the Billing inbox. Best-effort: a
       // misconfigured/unconfigured billing mailbox must never block invoice creation itself.
       try {
+        const settings = await this.platformSettings.get();
+        const pdfInput = buildPlatformInvoicePdfInput({ ...invoice, payments: [] }, tenant, settings);
+        const pdf = await renderPlatformInvoicePdf(pdfInput);
         await this.mailboxes.sendMessage('BILLING', {
           to: admin.email,
           subject: `Invoice ${invoiceNumber} — ${tenant.name}`,
-          body: `A new ${dto.billingCycle.toLowerCase()} subscription invoice of KES ${dto.amount.toLocaleString()} has been issued for ${tenant.name}, due ${dueDate.toLocaleDateString()}. Sign in to the School Settings > Billing page to view and download it.`,
+          body: `A new ${dto.billingCycle.toLowerCase()} subscription invoice of KES ${dto.amount.toLocaleString()} has been issued for ${tenant.name}, due ${dueDate.toLocaleDateString()}. The invoice is attached — you can also view it any time from School Settings > Billing.`,
+          attachments: [{ filename: `Invoice_${invoiceNumber}.pdf`, content: pdf, contentType: 'application/pdf' }],
         });
       } catch (err) {
         this.logger.error(`Failed to send invoice email for ${tenant.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -127,10 +137,18 @@ export class BillingService {
       const admin = await this.getSchoolAdmin(invoice.tenant.schemaName);
       if (admin?.email) {
         try {
+          const settings = await this.platformSettings.get();
+          const pdfInput = buildPlatformInvoicePdfInput(
+            { ...invoice, status: 'PAID', payments: [...invoice.payments, payment] },
+            invoice.tenant,
+            settings,
+          );
+          const pdf = await renderPlatformInvoicePdf(pdfInput);
           await this.mailboxes.sendMessage('BILLING', {
             to: admin.email,
             subject: `Payment received — receipt ${receiptNumber}`,
-            body: `We've received your payment of KES ${dto.amount.toLocaleString()} for invoice ${invoice.invoiceNumber}. Your subscription is now active through ${invoice.periodEnd.toLocaleDateString()}. Receipt ${receiptNumber}.`,
+            body: `We've received your payment of KES ${dto.amount.toLocaleString()} for invoice ${invoice.invoiceNumber}. Your subscription is now active through ${invoice.periodEnd.toLocaleDateString()}. Receipt ${receiptNumber} — the updated invoice/receipt is attached.`,
+            attachments: [{ filename: `Receipt_${receiptNumber}.pdf`, content: pdf, contentType: 'application/pdf' }],
           });
         } catch (err) {
           this.logger.error(`Failed to send payment-received email for invoice ${invoice.invoiceNumber}: ${err instanceof Error ? err.message : String(err)}`);
@@ -148,18 +166,9 @@ export class BillingService {
     });
     if (!invoice) throw new NotFoundException('Invoice not found');
 
-    const buffer = await renderPlatformInvoicePdf({
-      schoolName: invoice.tenant.name,
-      invoiceNumber: invoice.invoiceNumber,
-      billingCycle: invoice.billingCycle,
-      periodStart: invoice.periodStart,
-      periodEnd: invoice.periodEnd,
-      amount: invoice.amount,
-      dueDate: invoice.dueDate,
-      status: invoice.status,
-      payments: invoice.payments,
-      generatedAt: new Date(),
-    });
+    const settings = await this.platformSettings.get();
+    const pdfInput = buildPlatformInvoicePdfInput(invoice, invoice.tenant, settings);
+    const buffer = await renderPlatformInvoicePdf(pdfInput);
 
     const slug = (s: string) => s.trim().replace(/[^a-zA-Z0-9]+/g, '');
     return { buffer, filename: `${slug(invoice.tenant.name)}_${invoice.invoiceNumber}.pdf` };
@@ -181,5 +190,41 @@ export class BillingService {
     await db.user.update({ where: { id: admin.id }, data: { passwordHash } });
 
     return { email: admin.email, fullName: admin.fullName, temporaryPassword: tempPassword };
+  }
+
+  /** Emails a sample invoice PDF (not tied to any real school/invoice) to a given address so a
+   * Super Admin can review the design without needing a real invoice — sent via the general
+   * no-reply relay rather than the Billing mailbox, since that mailbox may not have its own SMTP
+   * credentials configured yet and design review shouldn't depend on that being done first. */
+  async previewInvoiceEmail(to: string) {
+    const settings = await this.platformSettings.get();
+    const pdfInput: PlatformInvoicePdfInput = {
+      companyName: COMPANY_NAME,
+      logoUrl: settings.loginLogoUrl,
+      schoolName: 'Greenfield Academy',
+      schoolAddressLines: ['ATTN: School Administrator', 'Kilimani Road', 'Nairobi, Nairobi County', 'Kenya'],
+      invoiceNumber: 'HZ-PREVIEW',
+      lineDescription: `Monthly subscription — ${new Date().toLocaleDateString()} to ${new Date(Date.now() + 30 * 86_400_000).toLocaleDateString()}`,
+      invoiceDate: new Date(),
+      dueDate: new Date(Date.now() + 14 * 86_400_000),
+      amount: 12000,
+      status: 'PENDING',
+      payment: {
+        paybillNumber: settings.paybillEnabled ? settings.paybillNumber : null,
+        bankName: settings.bankTransferEnabled ? settings.bankName : null,
+        bankAccountName: settings.bankAccountName,
+        bankAccountNumber: settings.bankAccountNumber,
+      },
+      payments: [],
+      generatedAt: new Date(),
+    };
+    const pdf = await renderPlatformInvoicePdf(pdfInput);
+    await this.emailProvider.send(
+      to,
+      'Invoice design preview — Hamzone Technologies',
+      'This is a sample invoice PDF for design review, generated with placeholder data — not a real charge.',
+      [{ filename: 'Invoice_Preview.pdf', content: pdf, contentType: 'application/pdf' }],
+    );
+    return { ok: true };
   }
 }
