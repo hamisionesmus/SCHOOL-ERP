@@ -13,6 +13,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
+
+const SCHOOLS_CREATED_PAGE_SIZE_OPTIONS = [10, 30, 50];
 
 // Mirrors apps/api/src/platform/admins/platform-modules.ts — kept in sync manually (no shared
 // package between the two apps yet, same precedent as KENYA_COUNTIES).
@@ -57,6 +61,8 @@ export default function AdminDetailPage() {
   });
 
   const isDelegatedAdmin = admin && admin.role !== 'SUPER_ADMIN';
+  // Called unconditionally (before the loading early-return below) per Rules of Hooks.
+  const schoolsCreated = useTableControls(admin?.schoolsCreated ?? [], { pageSize: 10 });
 
   if (isLoading || !admin) {
     return (
@@ -132,30 +138,41 @@ export default function AdminDetailPage() {
           {admin.schoolsCreated.length === 0 ? (
             <p className="text-sm text-slate-500">This admin hasn&apos;t created any schools yet.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="py-2 font-medium">Name</th>
-                  <th className="py-2 font-medium">Status</th>
-                  <th className="py-2 font-medium">Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {admin.schoolsCreated.map((s) => (
-                  <tr key={s.id} className="border-b border-slate-100">
-                    <td className="py-2 font-medium text-slate-900">
-                      <Link href={`/dashboard/schools/${s.id}`} className="hover:underline">
-                        {s.name}
-                      </Link>
-                    </td>
-                    <td className="py-2">
-                      <Badge status={s.status} />
-                    </td>
-                    <td className="py-2 text-slate-500">{new Date(s.createdAt).toLocaleDateString()}</td>
+            <>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                    <th className="py-2 font-medium">Name</th>
+                    <th className="py-2 font-medium">Status</th>
+                    <th className="py-2 font-medium">Created</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {schoolsCreated.pageItems.map((s) => (
+                    <tr key={s.id} className="border-b border-slate-100">
+                      <td className="py-2 font-medium text-slate-900">
+                        <Link href={`/dashboard/schools/${s.id}`} className="hover:underline">
+                          {s.name}
+                        </Link>
+                      </td>
+                      <td className="py-2">
+                        <Badge status={s.status} />
+                      </td>
+                      <td className="py-2 text-slate-500">{new Date(s.createdAt).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Pagination
+                page={schoolsCreated.page}
+                pageCount={schoolsCreated.pageCount}
+                totalItems={schoolsCreated.totalItems}
+                pageSize={schoolsCreated.pageSize}
+                pageSizeOptions={SCHOOLS_CREATED_PAGE_SIZE_OPTIONS}
+                onPageChange={schoolsCreated.setPage}
+                onPageSizeChange={schoolsCreated.setPageSize}
+              />
+            </>
           )}
         </CardContent>
       </Card>

@@ -20,6 +20,10 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { Wallet, Database, ShieldAlert, Users } from 'lucide-react';
 import { useTabQueryState } from '@/hooks/use-tab-query-state';
+import { useTableControls } from '@/hooks/use-table-controls';
+import { Pagination } from '@/components/ui/pagination';
+
+const SUBLIST_PAGE_SIZE_OPTIONS = [10, 30, 50];
 
 interface Tenant {
   id: string;
@@ -532,6 +536,8 @@ function FeedbackCard({ tenantId }: { tenantId: string }) {
     queryKey: ['tenant-feedback', tenantId],
     queryFn: () => apiFetch<TenantFeedbackRow[]>(`/platform/tenants/${tenantId}/feedback`),
   });
+  // Called unconditionally (before the empty-data early-return below) per Rules of Hooks.
+  const feedback = useTableControls(data ?? [], { pageSize: 10 });
 
   if (!data || data.length === 0) return null;
 
@@ -541,7 +547,7 @@ function FeedbackCard({ tenantId }: { tenantId: string }) {
         <CardTitle className="text-base">Feedback from this school</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {data.map((f) => (
+        {feedback.pageItems.map((f) => (
           <div key={f.id} className="rounded-lg border border-slate-200 p-3 text-sm">
             <div className="flex items-center justify-between">
               <span className="font-medium text-slate-900">{f.rating ? `${f.rating}/5` : 'No rating'}</span>
@@ -553,6 +559,15 @@ function FeedbackCard({ tenantId }: { tenantId: string }) {
             {f.improvements && <p className="mt-1 text-slate-600">{f.improvements}</p>}
           </div>
         ))}
+        <Pagination
+          page={feedback.page}
+          pageCount={feedback.pageCount}
+          totalItems={feedback.totalItems}
+          pageSize={feedback.pageSize}
+          pageSizeOptions={SUBLIST_PAGE_SIZE_OPTIONS}
+          onPageChange={feedback.setPage}
+          onPageSizeChange={feedback.setPageSize}
+        />
       </CardContent>
     </Card>
   );
@@ -570,6 +585,7 @@ function BillingTab({ tenantId }: { tenantId: string }) {
     queryFn: () => apiFetch<Invoice[]>(`/platform/tenants/${tenantId}/invoices`),
     refetchInterval: (query) => (query.state.data?.some((inv) => inv.status === 'PENDING') ? 5_000 : 30_000),
   });
+  const invoicesPaged = useTableControls(invoices ?? [], { pageSize: 10 });
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['tenant-invoices', tenantId] });
@@ -678,6 +694,7 @@ function BillingTab({ tenantId }: { tenantId: string }) {
         ) : !invoices || invoices.length === 0 ? (
           <p className="text-sm text-slate-500">No invoices issued yet.</p>
         ) : (
+          <>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-500">
@@ -689,7 +706,7 @@ function BillingTab({ tenantId }: { tenantId: string }) {
               </tr>
             </thead>
             <tbody>
-              {invoices.map((inv) => (
+              {invoicesPaged.pageItems.map((inv) => (
                 <tr key={inv.id} className="border-b border-slate-100">
                   <td className="py-2 font-medium text-slate-900">{inv.invoiceNumber}</td>
                   <td className="py-2 text-slate-500">
@@ -725,6 +742,16 @@ function BillingTab({ tenantId }: { tenantId: string }) {
               ))}
             </tbody>
           </table>
+          <Pagination
+            page={invoicesPaged.page}
+            pageCount={invoicesPaged.pageCount}
+            totalItems={invoicesPaged.totalItems}
+            pageSize={invoicesPaged.pageSize}
+            pageSizeOptions={SUBLIST_PAGE_SIZE_OPTIONS}
+            onPageChange={invoicesPaged.setPage}
+            onPageSizeChange={invoicesPaged.setPageSize}
+          />
+          </>
         )}
       </CardContent>
 
@@ -775,6 +802,7 @@ function MpesaAttemptsCard({ tenantId }: { tenantId: string }) {
     queryFn: () => apiFetch<MpesaAttempt[]>(`/platform/tenants/${tenantId}/mpesa-attempts`),
     refetchInterval: (query) => (query.state.data?.some((a) => a.status === 'PENDING') ? 5_000 : 30_000),
   });
+  const attemptsPaged = useTableControls(attempts ?? [], { pageSize: 10 });
 
   return (
     <Card>
@@ -787,6 +815,7 @@ function MpesaAttemptsCard({ tenantId }: { tenantId: string }) {
         ) : !attempts || attempts.length === 0 ? (
           <p className="text-sm text-slate-500">No M-Pesa STK attempts yet.</p>
         ) : (
+          <>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-500">
@@ -798,7 +827,7 @@ function MpesaAttemptsCard({ tenantId }: { tenantId: string }) {
               </tr>
             </thead>
             <tbody>
-              {attempts.map((a) => (
+              {attemptsPaged.pageItems.map((a) => (
                 <tr key={a.id} className="border-b border-slate-100">
                   <td className="py-2 text-slate-700">{a.phone}</td>
                   <td className="py-2 text-slate-700">{kes(a.amount)}</td>
@@ -811,6 +840,16 @@ function MpesaAttemptsCard({ tenantId }: { tenantId: string }) {
               ))}
             </tbody>
           </table>
+          <Pagination
+            page={attemptsPaged.page}
+            pageCount={attemptsPaged.pageCount}
+            totalItems={attemptsPaged.totalItems}
+            pageSize={attemptsPaged.pageSize}
+            pageSizeOptions={SUBLIST_PAGE_SIZE_OPTIONS}
+            onPageChange={attemptsPaged.setPage}
+            onPageSizeChange={attemptsPaged.setPageSize}
+          />
+          </>
         )}
       </CardContent>
     </Card>
@@ -827,6 +866,7 @@ function PaymentProofsCard({ tenantId }: { tenantId: string }) {
     queryFn: () => apiFetch<PaymentProof[]>(`/platform/tenants/${tenantId}/payment-proofs`),
     refetchInterval: 15_000,
   });
+  const proofsPaged = useTableControls(proofs ?? [], { pageSize: 10 });
 
   const review = useMutation({
     mutationFn: () =>
@@ -858,7 +898,7 @@ function PaymentProofsCard({ tenantId }: { tenantId: string }) {
           <p className="text-sm text-slate-500">No payment proofs submitted yet.</p>
         ) : (
           <div className="flex flex-col gap-3">
-            {proofs.map((p) => (
+            {proofsPaged.pageItems.map((p) => (
               <div key={p.id} className="rounded-lg border border-slate-200 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -893,6 +933,17 @@ function PaymentProofsCard({ tenantId }: { tenantId: string }) {
               </div>
             ))}
           </div>
+        )}
+        {proofs && proofs.length > 0 && (
+          <Pagination
+            page={proofsPaged.page}
+            pageCount={proofsPaged.pageCount}
+            totalItems={proofsPaged.totalItems}
+            pageSize={proofsPaged.pageSize}
+            pageSizeOptions={SUBLIST_PAGE_SIZE_OPTIONS}
+            onPageChange={proofsPaged.setPage}
+            onPageSizeChange={proofsPaged.setPageSize}
+          />
         )}
       </CardContent>
 
@@ -945,6 +996,7 @@ function AuditLogTab({ tenantId }: { tenantId: string }) {
     queryFn: () => apiFetch<AuditLogAccessRequest[]>(`/platform/tenants/${tenantId}/audit-log-access/requests`),
     refetchInterval: 30_000,
   });
+  const requestsPaged = useTableControls(requests ?? [], { pageSize: 10 });
 
   const latest = requests?.[0];
   const ready = latest?.availableAt && new Date(latest.availableAt) <= new Date();
@@ -1086,13 +1138,22 @@ function AuditLogTab({ tenantId }: { tenantId: string }) {
           <div className="mt-6 border-t border-slate-100 pt-4">
             <p className="mb-2 text-xs font-medium uppercase text-slate-400">Request history</p>
             <ul className="flex flex-col gap-1.5 text-xs text-slate-500">
-              {requests.map((r) => (
+              {requestsPaged.pageItems.map((r) => (
                 <li key={r.id}>
                   {new Date(r.createdAt).toLocaleString('en-KE')} by {r.requestedBy.fullName} —{' '}
                   {r.downloadedAt ? 'downloaded' : r.availableAt && new Date(r.availableAt) <= new Date() ? 'ready' : r.confirmedAt ? 'waiting' : 'awaiting code'}
                 </li>
               ))}
             </ul>
+            <Pagination
+              page={requestsPaged.page}
+              pageCount={requestsPaged.pageCount}
+              totalItems={requestsPaged.totalItems}
+              pageSize={requestsPaged.pageSize}
+              pageSizeOptions={SUBLIST_PAGE_SIZE_OPTIONS}
+              onPageChange={requestsPaged.setPage}
+              onPageSizeChange={requestsPaged.setPageSize}
+            />
           </div>
         )}
       </CardContent>

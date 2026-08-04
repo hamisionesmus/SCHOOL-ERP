@@ -9,7 +9,11 @@ import { StatCard } from '@/components/ui/stat-card';
 import { StorageBar } from '@/components/ui/storage-bar';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { useRequireFinanceAccess } from '@/lib/require-super-admin';
+import { useTableControls } from '@/hooks/use-table-controls';
+import { Pagination } from '@/components/ui/pagination';
 import Link from 'next/link';
+
+const STORAGE_PAGE_SIZE_OPTIONS = [10, 30, 50];
 
 interface SystemHealth {
   cpu: { cores: number; loadAvg1m: number };
@@ -64,6 +68,8 @@ export default function SystemHealthPage() {
     queryFn: () => apiFetch<SchoolStorage[]>('/platform/system-health/storage-by-school'),
     refetchInterval: 30_000,
   });
+  // Server already returns these ranked by usage descending — no client sort key needed.
+  const storage = useTableControls(storageBySchool ?? [], { pageSize: 10 });
 
   const { data: sms } = useQuery({
     queryKey: ['system-health-sms'],
@@ -180,18 +186,29 @@ export default function SystemHealthPage() {
               {!storageBySchool || storageBySchool.length === 0 ? (
                 <p className="text-sm text-slate-400">No schools yet.</p>
               ) : (
-                <div className="flex flex-col gap-3">
-                  {storageBySchool.map((s) => (
-                    <Link
-                      key={s.tenantId}
-                      href={`/dashboard/schools/${s.tenantId}`}
-                      className="flex items-center gap-4 rounded-lg px-2 py-1.5 hover:bg-slate-50"
-                    >
-                      <span className="w-40 flex-shrink-0 truncate text-sm text-slate-700">{s.name}</span>
-                      <StorageBar totalMb={s.totalMb} limitMb={s.limitMb} className="flex-1" />
-                    </Link>
-                  ))}
-                </div>
+                <>
+                  <div className="flex flex-col gap-3">
+                    {storage.pageItems.map((s) => (
+                      <Link
+                        key={s.tenantId}
+                        href={`/dashboard/schools/${s.tenantId}`}
+                        className="flex items-center gap-4 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+                      >
+                        <span className="w-40 flex-shrink-0 truncate text-sm text-slate-700">{s.name}</span>
+                        <StorageBar totalMb={s.totalMb} limitMb={s.limitMb} className="flex-1" />
+                      </Link>
+                    ))}
+                  </div>
+                  <Pagination
+                    page={storage.page}
+                    pageCount={storage.pageCount}
+                    totalItems={storage.totalItems}
+                    pageSize={storage.pageSize}
+                    pageSizeOptions={STORAGE_PAGE_SIZE_OPTIONS}
+                    onPageChange={storage.setPage}
+                    onPageSizeChange={storage.setPageSize}
+                  />
+                </>
               )}
             </CardContent>
           </Card>

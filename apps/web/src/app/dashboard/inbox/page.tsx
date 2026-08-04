@@ -10,6 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useTableControls } from '@/hooks/use-table-controls';
+import { Pagination } from '@/components/ui/pagination';
+
+const THREADS_PAGE_SIZE_OPTIONS = [10, 20, 30];
 
 type MailboxKey = 'INFO' | 'PARTNER' | 'BILLING' | 'PERSONAL';
 type TabKey = MailboxKey | 'MY_MESSAGES';
@@ -97,6 +101,8 @@ export default function InboxPage() {
   const activeTab: TabKey | null = activeKey ?? mailboxes[0]?.key ?? null;
   const activeMailbox = mailboxes.find((m) => m.key === activeTab);
   const threadsForTab = (threadsQuery.data ?? []).filter((t) => t.mailbox.key === activeTab);
+  // Server already returns these newest-first — no client sort key needed, just paginate.
+  const threadsPaged = useTableControls(threadsForTab, { pageSize: 10 });
 
   const pollNow = useMutation({
     mutationFn: () => apiFetch(`/platform/mailboxes/${activeTab}/poll-now`, { method: 'POST' }),
@@ -224,7 +230,7 @@ export default function InboxPage() {
                         No conversations yet
                       </div>
                     ) : (
-                      threadsForTab.map((t) => {
+                      threadsPaged.pageItems.map((t) => {
                         const unread = t._count.messages > 0;
                         return (
                           <button
@@ -252,6 +258,19 @@ export default function InboxPage() {
                       })
                     )}
                   </div>
+                  {threadsForTab.length > 0 && (
+                    <div className="border-t border-slate-200 px-3 py-1.5">
+                      <Pagination
+                        page={threadsPaged.page}
+                        pageCount={threadsPaged.pageCount}
+                        totalItems={threadsPaged.totalItems}
+                        pageSize={threadsPaged.pageSize}
+                        pageSizeOptions={THREADS_PAGE_SIZE_OPTIONS}
+                        onPageChange={threadsPaged.setPage}
+                        onPageSizeChange={threadsPaged.setPageSize}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <ThreadDetailPane threadId={selectedThreadId} listQueryKey="inbox-threads" />
@@ -393,6 +412,7 @@ function MyMessagesPanel({
   }
 
   const threads = threadsQuery.data ?? [];
+  const threadsPaged = useTableControls(threads, { pageSize: 10 });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -420,7 +440,7 @@ function MyMessagesPanel({
                 No messages yet — start one with &quot;New message&quot;.
               </div>
             ) : (
-              threads.map((t) => {
+              threadsPaged.pageItems.map((t) => {
                 const unread = t._count.messages > 0;
                 return (
                   <button
@@ -446,6 +466,19 @@ function MyMessagesPanel({
               })
             )}
           </div>
+          {threads.length > 0 && (
+            <div className="border-t border-slate-200 px-3 py-1.5">
+              <Pagination
+                page={threadsPaged.page}
+                pageCount={threadsPaged.pageCount}
+                totalItems={threadsPaged.totalItems}
+                pageSize={threadsPaged.pageSize}
+                pageSizeOptions={THREADS_PAGE_SIZE_OPTIONS}
+                onPageChange={threadsPaged.setPage}
+                onPageSizeChange={threadsPaged.setPageSize}
+              />
+            </div>
+          )}
         </div>
 
         <ThreadDetailPane threadId={selectedThreadId} listQueryKey="my-messages-threads" />

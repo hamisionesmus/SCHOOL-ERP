@@ -14,7 +14,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDraftState } from '@/hooks/use-draft-state';
 import { useTabQueryState } from '@/hooks/use-tab-query-state';
+import { useTableControls } from '@/hooks/use-table-controls';
+import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
+
+const INVOICES_PAGE_SIZE_OPTIONS = [10, 30, 50];
 
 const TABS = [
   { key: 'identity', label: 'Identity' },
@@ -556,6 +560,7 @@ function BillingCard({ settings }: { settings: SchoolSettings }) {
     queryKey: ['billing-invoices'],
     queryFn: () => apiFetch<Invoice[]>('/settings/billing'),
   });
+  const invoicesPaged = useTableControls(invoices ?? [], { pageSize: 10 });
 
   const days = settings.currentPeriodEnd ? daysUntil(settings.currentPeriodEnd) : null;
   const tone = days !== null ? countdownTone(days) : 'upcoming';
@@ -619,6 +624,7 @@ function BillingCard({ settings }: { settings: SchoolSettings }) {
         ) : !invoices || invoices.length === 0 ? (
           <p className="text-sm text-slate-500">No invoices yet.</p>
         ) : (
+          <>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-500">
@@ -629,7 +635,7 @@ function BillingCard({ settings }: { settings: SchoolSettings }) {
               </tr>
             </thead>
             <tbody>
-              {invoices.map((inv) => (
+              {invoicesPaged.pageItems.map((inv) => (
                 <tr key={inv.id} className="border-b border-slate-100">
                   <td className="py-2 font-medium text-slate-900">{inv.invoiceNumber}</td>
                   <td className="py-2 text-slate-700">{kes(inv.amount)}</td>
@@ -650,6 +656,16 @@ function BillingCard({ settings }: { settings: SchoolSettings }) {
               ))}
             </tbody>
           </table>
+          <Pagination
+            page={invoicesPaged.page}
+            pageCount={invoicesPaged.pageCount}
+            totalItems={invoicesPaged.totalItems}
+            pageSize={invoicesPaged.pageSize}
+            pageSizeOptions={INVOICES_PAGE_SIZE_OPTIONS}
+            onPageChange={invoicesPaged.setPage}
+            onPageSizeChange={invoicesPaged.setPageSize}
+          />
+          </>
         )}
       </CardContent>
     </Card>

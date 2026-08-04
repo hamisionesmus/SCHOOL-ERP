@@ -13,6 +13,10 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRequireSuperAdmin } from '@/lib/require-super-admin';
 import { useDraftState } from '@/hooks/use-draft-state';
+import { useTableControls } from '@/hooks/use-table-controls';
+import { Pagination } from '@/components/ui/pagination';
+
+const ADMINS_PAGE_SIZE_OPTIONS = [10, 30, 50];
 
 interface Admin {
   id: string;
@@ -53,6 +57,8 @@ export default function AdminsPage() {
     queryKey: ['platform-admins', search],
     queryFn: () => apiFetch<Admin[]>(`/platform/admins${search ? `?q=${encodeURIComponent(search)}` : ''}`),
   });
+
+  const admins = useTableControls(adminsQuery.data ?? [], { pageSize: 10 });
 
   const analyticsQuery = useQuery({
     queryKey: ['platform-admins-analytics'],
@@ -128,7 +134,7 @@ export default function AdminsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {(adminsQuery.data ?? []).map((admin) => (
+              {admins.pageItems.map((admin) => (
                 <tr key={admin.id}>
                   <td className="px-4 py-3 font-medium text-slate-900">
                     <Link href={`/dashboard/admins/${admin.id}`} className="hover:underline">
@@ -158,6 +164,17 @@ export default function AdminsPage() {
               ))}
             </tbody>
           </table>
+          <div className="px-4 pb-3">
+            <Pagination
+              page={admins.page}
+              pageCount={admins.pageCount}
+              totalItems={admins.totalItems}
+              pageSize={admins.pageSize}
+              pageSizeOptions={ADMINS_PAGE_SIZE_OPTIONS}
+              onPageChange={admins.setPage}
+              onPageSizeChange={admins.setPageSize}
+            />
+          </div>
         </div>
       )}
 
