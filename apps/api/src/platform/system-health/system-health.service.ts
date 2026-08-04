@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
 import { AdvantaSmsProvider } from '../../communications/providers/advanta-sms.provider';
+import { RequestMetricsService } from '../../common/request-metrics.service';
 
 const UPLOADS_DIR = join(process.cwd(), 'uploads');
 
@@ -25,6 +26,7 @@ export class SystemHealthService {
     private readonly platformPrisma: PlatformPrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly advantaSms: AdvantaSmsProvider,
+    private readonly requestMetrics: RequestMetricsService,
   ) {}
 
   /** Daily sent/failed SMS counts for the last `days` days (from PlatformSmsLog, written by
@@ -88,6 +90,7 @@ export class SystemHealthService {
       schools: { ...schools, estimatedRemainingCapacity },
       dailyActiveLogins,
       database,
+      requests: this.requestMetrics.snapshot(),
     };
   }
 

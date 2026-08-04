@@ -9,6 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { useRequireFinanceAccess } from '@/lib/require-super-admin';
 import { onPresenceSnapshot, PresenceSnapshot, PresenceEntry } from '@/lib/presence-socket';
+import { Pagination } from '@/components/ui/pagination';
+import { useTableControls } from '@/hooks/use-table-controls';
+
+const HISTORY_PAGE_SIZE_OPTIONS = [10, 30, 50];
 
 interface SessionHistoryEntry {
   id: string;
@@ -124,6 +128,9 @@ export default function PresencePage() {
     refetchInterval: 60_000,
   });
 
+  // Server already returns these sorted newest-first — no client sort key needed, just paginate.
+  const history = useTableControls(historyQuery.data ?? [], { pageSize: 10 });
+
   const data = snapshot ?? initial;
 
   const platformTeam = (data?.online ?? []).filter((e) => e.realm === 'platform');
@@ -223,11 +230,22 @@ export default function PresencePage() {
               ) : !historyQuery.data || historyQuery.data.length === 0 ? (
                 <p className="text-sm text-slate-400">No sessions in the last 24 hours.</p>
               ) : (
-                <div className="flex flex-col">
-                  {historyQuery.data.map((s) => (
-                    <SessionRow key={s.id} session={s} />
-                  ))}
-                </div>
+                <>
+                  <div className="flex flex-col">
+                    {history.pageItems.map((s) => (
+                      <SessionRow key={s.id} session={s} />
+                    ))}
+                  </div>
+                  <Pagination
+                    page={history.page}
+                    pageCount={history.pageCount}
+                    totalItems={history.totalItems}
+                    pageSize={history.pageSize}
+                    pageSizeOptions={HISTORY_PAGE_SIZE_OPTIONS}
+                    onPageChange={history.setPage}
+                    onPageSizeChange={history.setPageSize}
+                  />
+                </>
               )}
             </CardContent>
           </Card>

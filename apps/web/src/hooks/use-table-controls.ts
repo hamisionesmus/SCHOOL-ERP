@@ -6,7 +6,7 @@ type SortDir = 'asc' | 'desc';
  * data scale (see docs/ARCHITECTURE.md). Server-side pagination (Platform tenants list) uses its own
  * page/pageSize/meta pattern instead and pairs with the same <Pagination> UI component. */
 export function useTableControls<T>(items: T[], options?: { pageSize?: number; initialSortKey?: keyof T | null }) {
-  const pageSize = options?.pageSize ?? 8;
+  const [pageSize, setPageSize] = useState(options?.pageSize ?? 8);
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<keyof T | null>(options?.initialSortKey ?? null);
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -42,6 +42,11 @@ export function useTableControls<T>(items: T[], options?: { pageSize?: number; i
     setPage(1);
   }
 
+  function changePageSize(size: number) {
+    setPageSize(size);
+    setPage(1);
+  }
+
   return {
     page: clampedPage,
     setPage,
@@ -52,5 +57,6 @@ export function useTableControls<T>(items: T[], options?: { pageSize?: number; i
     toggleSort,
     totalItems: sorted.length,
     pageSize,
+    setPageSize: changePageSize,
   };
 }

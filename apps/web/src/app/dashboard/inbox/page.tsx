@@ -109,7 +109,7 @@ export default function InboxPage() {
 
   if (isSubAdmin) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex h-[calc(100vh-8rem)] flex-col gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Inbox</h1>
           <p className="mt-1 text-sm text-slate-500">

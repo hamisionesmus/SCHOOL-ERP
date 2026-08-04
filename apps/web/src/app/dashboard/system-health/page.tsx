@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from 'recharts';
-import { Cpu, MemoryStick, HardDrive, School, Users, Database, MessageSquare, Coins } from 'lucide-react';
+import { Cpu, MemoryStick, HardDrive, School, Users, Database, MessageSquare, Coins, ArrowLeftRight, CheckCircle2, XCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
@@ -24,6 +24,7 @@ interface SystemHealth {
   };
   dailyActiveLogins: { date: string; count: number }[];
   database: { activeConnections: number; maxConnections: number };
+  requests: { total: number; succeeded: number; failed: number };
 }
 
 interface SchoolStorage {
@@ -142,6 +143,26 @@ export default function SystemHealthPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-slate-600">{capacityText}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ArrowLeftRight size={16} className="text-slate-400" />
+                Server requests
+              </CardTitle>
+              <CardDescription>
+                Every HTTP request this server has handled since it last restarted — including
+                rejected logins, 404s, and anything else that never reached a real route handler.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <StatCard label="Total requests" value={data.requests.total} icon={ArrowLeftRight} accent="blue" />
+                <StatCard label="Succeeded" value={data.requests.succeeded} icon={CheckCircle2} accent="emerald" />
+                <StatCard label="Failed" value={data.requests.failed} icon={XCircle} accent="rose" />
+              </div>
             </CardContent>
           </Card>
 

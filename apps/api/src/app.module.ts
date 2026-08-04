@@ -1,10 +1,12 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { UserDirectoryModule } from './common/user-directory/user-directory.module';
+import { RequestMetricsModule } from './common/request-metrics.module';
+import { RequestMetricsMiddleware } from './common/request-metrics.middleware';
 import { AuthModule } from './auth/auth.module';
 import { TenantsModule } from './platform/tenants/tenants.module';
 import { SubscriptionPlansModule } from './platform/subscription-plans/subscription-plans.module';
@@ -72,6 +74,7 @@ import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
     ]),
     PrismaModule,
     UserDirectoryModule,
+    RequestMetricsModule,
     AuthModule,
     TenantsModule,
     SubscriptionPlansModule,
@@ -124,4 +127,11 @@ import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Applied first, ahead of guards/interceptors, so every request is counted — including ones
+    // rejected by a guard (401/403) or hitting an unknown route (404), neither of which would reach
+    // an interceptor. See RequestMetricsService.
+    consumer.apply(RequestMetricsMiddleware).forRoutes('*');
+  }
+}

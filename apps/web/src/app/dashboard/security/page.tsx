@@ -164,7 +164,7 @@ export default function SecurityPage() {
             ) : !activity || activity.successful.length === 0 ? (
               <p className="text-sm text-slate-500">No logins recorded yet.</p>
             ) : (
-              <ul className="flex flex-col gap-2">
+              <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
                 {activity.successful.map((ev) => {
                   const loc = locationLabel(ev.city, ev.country);
                   return (
@@ -207,7 +207,7 @@ export default function SecurityPage() {
             ) : !activity || activity.failed.length === 0 ? (
               <p className="text-sm text-slate-500">No failed attempts recorded.</p>
             ) : (
-              <ul className="flex flex-col gap-2">
+              <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
                 {activity.failed.map((a) => {
                   const loc = locationLabel(a.city, a.country);
                   return (
