@@ -98,6 +98,7 @@ export class TenantsService {
   async requestCreate(dto: RequestTenantDto, requestedByUserId: string) {
     const existing = await this.platformPrisma.tenant.findUnique({ where: { slug: dto.slug } });
     if (existing) throw new BadRequestException('A school with this slug already exists');
+    await this.userDirectory.assertEmailNotInUse(dto.adminEmail);
 
     const isDemo = dto.accountType === 'demo' || dto.accountType === 'test';
     const isTest = dto.accountType === 'test';

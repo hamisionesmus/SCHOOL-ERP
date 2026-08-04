@@ -20,6 +20,7 @@ import {
   Activity,
   Mail,
   Radio,
+  Search,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -58,6 +59,18 @@ const ASSISTANT_SUPER_ADMIN_NAV = [
   { href: '/dashboard/system-health', label: 'System Health', icon: Activity },
 ];
 
+// Nav item to surface when a module is individually granted (see PlatformAdminModuleGrant) and
+// isn't already part of the viewer's tier-default nav — only for modules with a real standalone
+// route; MESSAGE_TEMPLATES/AUDIT_LOG live inside Settings/a school's own page respectively and add
+// no nav entry of their own, same as Super Admin doesn't get a separate nav item for either today.
+const MODULE_NAV_ITEM: Partial<Record<string, { href: string; label: string; icon: React.ElementType }>> = {
+  TICKETS: { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
+  SECURITY: { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
+  BACKUPS: { href: '/dashboard/backups', label: 'Backups', icon: DatabaseBackup },
+  SETTINGS: { href: '/dashboard/settings', label: 'Platform Settings', icon: Wallet },
+  ADMINS: { href: '/dashboard/admins', label: 'Admins', icon: Users },
+};
+
 const COLLAPSE_STORAGE_KEY = 'school-erp:sa-sidebar-collapsed';
 
 interface MeProfile {
@@ -73,18 +86,32 @@ function initials(name: string) {
 export function SuperAdminSidebar({
   email,
   role,
+  moduleGrants,
   fallbackName,
   onLogout,
 }: {
   email: string;
   role?: string;
+  /** Per-admin extras granted on top of the tier default — see PlatformAdminModuleGrant. Adds a
+   * nav entry for any granted module not already visible for this role (Super Admin already sees
+   * everything, so this only ever changes what a Sub-Admin/Assistant Super Admin sees). */
+  moduleGrants?: string[];
   fallbackName: string;
   onLogout: () => void;
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const nav = role === 'SUB_ADMIN' ? SUB_ADMIN_NAV : role === 'ASSISTANT_SUPER_ADMIN' ? ASSISTANT_SUPER_ADMIN_NAV : SUPER_ADMIN_NAV;
+  const baseNav = role === 'SUB_ADMIN' ? SUB_ADMIN_NAV : role === 'ASSISTANT_SUPER_ADMIN' ? ASSISTANT_SUPER_ADMIN_NAV : SUPER_ADMIN_NAV;
+  const grantedNav = (moduleGrants ?? [])
+    .map((m) => MODULE_NAV_ITEM[m])
+    .filter((item): item is { href: string; label: string; icon: React.ElementType } => !!item)
+    .filter((item) => !baseNav.some((existing) => existing.href === item.href));
+  const nav = role === 'SUPER_ADMIN' ? baseNav : [...baseNav, ...grantedNav];
+  const [navQuery, setNavQuery] = useState('');
+  const visibleNav = navQuery.trim()
+    ? nav.filter((item) => item.label.toLowerCase().includes(navQuery.trim().toLowerCase()))
+    : nav;
 
   // Shares the ['platform-me'] query key with DashboardTopbar/ProfilePage — React Query dedupes
   // the request and this updates instantly once a new photo is saved on the Profile page.
@@ -158,9 +185,26 @@ export function SuperAdminSidebar({
           </button>
         </div>
 
+        {!collapsed && (
+          <div className="px-3 pb-2">
+            <div className="relative">
+              <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                value={navQuery}
+                onChange={(e) => setNavQuery(e.target.value)}
+                placeholder="Search..."
+                className="w-full rounded-md border border-slate-800 bg-slate-900 py-1.5 pl-8 pr-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-slate-600 focus:outline-none"
+              />
+            </div>
+          </div>
+        )}
+
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
           <div className="flex flex-col gap-0.5">
-            {nav.map((item) => {
+            {visibleNav.length === 0 && !collapsed && (
+              <p className="px-2.5 py-2 text-xs text-slate-500">No matches</p>
+            )}
+            {visibleNav.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href;
               return (

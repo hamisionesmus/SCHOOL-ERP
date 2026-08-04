@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SendSmsResult, SmsProvider } from './sms-provider.interface';
 import { StubSmsProvider } from './stub-sms.provider';
 import { PlatformSettingsService } from '../../platform/platform-settings/platform-settings.service';
+import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
 
 const ADVANTA_BASE_URL = 'https://quicksms.advantasms.com';
 
@@ -29,7 +30,18 @@ export class AdvantaSmsProvider implements SmsProvider {
   constructor(
     private readonly config: ConfigService,
     private readonly platformSettings: PlatformSettingsService,
+    private readonly platformPrisma: PlatformPrismaService,
   ) {}
+
+  /** Best-effort usage log — every attempt, success or failure, across both platform notices and
+   * tenant-side sends (this provider is the one shared instance both paths go through). Never
+   * allowed to affect the actual send: a logging failure is caught and swallowed here, not
+   * propagated. Powers the SMS usage stats on the System Health page. */
+  private logAttempt(to: string, success: boolean, providerMessageId?: string) {
+    this.platformPrisma.platformSmsLog
+      .create({ data: { to, success, providerMessageId } })
+      .catch((err) => this.logger.error(`Failed to record SMS usage log: ${err instanceof Error ? err.message : String(err)}`));
+  }
 
   async send(to: string, body: string): Promise<SendSmsResult> {
     const settings = await this.platformSettings.get();
@@ -54,8 +66,35 @@ export class AdvantaSmsProvider implements SmsProvider {
     const first = data.responses?.[0];
     if (!res.ok || first?.['response-code'] !== 200) {
       this.logger.error(`Advanta SMS send failed to ${to}: ${JSON.stringify(data)}`);
+      this.logAttempt(to, false);
       return { success: false };
     }
+    this.logAttempt(to, true, first.messageid);
     return { success: true, providerMessageId: first.messageid };
+  }
+
+  /** Current SMS credit balance from Advanta's account API — used to warn a Super Admin before the
+   * account runs dry. Returns null (not a thrown error) when credentials aren't configured or the
+   * call fails, so the System Health page can show "not configured"/"unavailable" instead of
+   * breaking the whole page. */
+  async getBalance(): Promise<{ credit: string } | null> {
+    const settings = await this.platformSettings.get();
+    const apikey = settings.advantaApiKey || this.config.get<string>('ADVANTA_API_KEY');
+    const partnerID = settings.advantaPartnerId || this.config.get<string>('ADVANTA_PARTNER_ID');
+    if (!apikey || !partnerID) return null;
+
+    try {
+      const res = await fetch(`${ADVANTA_BASE_URL}/api/services/getbalance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apikey, partnerID }),
+      });
+      const data = (await res.json()) as { 'response-code'?: number; credit?: string };
+      if (!res.ok || data['response-code'] !== 200 || data.credit == null) return null;
+      return { credit: data.credit };
+    } catch (err) {
+      this.logger.error(`Advanta balance check failed: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
   }
 }

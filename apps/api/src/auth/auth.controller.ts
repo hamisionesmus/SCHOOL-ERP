@@ -18,7 +18,7 @@ export class AuthController {
   @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
-    return this.authService.login(dto, req.ip);
+    return this.authService.login(dto, req.ip, req.headers['user-agent']);
   }
 
   @Post('refresh')

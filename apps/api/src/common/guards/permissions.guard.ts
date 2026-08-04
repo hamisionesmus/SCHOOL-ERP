@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator';
 import { PLATFORM_ONLY_KEY } from '../decorators/require-platform-role.decorator';
+import { PLATFORM_MODULE_KEY } from '../decorators/require-platform-module.decorator';
 import { JwtUserPayload } from '../decorators/current-user.decorator';
 
 /**
@@ -23,6 +24,10 @@ export class PermissionsGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
+    const requiredModule = this.reflector.getAllAndOverride<string | undefined>(PLATFORM_MODULE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
 
     const request = context.switchToHttp().getRequest();
     const user: JwtUserPayload | undefined = request.user;
@@ -32,7 +37,10 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('Super Admin access required');
     }
     if (Array.isArray(platformOnly) && !platformOnly.includes(user.role ?? '')) {
-      throw new ForbiddenException('Super Admin access required');
+      // A per-admin module grant (see PlatformAdminModuleGrant) lets a Sub-Admin/Assistant Super
+      // Admin through a tier-restricted route without changing their overall role tier.
+      const hasGrant = !!requiredModule && !!user.moduleGrants?.includes(requiredModule);
+      if (!hasGrant) throw new ForbiddenException('Super Admin access required');
     }
 
     if (requiredPermission) {

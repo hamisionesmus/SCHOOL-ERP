@@ -1,15 +1,31 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, School, Wallet, FileCheck, SlidersHorizontal, Clock } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useRequireSuperAdmin } from '@/lib/require-super-admin';
+import { notifyError, notifySuccess } from '@/lib/notify';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { Skeleton } from '@/components/ui/skeleton';
+
+// Mirrors apps/api/src/platform/admins/platform-modules.ts — kept in sync manually (no shared
+// package between the two apps yet, same precedent as KENYA_COUNTIES).
+const PLATFORM_MODULES = ['TICKETS', 'SECURITY', 'BACKUPS', 'SETTINGS', 'MESSAGE_TEMPLATES', 'ADMINS', 'AUDIT_LOG'] as const;
+const PLATFORM_MODULE_LABELS: Record<(typeof PLATFORM_MODULES)[number], string> = {
+  TICKETS: 'Tickets',
+  SECURITY: 'Security',
+  BACKUPS: 'Backups',
+  SETTINGS: 'Platform Settings',
+  MESSAGE_TEMPLATES: 'Message Templates',
+  ADMINS: 'Admin management (view only)',
+  AUDIT_LOG: 'Audit Log access',
+};
 
 interface AdminDetail {
   id: string;
@@ -17,7 +33,7 @@ interface AdminDetail {
   fullName: string;
   phone: string | null;
   avatarUrl: string | null;
-  role: 'SUPER_ADMIN' | 'SUB_ADMIN';
+  role: 'SUPER_ADMIN' | 'SUB_ADMIN' | 'ASSISTANT_SUPER_ADMIN';
   twoFactorEnabled: boolean;
   deletedAt: string | null;
   createdAt: string;
@@ -32,13 +48,15 @@ interface AdminDetail {
 }
 
 export default function AdminDetailPage() {
-  useRequireSuperAdmin();
+  useRequireSuperAdmin('ADMINS');
   const params = useParams<{ id: string }>();
 
   const { data: admin, isLoading } = useQuery({
     queryKey: ['platform-admin', params.id],
     queryFn: () => apiFetch<AdminDetail>(`/platform/admins/${params.id}`),
   });
+
+  const isDelegatedAdmin = admin && admin.role !== 'SUPER_ADMIN';
 
   if (isLoading || !admin) {
     return (
@@ -141,6 +159,92 @@ export default function AdminDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {isDelegatedAdmin && <ModuleGrantsCard adminId={admin.id} />}
     </div>
+  );
+}
+
+/** Lets a Super Admin grant this Sub-Admin/Assistant Super Admin individual access to otherwise
+ * tier-restricted platform modules — see PlatformAdminModuleGrant/RequirePlatformModule on the
+ * backend. Takes effect on the admin's next login/refresh, same as a role change would. */
+function ModuleGrantsCard({ adminId }: { adminId: string }) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [hasSynced, setHasSynced] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-admin-module-grants', adminId],
+    queryFn: () => apiFetch<{ modules: string[] }>(`/platform/admins/${adminId}/module-grants`),
+  });
+
+  useEffect(() => {
+    if (data && !hasSynced) {
+      setSelected(new Set(data.modules));
+      setHasSynced(true);
+    }
+  }, [data, hasSynced]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      apiFetch(`/platform/admins/${adminId}/module-grants`, {
+        method: 'PUT',
+        body: JSON.stringify({ modules: Array.from(selected) }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-admin-module-grants', adminId] });
+      notifySuccess('Module access updated — takes effect next time this admin signs in.');
+    },
+    onError: (err) => notifyError(err, 'Failed to update module access'),
+  });
+
+  function toggle(module: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(module)) next.delete(module);
+      else next.add(module);
+      return next;
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Module Access</CardTitle>
+        <CardDescription>
+          Grant this admin extra access to specific platform modules, on top of what their tier
+          normally allows — doesn&apos;t change their overall role.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-32 w-full" />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {PLATFORM_MODULES.map((module) => (
+                <label
+                  key={module}
+                  className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(module)}
+                    onChange={() => toggle(module)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  {PLATFORM_MODULE_LABELS[module]}
+                </label>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+                {save.isPending ? 'Saving...' : 'Save module access'}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

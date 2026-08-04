@@ -4,6 +4,7 @@ import { PlatformPrismaService } from '../../common/prisma/platform-prisma.servi
 import { SettingsOtpService } from '../settings-otp/settings-otp.service';
 import { PlatformNotifierService } from '../messaging/platform-notifier.service';
 import { generateTempPassword } from '../../common/password.util';
+import { UserDirectoryService } from '../../common/user-directory/user-directory.service';
 import { InviteAdminDto } from './dto/invite-admin.dto';
 
 const ADMIN_SELECT = {
@@ -32,6 +33,7 @@ export class PlatformAdminsService {
     private readonly platformPrisma: PlatformPrismaService,
     private readonly settingsOtp: SettingsOtpService,
     private readonly notifier: PlatformNotifierService,
+    private readonly userDirectory: UserDirectoryService,
   ) {}
 
   async list(q?: string) {
@@ -88,8 +90,7 @@ export class PlatformAdminsService {
   }
 
   async requestCreate(dto: InviteAdminDto, requestedById: string) {
-    const existing = await this.platformPrisma.platformUser.findUnique({ where: { email: dto.email } });
-    if (existing) throw new BadRequestException('An admin with this email already exists');
+    await this.userDirectory.assertEmailNotInUse(dto.email);
     return this.settingsOtp.request(requestedById, 'ADMINS', dto);
   }
 
@@ -165,5 +166,28 @@ export class PlatformAdminsService {
       data: { deletedAt: null },
       select: ADMIN_SELECT,
     });
+  }
+
+  async getModuleGrants(userId: string) {
+    const target = await this.platformPrisma.platformUser.findUnique({ where: { id: userId } });
+    if (!target) throw new NotFoundException('Admin not found');
+    const grants = await this.platformPrisma.platformAdminModuleGrant.findMany({ where: { userId } });
+    return { modules: grants.map((g) => g.module) };
+  }
+
+  /** Replace-all, same convention as every other "list of settings rows" this codebase manages
+   * (pricing tiers, etc.) — simpler than per-row add/remove for a small fixed checklist. Takes
+   * effect on the admin's next login/refresh, same JWT-embedding tradeoff as `role` itself. */
+  async setModuleGrants(userId: string, modules: string[]) {
+    const target = await this.platformPrisma.platformUser.findUnique({ where: { id: userId } });
+    if (!target) throw new NotFoundException('Admin not found');
+    const unique = [...new Set(modules)];
+    await this.platformPrisma.$transaction([
+      this.platformPrisma.platformAdminModuleGrant.deleteMany({ where: { userId } }),
+      this.platformPrisma.platformAdminModuleGrant.createMany({
+        data: unique.map((module) => ({ userId, module })),
+      }),
+    ]);
+    return { modules: unique };
   }
 }

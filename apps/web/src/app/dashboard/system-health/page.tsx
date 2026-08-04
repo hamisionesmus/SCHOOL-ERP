@@ -1,8 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Cpu, MemoryStick, HardDrive, School, Users, Database } from 'lucide-react';
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from 'recharts';
+import { Cpu, MemoryStick, HardDrive, School, Users, Database, MessageSquare, Coins } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
@@ -34,6 +34,13 @@ interface SchoolStorage {
   usagePct: number | null;
 }
 
+interface SmsUsage {
+  usage: { date: string; sent: number; failed: number }[];
+  totalSent: number;
+  totalFailed: number;
+  balance: { credit: string } | null;
+}
+
 function mb(n: number) {
   if (n >= 1024) return `${(n / 1024).toFixed(1)} GB`;
   return `${Math.round(n)} MB`;
@@ -54,6 +61,12 @@ export default function SystemHealthPage() {
   const { data: storageBySchool } = useQuery({
     queryKey: ['system-health-storage-by-school'],
     queryFn: () => apiFetch<SchoolStorage[]>('/platform/system-health/storage-by-school'),
+    refetchInterval: 30_000,
+  });
+
+  const { data: sms } = useQuery({
+    queryKey: ['system-health-sms'],
+    queryFn: () => apiFetch<SmsUsage>('/platform/system-health/sms'),
     refetchInterval: 30_000,
   });
 
@@ -185,6 +198,48 @@ export default function SystemHealthPage() {
                   <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <MessageSquare size={16} className="text-slate-400" />
+                SMS usage — last 7 days
+              </CardTitle>
+              <CardDescription>
+                Every SMS attempt across the whole system (platform notices and school
+                announcements/alerts), sent through Advanta.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <StatCard label="Sent" value={sms?.totalSent ?? 0} icon={MessageSquare} accent="emerald" />
+                <StatCard label="Failed" value={sms?.totalFailed ?? 0} icon={MessageSquare} accent="rose" />
+                <StatCard
+                  label="Remaining balance"
+                  value={sms?.balance ? parseFloat(sms.balance.credit) || 0 : 0}
+                  icon={Coins}
+                  accent="amber"
+                  hint={sms?.balance ? 'SMS credits' : 'Advanta API key not configured, or balance check unavailable'}
+                />
+              </div>
+              {sms && (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={sms.usage} margin={{ left: -20 }}>
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(d: string) => new Date(d).toLocaleDateString(undefined, { weekday: 'short' })}
+                    />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="sent" name="Sent" fill="#059669" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="failed" name="Failed" fill="#e11d48" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </>

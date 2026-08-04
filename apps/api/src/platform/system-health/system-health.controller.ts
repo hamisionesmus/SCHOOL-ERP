@@ -22,4 +22,9 @@ export class SystemHealthController {
   perSchoolStorage() {
     return this.systemHealth.perSchoolStorage();
   }
+
+  @Get('sms')
+  smsUsage() {
+    return this.systemHealth.smsUsage();
+  }
 }

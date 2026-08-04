@@ -64,7 +64,7 @@ function formatCountdownToNext(iso: string | null | undefined) {
 }
 
 export default function BackupsPage() {
-  useRequireSuperAdmin();
+  useRequireSuperAdmin('BACKUPS');
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const pageSize = 10;

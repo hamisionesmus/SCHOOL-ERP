@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePlatformRole } from '../../common/decorators/require-platform-role.decorator';
+import { RequirePlatformModule } from '../../common/decorators/require-platform-module.decorator';
 import { CurrentUser, JwtUserPayload } from '../../common/decorators/current-user.decorator';
 import { PlatformSettingsService } from './platform-settings.service';
 import { UpdatePlatformSettingsDto } from './dto/update-platform-settings.dto';
@@ -17,6 +18,7 @@ import { ConfirmSettingsChangeDto } from '../settings-otp/dto/confirm-settings-c
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @RequirePlatformRole('SUPER_ADMIN')
+@RequirePlatformModule('SETTINGS')
 @Controller('platform/settings')
 export class PlatformSettingsController {
   constructor(

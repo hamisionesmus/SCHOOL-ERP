@@ -4,6 +4,7 @@ import { IsString, Length } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePlatformRole } from '../../common/decorators/require-platform-role.decorator';
+import { RequirePlatformModule } from '../../common/decorators/require-platform-module.decorator';
 import { CurrentUser, JwtUserPayload } from '../../common/decorators/current-user.decorator';
 import { AuditLogAccessService } from './audit-log-access.service';
 
@@ -17,6 +18,7 @@ class ConfirmAccessDto {
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @RequirePlatformRole('SUPER_ADMIN')
+@RequirePlatformModule('AUDIT_LOG')
 @Controller('platform')
 export class AuditLogAccessController {
   constructor(private readonly service: AuditLogAccessService) {}

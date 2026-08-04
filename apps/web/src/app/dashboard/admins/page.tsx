@@ -44,7 +44,7 @@ const ROLE_LABELS: Record<Admin['role'], string> = {
 };
 
 export default function AdminsPage() {
-  useRequireSuperAdmin();
+  useRequireSuperAdmin('ADMINS');
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');

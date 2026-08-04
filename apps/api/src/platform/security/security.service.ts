@@ -24,4 +24,26 @@ export class SecurityService {
     if (!alert) throw new NotFoundException('Alert not found');
     return this.platformPrisma.securityAlert.update({ where: { id }, data: { acknowledged: true } });
   }
+
+  /** Login-request visibility: total successful vs failed counts (all-time), plus the most recent of
+   * each — failed attempts include ones from emails that don't exist anywhere in the system at all
+   * (see AuthService.login(), which records a FailedLoginAttempt even before resolving which realm
+   * to check), and successful ones flag whether that (user, IP, device) combo has been seen before. */
+  async loginActivity(page = 1, pageSize = 20) {
+    const [totalSuccessful, totalFailed, successful, failed] = await Promise.all([
+      this.platformPrisma.loginEvent.count(),
+      this.platformPrisma.failedLoginAttempt.count(),
+      this.platformPrisma.loginEvent.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.platformPrisma.failedLoginAttempt.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    return { totalSuccessful, totalFailed, successful, failed, meta: { page, pageSize } };
+  }
 }

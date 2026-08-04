@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Building2, CreditCard, GraduationCap, Loader2, Send, ShieldCheck, Smartphone } from 'lucide-react';
+import { Building2, CreditCard, Download, GraduationCap, Loader2, Send, ShieldCheck, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch, ApiError, API_ORIGIN } from '@/lib/api';
 import { usePageTransition } from '@/lib/page-transition';
 import { cn } from '@/lib/utils';
 
@@ -50,7 +50,31 @@ export default function ActivatePage() {
   const [submittingProof, setSubmittingProof] = useState(false);
   const [proofSubmitted, setProofSubmitted] = useState(false);
 
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  async function downloadInvoice() {
+    setDownloadingInvoice(true);
+    try {
+      const res = await fetch(`${API_ORIGIN}/public/activation/${token}/invoice-pdf`);
+      if (!res.ok) throw new Error('Failed to generate invoice PDF');
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filenameMatch?.[1] ?? 'invoice.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Non-critical — the invoice was already emailed/SMS'd; a failed download here isn't worth
+      // a scary error state on an otherwise-working activation page.
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  }
 
   async function fetchStatus() {
     try {
@@ -184,6 +208,7 @@ export default function ActivatePage() {
                 {info.amountKes.toLocaleString()} activation payment.
               </p>
               <p className="text-xs text-slate-500">This page will update automatically once payment is confirmed.</p>
+              <InvoiceDownloadButton downloading={downloadingInvoice} onClick={downloadInvoice} />
             </div>
           ) : proofSubmitted ? (
             <div className="flex flex-col items-center gap-3 py-10 text-center">
@@ -197,6 +222,7 @@ export default function ActivatePage() {
                 This page updates automatically once confirmed. If you don&apos;t hear back or run into an
                 issue, contact support.
               </p>
+              <InvoiceDownloadButton downloading={downloadingInvoice} onClick={downloadInvoice} />
             </div>
           ) : (
             <div className="py-2">
@@ -208,6 +234,7 @@ export default function ActivatePage() {
                 <p className="text-xs uppercase tracking-wide text-slate-500">Amount due</p>
                 <p className="text-2xl font-semibold text-white">KES {info.amountKes.toLocaleString()}</p>
               </div>
+              <InvoiceDownloadButton downloading={downloadingInvoice} onClick={downloadInvoice} />
 
               <div className="mt-5 grid grid-cols-3 gap-2">
                 <MethodTab active={method === 'stk'} onClick={() => setMethod('stk')} icon={Smartphone} label="M-Pesa STK" />
@@ -336,6 +363,30 @@ function MethodTab({
       <Icon size={16} />
       {label}
     </button>
+  );
+}
+
+function InvoiceDownloadButton({ downloading, onClick }: { downloading: boolean; onClick: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={downloading}
+      onClick={onClick}
+      className="mt-3 h-9 w-full border-white/10 bg-white/5 text-xs font-medium text-slate-300 hover:bg-white/10 hover:text-white disabled:opacity-70"
+    >
+      {downloading ? (
+        <span className="inline-flex items-center gap-2">
+          <Loader2 size={14} className="animate-spin" />
+          Preparing…
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-2">
+          <Download size={14} />
+          Download Invoice (PDF)
+        </span>
+      )}
+    </Button>
   );
 }
 

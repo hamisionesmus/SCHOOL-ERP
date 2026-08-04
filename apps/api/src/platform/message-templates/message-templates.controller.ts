@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePlatformRole } from '../../common/decorators/require-platform-role.decorator';
+import { RequirePlatformModule } from '../../common/decorators/require-platform-module.decorator';
 import { CurrentUser, JwtUserPayload } from '../../common/decorators/current-user.decorator';
 import { MessageTemplatesService } from './message-templates.service';
 import { SettingsOtpService } from '../settings-otp/settings-otp.service';
@@ -15,6 +16,7 @@ import { ConfirmSettingsChangeDto } from '../settings-otp/dto/confirm-settings-c
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @RequirePlatformRole('SUPER_ADMIN')
+@RequirePlatformModule('MESSAGE_TEMPLATES')
 @Controller('platform/message-templates')
 export class MessageTemplatesController {
   constructor(

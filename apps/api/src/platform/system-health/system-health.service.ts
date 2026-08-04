@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
+import { AdvantaSmsProvider } from '../../communications/providers/advanta-sms.provider';
 
 const UPLOADS_DIR = join(process.cwd(), 'uploads');
 
@@ -23,7 +24,44 @@ export class SystemHealthService {
   constructor(
     private readonly platformPrisma: PlatformPrismaService,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly advantaSms: AdvantaSmsProvider,
   ) {}
+
+  /** Daily sent/failed SMS counts for the last `days` days (from PlatformSmsLog, written by
+   * AdvantaSmsProvider on every attempt) plus the current account credit balance, if configured. */
+  async smsUsage(days = 7) {
+    const since = new Date();
+    since.setDate(since.getDate() - days + 1);
+    since.setHours(0, 0, 0, 0);
+
+    const [logs, balance] = await Promise.all([
+      this.platformPrisma.platformSmsLog.findMany({
+        where: { createdAt: { gte: since } },
+        select: { createdAt: true, success: true },
+      }),
+      this.advantaSms.getBalance(),
+    ]);
+
+    const byDay = new Map<string, { sent: number; failed: number }>();
+    for (let i = 0; i < days; i++) {
+      const d = new Date(since);
+      d.setDate(d.getDate() + i);
+      byDay.set(d.toISOString().slice(0, 10), { sent: 0, failed: 0 });
+    }
+    for (const log of logs) {
+      const key = log.createdAt.toISOString().slice(0, 10);
+      const bucket = byDay.get(key);
+      if (!bucket) continue;
+      if (log.success) bucket.sent++;
+      else bucket.failed++;
+    }
+
+    const usage = [...byDay.entries()].map(([date, counts]) => ({ date, ...counts }));
+    const totalSent = usage.reduce((sum, u) => sum + u.sent, 0);
+    const totalFailed = usage.reduce((sum, u) => sum + u.failed, 0);
+
+    return { usage, totalSent, totalFailed, balance };
+  }
 
   async overview() {
     const [cpu, memory, disk, schools, dailyActiveLogins, database] = await Promise.all([

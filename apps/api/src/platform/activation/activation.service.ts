@@ -9,6 +9,7 @@ import { PlatformNotifierService } from '../messaging/platform-notifier.service'
 import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 import { findSchoolAdmin } from '../../common/tenant-admin.util';
 import { generateTempPassword } from '../../common/password.util';
+import { buildPlatformInvoicePdfInput, renderPlatformInvoicePdf } from '../billing/invoice-pdf.util';
 import * as bcrypt from 'bcryptjs';
 
 interface ActivationTokenPayload {
@@ -94,6 +95,26 @@ export class ActivationService {
       amountKes: invoice.amount,
       status: invoice.status === 'PAID' || tenant.status === 'ACTIVE' ? 'PAID' : ('PENDING' as const),
     };
+  }
+
+  /** Lets the school download their invoice as a PDF straight from the activation page, before
+   * they've ever been able to log in — same token-carries-identity approach as every other public
+   * activation endpoint. Mirrors BillingService.invoicePdf() exactly, just scoped by the signed
+   * token's tenantId/invoiceId instead of a raw id param an authenticated Super Admin would pass. */
+  async invoicePdf(token: string): Promise<{ buffer: Buffer; filename: string }> {
+    const { tenantId, invoiceId } = await this.verifyToken(token);
+    const invoice = await this.platformPrisma.platformInvoice.findFirst({
+      where: { id: invoiceId, tenantId },
+      include: { tenant: true, payments: { orderBy: { createdAt: 'asc' } } },
+    });
+    if (!invoice) throw new NotFoundException('Invoice not found');
+
+    const settings = await this.platformSettings.get();
+    const pdfInput = buildPlatformInvoicePdfInput(invoice, invoice.tenant, settings);
+    const buffer = await renderPlatformInvoicePdf(pdfInput);
+
+    const slug = (s: string) => s.trim().replace(/[^a-zA-Z0-9]+/g, '');
+    return { buffer, filename: `${slug(invoice.tenant.name)}_${invoice.invoiceNumber}.pdf` };
   }
 
   async initiatePayment(token: string, phone: string) {

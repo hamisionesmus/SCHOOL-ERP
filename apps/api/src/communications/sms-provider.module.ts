@@ -12,7 +12,10 @@ import { PlatformSettingsModule } from '../platform/platform-settings/platform-s
  */
 @Module({
   imports: [PlatformSettingsModule],
-  providers: [{ provide: SMS_PROVIDER, useClass: AdvantaSmsProvider }],
-  exports: [SMS_PROVIDER],
+  // AdvantaSmsProvider is also exported by its concrete class (not just the SMS_PROVIDER token) so
+  // SystemHealthModule can call its Advanta-specific getBalance() method, which isn't part of the
+  // generic SmsProvider interface every other call site depends on.
+  providers: [AdvantaSmsProvider, { provide: SMS_PROVIDER, useExisting: AdvantaSmsProvider }],
+  exports: [SMS_PROVIDER, AdvantaSmsProvider],
 })
 export class SmsProviderModule {}

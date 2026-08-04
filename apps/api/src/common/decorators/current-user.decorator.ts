@@ -12,6 +12,10 @@ export interface JwtUserPayload {
   // Platform-realm only: 'SUPER_ADMIN' | 'ASSISTANT_SUPER_ADMIN' | 'SUB_ADMIN' — see
   // RequirePlatformRole/PermissionsGuard for how this restricts each tier.
   role?: string;
+  // Platform-realm only: per-admin module overrides granted by a Super Admin on top of the tier
+  // default (see PlatformAdminModuleGrant, RequirePlatformModule/PermissionsGuard). Embedded in the
+  // JWT the same way `role` is — a grant change takes effect on next login/refresh, not instantly.
+  moduleGrants?: string[];
 }
 
 export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext): JwtUserPayload => {

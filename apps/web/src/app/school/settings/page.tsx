@@ -13,6 +13,17 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDraftState } from '@/hooks/use-draft-state';
+import { useTabQueryState } from '@/hooks/use-tab-query-state';
+import { cn } from '@/lib/utils';
+
+const TABS = [
+  { key: 'identity', label: 'Identity' },
+  { key: 'theme', label: 'Theme' },
+  { key: 'about', label: 'About' },
+  { key: 'academic', label: 'Academic' },
+  { key: 'billing', label: 'Payment & Billing' },
+] as const;
+type TabKey = (typeof TABS)[number]['key'];
 
 interface SchoolSettings {
   name: string;
@@ -85,9 +96,49 @@ function kes(n: number) {
   return `KES ${n.toLocaleString()}`;
 }
 
+// A small curated palette, not an exhaustive one — the raw color picker next to it still covers
+// any exact shade a school wants. Foreground/hover/border shades are always derived automatically
+// from whatever's picked (see apps/web/src/lib/theme-color.ts), so every one of these stays
+// readable regardless of which field it's applied to.
+const RECOMMENDED_COLORS = [
+  { label: 'White', value: '#ffffff' },
+  { label: 'Slate', value: '#0f172a' },
+  { label: 'Blue', value: '#2563eb' },
+  { label: 'Indigo', value: '#4f46e5' },
+  { label: 'Emerald', value: '#059669' },
+  { label: 'Teal', value: '#0d9488' },
+  { label: 'Amber', value: '#d97706' },
+  { label: 'Rose', value: '#e11d48' },
+  { label: 'Violet', value: '#7c3aed' },
+];
+
+function ColorPresetSwatches({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {RECOMMENDED_COLORS.map((c) => (
+        <button
+          key={c.value}
+          type="button"
+          title={c.label}
+          onClick={() => onChange(c.value)}
+          className={cn(
+            'h-6 w-6 rounded-full border shadow-sm transition-transform hover:scale-110',
+            value.toLowerCase() === c.value ? 'ring-2 ring-offset-1 ring-slate-900' : 'border-slate-200',
+          )}
+          style={{ backgroundColor: c.value }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
+  const [tab, setTab] = useTabQueryState<TabKey>(
+    TABS.map((t) => t.key),
+    'identity',
+  );
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -252,6 +303,23 @@ export default function SettingsPage() {
         </Card>
       )}
 
+      <div className="flex gap-1 border-b border-slate-200">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+              tab === t.key
+                ? 'border-slate-900 text-slate-900'
+                : 'border-transparent text-slate-500 hover:text-slate-700',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -259,6 +327,7 @@ export default function SettingsPage() {
         }}
         className="flex flex-col gap-6"
       >
+        {tab === 'identity' && (
         <Card>
           <CardHeader>
             <CardTitle>School Identity</CardTitle>
@@ -307,7 +376,9 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+        )}
 
+        {tab === 'theme' && (
         <Card>
           <CardHeader>
             <CardTitle>Theme Colors</CardTitle>
@@ -326,6 +397,7 @@ export default function SettingsPage() {
                 onChange={(e) => setForm((f) => ({ ...f, primaryColor: e.target.value }))}
                 className="h-10 w-full rounded-md border border-slate-300"
               />
+              <ColorPresetSwatches value={form.primaryColor} onChange={(c) => setForm((f) => ({ ...f, primaryColor: c }))} />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Sidebar color</label>
@@ -335,6 +407,7 @@ export default function SettingsPage() {
                 onChange={(e) => setForm((f) => ({ ...f, sidebarColor: e.target.value }))}
                 className="h-10 w-full rounded-md border border-slate-300"
               />
+              <ColorPresetSwatches value={form.sidebarColor} onChange={(c) => setForm((f) => ({ ...f, sidebarColor: c }))} />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-slate-700">Main background color</label>
@@ -344,10 +417,13 @@ export default function SettingsPage() {
                 onChange={(e) => setForm((f) => ({ ...f, contentBgColor: e.target.value }))}
                 className="h-10 w-full rounded-md border border-slate-300"
               />
+              <ColorPresetSwatches value={form.contentBgColor} onChange={(c) => setForm((f) => ({ ...f, contentBgColor: c }))} />
             </div>
           </CardContent>
         </Card>
+        )}
 
+        {tab === 'about' && (
         <Card>
           <CardHeader>
             <CardTitle>About Your School</CardTitle>
@@ -400,7 +476,9 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+        )}
 
+        {tab === 'academic' && (
         <Card>
           <CardHeader>
             <CardTitle>Academic Configuration</CardTitle>
@@ -421,15 +499,21 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+        )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <div>
-          <Button type="submit" disabled={updateSettings.isPending}>
-            {updateSettings.isPending ? 'Saving...' : 'Save changes'}
-          </Button>
-        </div>
+        {tab !== 'billing' && (
+          <>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <div>
+              <Button type="submit" disabled={updateSettings.isPending}>
+                {updateSettings.isPending ? 'Saving...' : 'Save changes'}
+              </Button>
+            </div>
+          </>
+        )}
       </form>
 
+      {tab === 'billing' && (
       <Card>
         <CardHeader>
           <CardTitle>Payment configuration</CardTitle>
@@ -458,8 +542,9 @@ export default function SettingsPage() {
           </dl>
         </CardContent>
       </Card>
+      )}
 
-      <BillingCard settings={settings} />
+      {tab === 'billing' && <BillingCard settings={settings} />}
     </div>
   );
 }

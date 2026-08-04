@@ -124,7 +124,7 @@ const TEMPLATE_LABELS: Record<string, string> = {
 };
 
 export default function PlatformSettingsPage() {
-  useRequireSuperAdmin();
+  useRequireSuperAdmin(['SETTINGS', 'MESSAGE_TEMPLATES']);
   const [tab, setTab] = useTabQueryState<TabKey>(
     TABS.map((t) => t.key),
     'payment',

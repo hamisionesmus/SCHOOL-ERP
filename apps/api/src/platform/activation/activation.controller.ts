@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, StreamableFile } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { ActivationService } from './activation.service';
@@ -25,6 +25,15 @@ export class ActivationController {
   @Get(':token/payment-details')
   paymentDetails() {
     return this.platformSettings.getPublicPaymentDetails();
+  }
+
+  @Get(':token/invoice-pdf')
+  async invoicePdf(@Param('token') token: string) {
+    const { buffer, filename } = await this.activationService.invoicePdf(token);
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${filename}"`,
+    });
   }
 
   // Same rate-limiting instinct as AuthController.login — this triggers a real STK push prompt on

@@ -9,6 +9,7 @@ import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
 import { UserDirectoryService } from '../common/user-directory/user-directory.service';
 import { LoginDto } from './dto/login.dto';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
+import { lookupIpGeo } from './geo-ip.util';
 
 interface TokenPair {
   accessToken: string;
@@ -21,8 +22,8 @@ function hashToken(token: string): string {
 
 /** Strips JWT standard claims (iat/exp/jti) so a decoded token can be safely re-signed. */
 function cleanPayload(decoded: JwtUserPayload): JwtUserPayload {
-  const { sub, realm, email, fullName, tenantSchema, tenantSlug, roles, permissions, role } = decoded;
-  return { sub, realm, email, fullName, tenantSchema, tenantSlug, roles, permissions, role };
+  const { sub, realm, email, fullName, tenantSchema, tenantSlug, roles, permissions, role, moduleGrants } = decoded;
+  return { sub, realm, email, fullName, tenantSchema, tenantSlug, roles, permissions, role, moduleGrants };
 }
 
 @Injectable()
@@ -43,21 +44,21 @@ export class AuthService {
    * would pollute the failed-login burst detector below). The tenantSlug DTO field still works too,
    * kept for the rare case a directory lookup can't resolve (e.g. data older than the backfill) —
    * it just no longer needs to be surfaced in the UI. */
-  async login(dto: LoginDto, ipAddress?: string): Promise<TokenPair & { user: JwtUserPayload }> {
+  async login(dto: LoginDto, ipAddress?: string, userAgent?: string): Promise<TokenPair & { user: JwtUserPayload }> {
     if (dto.tenantSlug) {
-      return this.loginTenant(dto.tenantSlug, dto.email, dto.password, ipAddress);
+      return this.loginTenant(dto.tenantSlug, dto.email, dto.password, ipAddress, userAgent);
     }
 
     const platformUser = await this.platformPrisma.platformUser.findFirst({
       where: { email: dto.email, deletedAt: null },
     });
     if (platformUser) {
-      return this.loginPlatform(dto.email, dto.password, ipAddress, platformUser);
+      return this.loginPlatform(dto.email, dto.password, ipAddress, platformUser, userAgent);
     }
 
     const resolvedSlug = await this.userDirectory.findTenantSlugByEmail(dto.email);
     if (resolvedSlug) {
-      return this.loginTenant(resolvedSlug, dto.email, dto.password, ipAddress);
+      return this.loginTenant(resolvedSlug, dto.email, dto.password, ipAddress, userAgent);
     }
 
     await this.recordFailedAttempt(dto.email, null, ipAddress);
@@ -73,8 +74,9 @@ export class AuthService {
    * one alert per failed attempt, which would just be noise for the Super Admin to wade through. */
   private async recordFailedAttempt(email: string, tenantSlug: string | null, ipAddress?: string) {
     const windowStart = new Date(Date.now() - AuthService.FAILED_LOGIN_WINDOW_MS);
+    const geo = await lookupIpGeo(ipAddress);
     await this.platformPrisma.failedLoginAttempt.create({
-      data: { email, tenantSlug: tenantSlug ?? undefined, ipAddress },
+      data: { email, tenantSlug: tenantSlug ?? undefined, ipAddress, city: geo.city, country: geo.country },
     });
 
     const count = await this.platformPrisma.failedLoginAttempt.count({
@@ -105,25 +107,61 @@ export class AuthService {
     password: string,
     ipAddress: string | undefined,
     user: { id: string; email: string; fullName: string; passwordHash: string; role: string },
+    userAgent?: string,
   ) {
     if (!(await bcrypt.compare(password, user.passwordHash))) {
       await this.recordFailedAttempt(email, null, ipAddress);
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    await this.recordLoginEvent(user.id, user.email, 'platform', null, ipAddress, userAgent);
+
+    const grants = await this.platformPrisma.platformAdminModuleGrant.findMany({ where: { userId: user.id } });
     const payload: JwtUserPayload = {
       sub: user.id,
       realm: 'platform',
       email: user.email,
       fullName: user.fullName,
       role: user.role,
+      moduleGrants: grants.map((g) => g.module),
     };
     const tokens = await this.issueTokens(payload);
     await this.storeRefreshToken('platform', user.id, tokens.refreshToken);
     return { ...tokens, user: payload };
   }
 
-  private async loginTenant(tenantSlug: string, email: string, password: string, ipAddress?: string) {
+  /** Writes one LoginEvent per successful login (either realm) — the counterpart to
+   * recordFailedAttempt. isNewDevice is true the first time this exact (userId, ipAddress,
+   * userAgent) combination is seen for this user; best-effort geo lookup never blocks the login
+   * response (see lookupIpGeo). */
+  private async recordLoginEvent(
+    userId: string,
+    email: string,
+    realm: 'platform' | 'tenant',
+    tenantSlug: string | null,
+    ipAddress?: string,
+    userAgent?: string,
+  ) {
+    const [geo, seenBefore] = await Promise.all([
+      lookupIpGeo(ipAddress),
+      this.platformPrisma.loginEvent.findFirst({ where: { userId, ipAddress: ipAddress ?? null, userAgent: userAgent ?? null } }),
+    ]);
+    await this.platformPrisma.loginEvent.create({
+      data: {
+        userId,
+        email,
+        realm,
+        tenantSlug: tenantSlug ?? undefined,
+        ipAddress,
+        userAgent,
+        city: geo.city,
+        country: geo.country,
+        isNewDevice: !seenBefore,
+      },
+    });
+  }
+
+  private async loginTenant(tenantSlug: string, email: string, password: string, ipAddress?: string, userAgent?: string) {
     const tenant = await this.platformPrisma.tenant.findFirst({
       where: { slug: tenantSlug, deletedAt: null },
     });
@@ -159,6 +197,8 @@ export class AuthService {
       await this.recordFailedAttempt(email, tenantSlug, ipAddress);
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    await this.recordLoginEvent(user.id, user.email, 'tenant', tenantSlug, ipAddress, userAgent);
 
     const userRoles = await db.userRole.findMany({
       where: { userId: user.id },

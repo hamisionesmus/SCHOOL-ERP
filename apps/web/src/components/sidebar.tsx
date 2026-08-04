@@ -30,6 +30,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   LifeBuoy,
+  Search,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { SessionUser } from '@/lib/auth';
@@ -131,6 +132,7 @@ export function Sidebar({
   const perms = user.permissions ?? [];
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [navQuery, setNavQuery] = useState('');
 
   const theme = useMemo(() => {
     const bg = isValidHex(sidebarColor) ? sidebarColor : '#ffffff';
@@ -157,11 +159,13 @@ export function Sidebar({
     });
   }
 
+  const query = navQuery.trim().toLowerCase();
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items.filter((item) => {
       if (item.noneOf && item.noneOf.some((p) => perms.includes(p))) return false;
-      return !item.anyOf || item.anyOf.some((p) => perms.includes(p));
+      if (!(!item.anyOf || item.anyOf.some((p) => perms.includes(p)))) return false;
+      return !query || item.label.toLowerCase().includes(query);
     }),
   })).filter((group) => group.items.length > 0);
 
@@ -207,7 +211,27 @@ export function Sidebar({
           </button>
         </div>
 
+        {!collapsed && (
+          <div className="px-3 pb-2">
+            <div className="relative">
+              <Search
+                size={13}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--sb-fg-muted)]"
+              />
+              <input
+                value={navQuery}
+                onChange={(e) => setNavQuery(e.target.value)}
+                placeholder="Search..."
+                className="w-full rounded-md border border-[var(--sb-border)] bg-transparent py-1.5 pl-8 pr-2 text-xs text-[var(--sb-fg)] placeholder:text-[var(--sb-fg-muted)] focus:outline-none"
+              />
+            </div>
+          </div>
+        )}
+
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
+          {visibleGroups.length === 0 && !collapsed && (
+            <p className="px-2.5 py-2 text-xs text-[var(--sb-fg-muted)]">No matches</p>
+          )}
           {visibleGroups.map((group) => (
             <div key={group.label} className="mb-5">
               {!collapsed && (

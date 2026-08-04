@@ -3,18 +3,21 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePlatformRole } from '../../common/decorators/require-platform-role.decorator';
+import { RequirePlatformModule } from '../../common/decorators/require-platform-module.decorator';
 import { CurrentUser, JwtUserPayload } from '../../common/decorators/current-user.decorator';
 import { PlatformTicketsService } from './platform-tickets.service';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { ResolveEscalationDto } from './dto/resolve-escalation.dto';
 import { AddEscalationCommentDto } from './dto/add-escalation-comment.dto';
 
-// Tickets are Super Admin + Sub-Admin only — Assistant Super Admin is scoped to finance/school
-// creation and explicitly excluded here, same as it's excluded from Security/Backups/Admins.
+// Tickets are Super Admin + Sub-Admin only by default — Assistant Super Admin is scoped to
+// finance/school creation and excluded here, same as it's excluded from Security/Backups/Admins,
+// unless individually granted the TICKETS module (see PlatformAdminModuleGrant/PermissionsGuard).
 @ApiTags('platform/tickets')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @RequirePlatformRole(['SUPER_ADMIN', 'SUB_ADMIN'])
+@RequirePlatformModule('TICKETS')
 @Controller('platform/tickets')
 export class PlatformTicketsController {
   constructor(private readonly ticketsService: PlatformTicketsService) {}

@@ -10,6 +10,9 @@ export interface SessionUser {
   // Platform-realm only: 'SUPER_ADMIN' | 'SUB_ADMIN' — see super-admin-sidebar.tsx for how this
   // shapes nav visibility.
   role?: string;
+  // Platform-realm only: per-admin module overrides (see PlatformAdminModuleGrant) — also shapes
+  // nav visibility in super-admin-sidebar.tsx, on top of what `role` alone would show.
+  moduleGrants?: string[];
 }
 
 const ACCESS_TOKEN_KEY = 'erp.accessToken';

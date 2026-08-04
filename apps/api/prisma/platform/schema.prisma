@@ -287,6 +287,7 @@ model PlatformUser {
   ticketsAssigned        PlatformTicketEscalation[]
   financeEntries         PlatformFinanceEntry[]
   emailsSent             PlatformEmailMessage[]
+  moduleGrants           PlatformAdminModuleGrant[]
 }
 
 model PlatformRefreshToken {
@@ -511,9 +512,65 @@ model FailedLoginAttempt {
   email      String
   tenantSlug String?
   ipAddress  String?
+  // Best-effort IP geolocation (see geo-ip.util.ts) — null when the lookup fails/times out or the
+  // IP is private/unresolvable; a failed lookup must never block the login response itself.
+  city       String?
+  country    String?
   createdAt  DateTime @default(now())
 
   @@index([email, tenantSlug, createdAt])
+}
+
+// One row per successful login, either realm — the counterpart to FailedLoginAttempt. userId is a
+// plain string (not a relation) since a tenant-realm login's user lives in that school's own schema,
+// not this one — same cross-schema-reference-as-string precedent as PlatformTicketEscalation.ticketId.
+// isNewDevice is computed at write time by checking whether this exact (userId, ipAddress, userAgent)
+// combination has ever been seen before for this user — a coarse but zero-extra-infrastructure
+// device fingerprint (no cookies/client-side ids needed).
+model LoginEvent {
+  id          String   @id @default(uuid())
+  userId      String
+  email       String
+  realm       String
+  tenantSlug  String?
+  ipAddress   String?
+  userAgent   String?
+  city        String?
+  country     String?
+  isNewDevice Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// A Super Admin's per-admin override granting a specific Sub-Admin/Assistant Super Admin access to
+// one otherwise-tier-restricted platform module (e.g. TICKETS, SECURITY) without changing their
+// overall role tier — see PermissionsGuard, which ORs this against the tier-based check. `module` is
+// a plain string (not an enum) so new grantable modules don't need a migration — see
+// platform-modules.ts for the fixed, code-enforced set of valid keys.
+model PlatformAdminModuleGrant {
+  id        String       @id @default(uuid())
+  userId    String
+  user      PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module    String
+  grantedAt DateTime     @default(now())
+
+  @@unique([userId, module])
+}
+
+// Every outbound SMS attempt, both success and failure, across the whole system (platform notices
+// AND tenant-side sends — see AdvantaSmsProvider.send(), the single shared provider both paths go
+// through) — answers "how many SMS did we send today, how many failed" without needing per-tenant
+// fan-out. Not linked to a specific tenant/user; `to` alone is enough for the aggregate counts this
+// is built for.
+model PlatformSmsLog {
+  id                String   @id @default(uuid())
+  to                String
+  success           Boolean
+  providerMessageId String?
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 enum SecurityAlertSeverity {
