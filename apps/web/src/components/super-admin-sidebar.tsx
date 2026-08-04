@@ -19,6 +19,7 @@ import {
   MessageSquareHeart,
   Activity,
   Mail,
+  Radio,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,7 @@ const SUPER_ADMIN_NAV = [
   { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
   { href: '/dashboard/finance', label: 'Finance', icon: Landmark },
   { href: '/dashboard/feedback', label: 'Feedback', icon: MessageSquareHeart },
+  { href: '/dashboard/presence', label: "Who's Online", icon: Radio },
   { href: '/dashboard/system-health', label: 'System Health', icon: Activity },
   { href: '/dashboard/settings', label: 'Platform Settings', icon: Wallet },
   { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
@@ -52,6 +54,7 @@ const ASSISTANT_SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
   { href: '/dashboard/inbox', label: 'Inbox', icon: Mail },
   { href: '/dashboard/finance', label: 'Finance', icon: Landmark },
+  { href: '/dashboard/presence', label: "Who's Online", icon: Radio },
   { href: '/dashboard/system-health', label: 'System Health', icon: Activity },
 ];
 

@@ -3,9 +3,11 @@
 import { SuperAdminSidebar } from '@/components/super-admin-sidebar';
 import { DashboardTopbar } from '@/components/dashboard-topbar';
 import { useSession } from '@/lib/use-session';
+import { usePresenceOnline } from '@/lib/presence-socket';
 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useSession('platform');
+  usePresenceOnline();
 
   if (!user) return null;
 

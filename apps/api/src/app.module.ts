@@ -53,6 +53,7 @@ import { PlatformFinanceModule } from './platform/finance/finance.module';
 import { PricingTiersModule } from './platform/pricing-tiers/pricing-tiers.module';
 import { SystemHealthModule } from './platform/system-health/system-health.module';
 import { MailboxesModule } from './platform/mailboxes/mailboxes.module';
+import { PresenceModule } from './platform/presence/presence.module';
 import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
 
 @Module({
@@ -119,6 +120,7 @@ import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
     PricingTiersModule,
     SystemHealthModule,
     MailboxesModule,
+    PresenceModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

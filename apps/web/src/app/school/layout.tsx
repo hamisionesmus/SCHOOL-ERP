@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/sidebar';
 import { NotificationBell } from '@/components/notification-bell';
 import { useSession } from '@/lib/use-session';
 import { apiFetch } from '@/lib/api';
+import { usePresenceOnline } from '@/lib/presence-socket';
 
 interface SchoolBranding {
   name: string;
@@ -23,6 +24,7 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
   const { user, logout } = useSession('tenant');
   const router = useRouter();
   const pathname = usePathname();
+  usePresenceOnline();
 
   const brandingQuery = useQuery({
     queryKey: ['branding'],
