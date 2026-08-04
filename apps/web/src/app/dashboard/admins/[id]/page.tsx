@@ -16,7 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
 
-const SCHOOLS_CREATED_PAGE_SIZE_OPTIONS = [10, 30, 50];
+const SCHOOLS_CREATED_PAGE_SIZE_OPTIONS = [5, 10, 30, 50];
 
 // Mirrors apps/api/src/platform/admins/platform-modules.ts — kept in sync manually (no shared
 // package between the two apps yet, same precedent as KENYA_COUNTIES).
@@ -62,7 +62,7 @@ export default function AdminDetailPage() {
 
   const isDelegatedAdmin = admin && admin.role !== 'SUPER_ADMIN';
   // Called unconditionally (before the loading early-return below) per Rules of Hooks.
-  const schoolsCreated = useTableControls(admin?.schoolsCreated ?? [], { pageSize: 10 });
+  const schoolsCreated = useTableControls(admin?.schoolsCreated ?? [], { pageSize: 5 });
 
   if (isLoading || !admin) {
     return (

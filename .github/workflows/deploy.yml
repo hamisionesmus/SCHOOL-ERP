@@ -53,5 +53,5 @@ jobs:
           script: |
             cd ~/school-erp
             git pull origin main
-            docker compose -f docker-compose.prod.yml up -d --build
+            docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 180
             docker image prune -f

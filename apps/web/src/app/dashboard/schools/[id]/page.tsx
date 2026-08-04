@@ -23,7 +23,7 @@ import { useTabQueryState } from '@/hooks/use-tab-query-state';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { Pagination } from '@/components/ui/pagination';
 
-const SUBLIST_PAGE_SIZE_OPTIONS = [10, 30, 50];
+const SUBLIST_PAGE_SIZE_OPTIONS = [5, 10, 30, 50];
 
 interface Tenant {
   id: string;
@@ -537,7 +537,7 @@ function FeedbackCard({ tenantId }: { tenantId: string }) {
     queryFn: () => apiFetch<TenantFeedbackRow[]>(`/platform/tenants/${tenantId}/feedback`),
   });
   // Called unconditionally (before the empty-data early-return below) per Rules of Hooks.
-  const feedback = useTableControls(data ?? [], { pageSize: 10 });
+  const feedback = useTableControls(data ?? [], { pageSize: 5 });
 
   if (!data || data.length === 0) return null;
 
@@ -585,7 +585,7 @@ function BillingTab({ tenantId }: { tenantId: string }) {
     queryFn: () => apiFetch<Invoice[]>(`/platform/tenants/${tenantId}/invoices`),
     refetchInterval: (query) => (query.state.data?.some((inv) => inv.status === 'PENDING') ? 5_000 : 30_000),
   });
-  const invoicesPaged = useTableControls(invoices ?? [], { pageSize: 10 });
+  const invoicesPaged = useTableControls(invoices ?? [], { pageSize: 5 });
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['tenant-invoices', tenantId] });
@@ -802,7 +802,7 @@ function MpesaAttemptsCard({ tenantId }: { tenantId: string }) {
     queryFn: () => apiFetch<MpesaAttempt[]>(`/platform/tenants/${tenantId}/mpesa-attempts`),
     refetchInterval: (query) => (query.state.data?.some((a) => a.status === 'PENDING') ? 5_000 : 30_000),
   });
-  const attemptsPaged = useTableControls(attempts ?? [], { pageSize: 10 });
+  const attemptsPaged = useTableControls(attempts ?? [], { pageSize: 5 });
 
   return (
     <Card>
@@ -866,7 +866,7 @@ function PaymentProofsCard({ tenantId }: { tenantId: string }) {
     queryFn: () => apiFetch<PaymentProof[]>(`/platform/tenants/${tenantId}/payment-proofs`),
     refetchInterval: 15_000,
   });
-  const proofsPaged = useTableControls(proofs ?? [], { pageSize: 10 });
+  const proofsPaged = useTableControls(proofs ?? [], { pageSize: 5 });
 
   const review = useMutation({
     mutationFn: () =>
@@ -996,7 +996,7 @@ function AuditLogTab({ tenantId }: { tenantId: string }) {
     queryFn: () => apiFetch<AuditLogAccessRequest[]>(`/platform/tenants/${tenantId}/audit-log-access/requests`),
     refetchInterval: 30_000,
   });
-  const requestsPaged = useTableControls(requests ?? [], { pageSize: 10 });
+  const requestsPaged = useTableControls(requests ?? [], { pageSize: 5 });
 
   const latest = requests?.[0];
   const ready = latest?.availableAt && new Date(latest.availableAt) <= new Date();

@@ -12,7 +12,7 @@ import { onPresenceSnapshot, PresenceSnapshot, PresenceEntry } from '@/lib/prese
 import { Pagination } from '@/components/ui/pagination';
 import { useTableControls } from '@/hooks/use-table-controls';
 
-const HISTORY_PAGE_SIZE_OPTIONS = [10, 30, 50];
+const HISTORY_PAGE_SIZE_OPTIONS = [5, 10, 30, 50];
 
 interface SessionHistoryEntry {
   id: string;
@@ -129,7 +129,7 @@ export default function PresencePage() {
   });
 
   // Server already returns these sorted newest-first — no client sort key needed, just paginate.
-  const history = useTableControls(historyQuery.data ?? [], { pageSize: 10 });
+  const history = useTableControls(historyQuery.data ?? [], { pageSize: 5 });
 
   const data = snapshot ?? initial;
 

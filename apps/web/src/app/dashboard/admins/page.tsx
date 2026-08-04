@@ -16,7 +16,7 @@ import { useDraftState } from '@/hooks/use-draft-state';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { Pagination } from '@/components/ui/pagination';
 
-const ADMINS_PAGE_SIZE_OPTIONS = [10, 30, 50];
+const ADMINS_PAGE_SIZE_OPTIONS = [5, 10, 30, 50];
 
 interface Admin {
   id: string;
@@ -27,6 +27,7 @@ interface Admin {
   gender: 'MALE' | 'FEMALE' | 'OTHER' | null;
   deletedAt: string | null;
   createdAt: string;
+  schoolsCreatedCount: number;
 }
 
 interface AdminsAnalytics {
@@ -58,7 +59,7 @@ export default function AdminsPage() {
     queryFn: () => apiFetch<Admin[]>(`/platform/admins${search ? `?q=${encodeURIComponent(search)}` : ''}`),
   });
 
-  const admins = useTableControls(adminsQuery.data ?? [], { pageSize: 10 });
+  const admins = useTableControls(adminsQuery.data ?? [], { pageSize: 5 });
 
   const analyticsQuery = useQuery({
     queryKey: ['platform-admins-analytics'],
@@ -129,6 +130,7 @@ export default function AdminsPage() {
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Schools</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -146,6 +148,7 @@ export default function AdminsPage() {
                   <td className="px-4 py-3">
                     <Badge status={admin.role}>{ROLE_LABELS[admin.role]}</Badge>
                   </td>
+                  <td className="px-4 py-3 text-slate-600">{admin.schoolsCreatedCount}</td>
                   <td className="px-4 py-3">
                     <Badge status={admin.deletedAt ? 'SUSPENDED' : 'ACTIVE'} />
                   </td>

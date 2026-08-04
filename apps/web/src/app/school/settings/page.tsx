@@ -18,7 +18,7 @@ import { useTableControls } from '@/hooks/use-table-controls';
 import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
 
-const INVOICES_PAGE_SIZE_OPTIONS = [10, 30, 50];
+const INVOICES_PAGE_SIZE_OPTIONS = [5, 10, 30, 50];
 
 const TABS = [
   { key: 'identity', label: 'Identity' },
@@ -560,7 +560,7 @@ function BillingCard({ settings }: { settings: SchoolSettings }) {
     queryKey: ['billing-invoices'],
     queryFn: () => apiFetch<Invoice[]>('/settings/billing'),
   });
-  const invoicesPaged = useTableControls(invoices ?? [], { pageSize: 10 });
+  const invoicesPaged = useTableControls(invoices ?? [], { pageSize: 5 });
 
   const days = settings.currentPeriodEnd ? daysUntil(settings.currentPeriodEnd) : null;
   const tone = days !== null ? countdownTone(days) : 'upcoming';

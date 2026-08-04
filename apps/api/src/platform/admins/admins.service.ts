@@ -37,7 +37,7 @@ export class PlatformAdminsService {
   ) {}
 
   async list(q?: string) {
-    return this.platformPrisma.platformUser.findMany({
+    const rows = await this.platformPrisma.platformUser.findMany({
       where: q
         ? {
             OR: [
@@ -46,9 +46,11 @@ export class PlatformAdminsService {
             ],
           }
         : undefined,
-      select: ADMIN_SELECT,
+      select: { ...ADMIN_SELECT, _count: { select: { schoolsCreated: { where: { deletedAt: null } } } } },
       orderBy: { createdAt: 'asc' },
     });
+    // Flatten the Prisma _count wrapper into a plain field — simpler for the frontend to consume.
+    return rows.map(({ _count, ...rest }) => ({ ...rest, schoolsCreatedCount: _count.schoolsCreated }));
   }
 
   /** Full detail view for one admin — everything on ADMIN_SELECT plus activity assembled from

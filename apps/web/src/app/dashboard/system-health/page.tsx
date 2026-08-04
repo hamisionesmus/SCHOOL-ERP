@@ -13,7 +13,7 @@ import { useTableControls } from '@/hooks/use-table-controls';
 import { Pagination } from '@/components/ui/pagination';
 import Link from 'next/link';
 
-const STORAGE_PAGE_SIZE_OPTIONS = [10, 30, 50];
+const STORAGE_PAGE_SIZE_OPTIONS = [5, 10, 30, 50];
 
 interface SystemHealth {
   cpu: { cores: number; loadAvg1m: number };
@@ -69,7 +69,7 @@ export default function SystemHealthPage() {
     refetchInterval: 30_000,
   });
   // Server already returns these ranked by usage descending — no client sort key needed.
-  const storage = useTableControls(storageBySchool ?? [], { pageSize: 10 });
+  const storage = useTableControls(storageBySchool ?? [], { pageSize: 5 });
 
   const { data: sms } = useQuery({
     queryKey: ['system-health-sms'],

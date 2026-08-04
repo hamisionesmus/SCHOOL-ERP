@@ -186,7 +186,9 @@ export function renderPlatformInvoicePdf(input: PlatformInvoicePdfInput): Promis
       ry += 16;
     }
     if (!input.payment.paybillNumber && !input.payment.bankName) {
-      doc.text('Contact billing@hamzonetechnologies.com for payment instructions.', rx, ry, { width: rw, align: 'right' });
+      doc.text('Contact billing@hamzonetechnologies.com for payment', rx, ry, { width: rw, align: 'right' });
+      ry += 11;
+      doc.text('instructions.', rx, ry, { width: rw, align: 'right' });
       ry += 16;
     }
 
@@ -197,6 +199,8 @@ export function renderPlatformInvoicePdf(input: PlatformInvoicePdfInput): Promis
       .text('M-Pesa payments confirm within minutes; bank', rx, ry, { width: rw, align: 'right' });
     ry += 10;
     doc.text('transfers may take a business day.', rx, ry, { width: rw, align: 'right' });
+    ry += 14;
+    doc.text('+254 711 562526 · hamzonetechnologies.com', rx, ry, { width: rw, align: 'right' });
     ry += 14;
 
     // ---- Grey banner: invoice number + dates ----

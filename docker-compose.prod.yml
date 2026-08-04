@@ -93,6 +93,17 @@ services:
         condition: service_healthy
       postfix:
         condition: service_started
+    # Nest bootstrap (module init, Prisma connect) takes a few seconds after the process starts —
+    # `/api/docs` is a cheap, always-registered, always-200 route once the app is actually serving
+    # requests. start_period gives it room on a slow cold boot without failing the check early; once
+    # healthy, `web`/`caddy` below (and `docker compose up --wait` in the deploy workflow) can tell
+    # the difference between "container started" and "actually ready to take traffic."
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/docs"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   web:
     build:
@@ -102,7 +113,8 @@ services:
     restart: unless-stopped
     mem_limit: 384m
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   caddy:
     image: caddy:2-alpine
@@ -116,7 +128,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - api
+      api:
+        condition: service_healthy
       - web
 
 volumes:

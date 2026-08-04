@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { Pagination } from '@/components/ui/pagination';
 
-const THREADS_PAGE_SIZE_OPTIONS = [10, 20, 30];
+const THREADS_PAGE_SIZE_OPTIONS = [5, 10, 20, 30];
 
 type MailboxKey = 'INFO' | 'PARTNER' | 'BILLING' | 'PERSONAL';
 type TabKey = MailboxKey | 'MY_MESSAGES';
@@ -102,7 +102,7 @@ export default function InboxPage() {
   const activeMailbox = mailboxes.find((m) => m.key === activeTab);
   const threadsForTab = (threadsQuery.data ?? []).filter((t) => t.mailbox.key === activeTab);
   // Server already returns these newest-first — no client sort key needed, just paginate.
-  const threadsPaged = useTableControls(threadsForTab, { pageSize: 10 });
+  const threadsPaged = useTableControls(threadsForTab, { pageSize: 5 });
 
   const pollNow = useMutation({
     mutationFn: () => apiFetch(`/platform/mailboxes/${activeTab}/poll-now`, { method: 'POST' }),
@@ -412,7 +412,7 @@ function MyMessagesPanel({
   }
 
   const threads = threadsQuery.data ?? [];
-  const threadsPaged = useTableControls(threads, { pageSize: 10 });
+  const threadsPaged = useTableControls(threads, { pageSize: 5 });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
