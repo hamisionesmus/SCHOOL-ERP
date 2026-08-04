@@ -130,7 +130,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      - web
+      web:
+        condition: service_started
 
 volumes:
   postgres_data:
