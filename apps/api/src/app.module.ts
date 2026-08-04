@@ -52,6 +52,7 @@ import { PlatformTicketsModule } from './platform/tickets/platform-tickets.modul
 import { PlatformFinanceModule } from './platform/finance/finance.module';
 import { PricingTiersModule } from './platform/pricing-tiers/pricing-tiers.module';
 import { SystemHealthModule } from './platform/system-health/system-health.module';
+import { MailboxesModule } from './platform/mailboxes/mailboxes.module';
 import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
 
 @Module({
@@ -117,6 +118,7 @@ import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
     PlatformFinanceModule,
     PricingTiersModule,
     SystemHealthModule,
+    MailboxesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

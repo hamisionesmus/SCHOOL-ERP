@@ -18,6 +18,7 @@ import {
   LifeBuoy,
   MessageSquareHeart,
   Activity,
+  Mail,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,7 @@ import { apiFetch, API_ORIGIN } from '@/lib/api';
 const SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
   { href: '/dashboard/admins', label: 'Admins', icon: Users },
+  { href: '/dashboard/inbox', label: 'Inbox', icon: Mail },
   { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
   { href: '/dashboard/finance', label: 'Finance', icon: Landmark },
   { href: '/dashboard/feedback', label: 'Feedback', icon: MessageSquareHeart },
@@ -48,6 +50,7 @@ const SUB_ADMIN_NAV = [
 // docs/RBAC.md.
 const ASSISTANT_SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
+  { href: '/dashboard/inbox', label: 'Inbox', icon: Mail },
   { href: '/dashboard/finance', label: 'Finance', icon: Landmark },
   { href: '/dashboard/system-health', label: 'System Health', icon: Activity },
 ];

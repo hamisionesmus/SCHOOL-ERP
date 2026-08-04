@@ -8,7 +8,7 @@ import { UpdatePlatformSettingsDto } from '../platform-settings/dto/update-platf
 
 const CODE_TTL_MS = 15 * 60 * 1000;
 
-export type SettingsChangeScope = 'SETTINGS' | 'TEMPLATES' | 'PROFILE' | 'ADMINS' | 'PRICING_TIERS';
+export type SettingsChangeScope = 'SETTINGS' | 'TEMPLATES' | 'PROFILE' | 'ADMINS' | 'PRICING_TIERS' | 'MAILBOXES';
 
 const PAYMENT_FIELDS = ['bankName', 'bankAccountName', 'bankAccountNumber', 'paybillNumber', 'paybillAccountName', 'stkEnabled', 'bankTransferEnabled', 'paybillEnabled'];
 const NOTIFICATION_FIELDS = ['smsEnabled', 'emailEnabled', 'demoReminderDaysBefore', 'renewalReminderDaysBefore'];
@@ -51,6 +51,10 @@ function describeOperation(scope: SettingsChangeScope, changes: object): string 
     }
     case 'PRICING_TIERS':
       return 'update the activation-fee pricing tiers';
+    case 'MAILBOXES': {
+      const key = (changes as { key?: string }).key;
+      return key ? `update the ${key.toLowerCase()} mailbox's credentials` : 'update a mailbox\'s credentials';
+    }
     default:
       return 'change platform settings';
   }

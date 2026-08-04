@@ -21,6 +21,7 @@ const TABS = [
   { key: 'api', label: 'API & Payment Config' },
   { key: 'branding', label: 'Branding' },
   { key: 'pricing', label: 'Pricing Tiers' },
+  { key: 'mailboxes', label: 'Mailboxes' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -68,6 +69,22 @@ interface PricingTier {
   minHeadcount: number;
   maxHeadcount: number | null;
   priceKes: string;
+}
+
+interface Mailbox {
+  key: 'INFO' | 'PARTNER' | 'BILLING' | 'PERSONAL';
+  address: string;
+  displayName: string;
+  smtpHost: string | null;
+  smtpPort: number | null;
+  smtpSecure: boolean;
+  imapHost: string | null;
+  imapPort: number | null;
+  imapSecure: boolean;
+  username: string | null;
+  passwordStatus: SecretField;
+  configured: boolean;
+  lastPolledAt: string | null;
 }
 
 interface EffectiveTemplate {
@@ -132,6 +149,10 @@ export default function PlatformSettingsPage() {
     queryKey: ['pricing-tiers'],
     queryFn: () => apiFetch<PricingTier[]>('/platform/pricing-tiers'),
   });
+  const mailboxesQuery = useQuery({
+    queryKey: ['platform-mailboxes'],
+    queryFn: () => apiFetch<Mailbox[]>('/platform/mailboxes'),
+  });
 
   const confirmChange = useMutation({
     mutationFn: () =>
@@ -143,6 +164,7 @@ export default function PlatformSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['platform-settings'] });
       queryClient.invalidateQueries({ queryKey: ['platform-message-templates'] });
       queryClient.invalidateQueries({ queryKey: ['pricing-tiers'] });
+      queryClient.invalidateQueries({ queryKey: ['platform-mailboxes'] });
       setDataVersion((v) => v + 1);
       notifySuccess(`${pending!.label} saved`);
       setPending(null);
@@ -196,6 +218,9 @@ export default function PlatformSettingsPage() {
       )}
       {tab === 'pricing' && (
         <PricingTiersTab key={dataVersion} tiers={pricingTiersQuery.data} loading={pricingTiersQuery.isLoading} onRequested={onRequested} />
+      )}
+      {tab === 'mailboxes' && (
+        <MailboxesTab key={dataVersion} mailboxes={mailboxesQuery.data} loading={mailboxesQuery.isLoading} onRequested={onRequested} />
       )}
       {tab === 'templates' && (
         <TemplatesTab
@@ -1272,6 +1297,143 @@ function TemplateRow({
           </div>
         </CardContent>
       )}
+    </Card>
+  );
+}
+
+function MailboxesTab({
+  mailboxes,
+  loading,
+  onRequested,
+}: {
+  mailboxes?: Mailbox[];
+  loading: boolean;
+  onRequested: OnRequested;
+}) {
+  if (loading || !mailboxes) return <Skeleton className="h-64 w-full" />;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-slate-500">
+        Real, reply-able mailboxes — compose from any of these in the{' '}
+        <a href="/dashboard/inbox" className="font-medium text-slate-700 underline">Inbox</a>, and any
+        reply lands back there automatically (checked every 2 minutes). Each needs its own real
+        SMTP/IMAP login — most hosting providers (cPanel, etc.) show these under the mailbox&apos;s
+        webmail settings.
+      </p>
+      {mailboxes.map((mailbox) => (
+        <MailboxCard key={mailbox.key} mailbox={mailbox} onRequested={onRequested} />
+      ))}
+    </div>
+  );
+}
+
+function MailboxCard({ mailbox, onRequested }: { mailbox: Mailbox; onRequested: OnRequested }) {
+  const [form, setForm] = useState({
+    address: mailbox.address,
+    displayName: mailbox.displayName,
+    smtpHost: mailbox.smtpHost ?? '',
+    smtpPort: mailbox.smtpPort ? String(mailbox.smtpPort) : '',
+    smtpSecure: mailbox.smtpSecure,
+    imapHost: mailbox.imapHost ?? '',
+    imapPort: mailbox.imapPort ? String(mailbox.imapPort) : '',
+    imapSecure: mailbox.imapSecure,
+    username: mailbox.username ?? '',
+  });
+  const [password, setPassword] = useState('');
+
+  const requestSave = useMutation({
+    mutationFn: () => {
+      const payload: Record<string, unknown> = {
+        key: mailbox.key,
+        address: form.address,
+        displayName: form.displayName,
+        smtpHost: form.smtpHost,
+        smtpPort: form.smtpPort ? Number(form.smtpPort) : undefined,
+        smtpSecure: form.smtpSecure,
+        imapHost: form.imapHost,
+        imapPort: form.imapPort ? Number(form.imapPort) : undefined,
+        imapSecure: form.imapSecure,
+        username: form.username,
+      };
+      if (password) payload.password = password;
+      return apiFetch<OtpRequestResult>('/platform/mailboxes/request-update-credentials', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+    onSuccess: (result) => {
+      setPassword('');
+      onRequested(result, '/platform/mailboxes/confirm-update-credentials', `${mailbox.displayName} mailbox`);
+    },
+    onError: (err) => notifyError(err, 'Failed to request mailbox change'),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          {mailbox.displayName}
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-xs font-medium',
+              mailbox.configured ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500',
+            )}
+          >
+            {mailbox.configured ? 'Configured' : 'Not configured'}
+          </span>
+        </CardTitle>
+        <CardDescription>
+          {mailbox.key === 'BILLING'
+            ? 'Also used to send automatic invoice/payment emails — visible to Assistant Super Admin too.'
+            : 'Super Admin only.'}
+          {mailbox.lastPolledAt && ` Last checked ${new Date(mailbox.lastPolledAt).toLocaleString()}.`}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-slate-700">Address</label>
+          <Input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-slate-700">Display name</label>
+          <Input value={form.displayName} onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-slate-700">Username</label>
+          <Input value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} />
+        </div>
+        <SecretInput label="Password" field={mailbox.passwordStatus} value={password} onChange={setPassword} />
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-slate-700">SMTP host</label>
+          <Input value={form.smtpHost} onChange={(e) => setForm((f) => ({ ...f, smtpHost: e.target.value }))} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-slate-700">SMTP port</label>
+          <Input
+            placeholder="587"
+            value={form.smtpPort}
+            onChange={(e) => setForm((f) => ({ ...f, smtpPort: e.target.value }))}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-slate-700">IMAP host</label>
+          <Input value={form.imapHost} onChange={(e) => setForm((f) => ({ ...f, imapHost: e.target.value }))} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-slate-700">IMAP port</label>
+          <Input
+            placeholder="993"
+            value={form.imapPort}
+            onChange={(e) => setForm((f) => ({ ...f, imapPort: e.target.value }))}
+          />
+        </div>
+      </CardContent>
+      <CardContent className="pt-0">
+        <Button onClick={() => requestSave.mutate()} disabled={requestSave.isPending}>
+          {requestSave.isPending ? 'Sending code...' : `Save ${mailbox.displayName}`}
+        </Button>
+      </CardContent>
     </Card>
   );
 }

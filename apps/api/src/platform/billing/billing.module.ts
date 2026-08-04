@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
-import { PlatformEmailModule } from '../email/platform-email.module';
+import { MailboxesModule } from '../mailboxes/mailboxes.module';
 
 @Module({
-  imports: [PlatformEmailModule],
+  imports: [MailboxesModule],
   controllers: [BillingController],
   providers: [BillingService],
 })

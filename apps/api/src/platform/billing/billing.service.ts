@@ -1,8 +1,8 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
 import { TenantPrismaService } from '../../common/prisma/tenant-prisma.service';
-import { EMAIL_PROVIDER, EmailProvider } from '../email/email-provider.interface';
+import { MailboxesService } from '../mailboxes/mailboxes.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { generateInvoiceNumber, generatePlatformReceiptNumber } from './invoice-number.util';
@@ -13,10 +13,12 @@ import { findSchoolAdmin } from '../../common/tenant-admin.util';
 
 @Injectable()
 export class BillingService {
+  private readonly logger = new Logger('Billing');
+
   constructor(
     private readonly platformPrisma: PlatformPrismaService,
     private readonly tenantPrisma: TenantPrismaService,
-    @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
+    private readonly mailboxes: MailboxesService,
   ) {}
 
   private async findTenant(tenantId: string) {
@@ -60,11 +62,18 @@ export class BillingService {
 
     const admin = await this.getSchoolAdmin(tenant.schemaName);
     if (admin?.email) {
-      await this.emailProvider.send(
-        admin.email,
-        `Invoice ${invoiceNumber} — ${tenant.name}`,
-        `A new ${dto.billingCycle.toLowerCase()} subscription invoice of KES ${dto.amount.toLocaleString()} has been issued for ${tenant.name}, due ${dueDate.toLocaleDateString()}. Sign in to the School Settings > Billing page to view and download it.`,
-      );
+      // Sent from the real billing@ mailbox (not a no-reply relay) so the school can actually reply
+      // with questions — and so the exchange shows up in the Billing inbox. Best-effort: a
+      // misconfigured/unconfigured billing mailbox must never block invoice creation itself.
+      try {
+        await this.mailboxes.sendMessage('BILLING', {
+          to: admin.email,
+          subject: `Invoice ${invoiceNumber} — ${tenant.name}`,
+          body: `A new ${dto.billingCycle.toLowerCase()} subscription invoice of KES ${dto.amount.toLocaleString()} has been issued for ${tenant.name}, due ${dueDate.toLocaleDateString()}. Sign in to the School Settings > Billing page to view and download it.`,
+        });
+      } catch (err) {
+        this.logger.error(`Failed to send invoice email for ${tenant.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
     return invoice;
@@ -117,11 +126,15 @@ export class BillingService {
 
       const admin = await this.getSchoolAdmin(invoice.tenant.schemaName);
       if (admin?.email) {
-        await this.emailProvider.send(
-          admin.email,
-          `Payment received — receipt ${receiptNumber}`,
-          `We've received your payment of KES ${dto.amount.toLocaleString()} for invoice ${invoice.invoiceNumber}. Your subscription is now active through ${invoice.periodEnd.toLocaleDateString()}. Receipt ${receiptNumber}.`,
-        );
+        try {
+          await this.mailboxes.sendMessage('BILLING', {
+            to: admin.email,
+            subject: `Payment received — receipt ${receiptNumber}`,
+            body: `We've received your payment of KES ${dto.amount.toLocaleString()} for invoice ${invoice.invoiceNumber}. Your subscription is now active through ${invoice.periodEnd.toLocaleDateString()}. Receipt ${receiptNumber}.`,
+          });
+        } catch (err) {
+          this.logger.error(`Failed to send payment-received email for invoice ${invoice.invoiceNumber}: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     }
 

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
 import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
+import { MailboxesService } from '../mailboxes/mailboxes.service';
+import { accessibleMailboxKeys } from '../mailboxes/mailbox-keys';
 import { JwtUserPayload } from '../../common/decorators/current-user.decorator';
 
 export interface NotificationItem {
@@ -25,6 +27,7 @@ export class PlatformNotificationsService {
   constructor(
     private readonly platformPrisma: PlatformPrismaService,
     private readonly platformSettings: PlatformSettingsService,
+    private readonly mailboxes: MailboxesService,
   ) {}
 
   async list(user: JwtUserPayload): Promise<NotificationItem[]> {
@@ -111,6 +114,19 @@ export class PlatformNotificationsService {
             });
           }
         }),
+    );
+
+    tasks.push(
+      this.mailboxes.unreadCount(accessibleMailboxKeys(user.role)).then((n) => {
+        if (n > 0) {
+          items.push({
+            id: 'inbox-unread',
+            message: `${n} unread email${n === 1 ? '' : 's'} in your inbox`,
+            href: '/dashboard/inbox',
+            tone: 'info',
+          });
+        }
+      }),
     );
 
     await Promise.all(tasks);

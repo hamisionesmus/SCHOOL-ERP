@@ -282,6 +282,7 @@ model PlatformUser {
   notificationDismissals PlatformNotificationDismissal[]
   ticketsAssigned        PlatformTicketEscalation[]
   financeEntries         PlatformFinanceEntry[]
+  emailsSent             PlatformEmailMessage[]
 }
 
 model PlatformRefreshToken {
@@ -633,4 +634,74 @@ model PricingTier {
   storageLimitMb Int?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+enum EmailDirection {
+  IN
+  OUT
+}
+
+// One row per named identity (info@/partner@/billing@/personal@hamzonetechnologies.com) — a fixed,
+// small set enforced at the application layer via `key`, not a DB enum, so a fifth identity could be
+// added later without a migration. Rows are lazily upserted-by-key on first access (same singleton-
+// row precedent as PlatformSettings), not migration-seeded. `password` and the other credential
+// fields are nullable — unset until a Super Admin configures real IMAP/SMTP creds via the OTP-gated
+// Mailboxes settings tab; quietly does nothing until then, same graceful-degradation precedent as
+// every other credential this platform stores (Mpesa/Resend/Advanta).
+model PlatformMailbox {
+  id           String   @id @default(uuid())
+  key          String   @unique
+  address      String
+  displayName  String
+  smtpHost     String?
+  smtpPort     Int?
+  smtpSecure   Boolean  @default(true)
+  imapHost     String?
+  imapPort     Int?
+  imapSecure   Boolean  @default(true)
+  username     String?
+  password     String?
+  lastPolledAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  threads      PlatformEmailThread[]
+}
+
+model PlatformEmailThread {
+  id               String   @id @default(uuid())
+  mailboxId        String
+  mailbox          PlatformMailbox @relation(fields: [mailboxId], references: [id])
+  subject          String
+  participantEmail String
+  participantName  String?
+  lastMessageAt    DateTime
+  createdAt        DateTime @default(now())
+
+  messages         PlatformEmailMessage[]
+
+  @@index([mailboxId, lastMessageAt])
+}
+
+model PlatformEmailMessage {
+  id           String   @id @default(uuid())
+  threadId     String
+  thread       PlatformEmailThread @relation(fields: [threadId], references: [id])
+  direction    EmailDirection
+  fromAddress  String
+  toAddress    String
+  subject      String
+  bodyText     String
+  bodyHtml     String?
+  // RFC822 Message-ID header — dedupes re-polled IMAP messages and, via inReplyTo, builds proper
+  // reply threading so the recipient's own mail client shows this as one conversation.
+  messageId    String?  @unique
+  inReplyTo    String?
+  // Only meaningful for direction: IN — an OUT message is implicitly "read" (the sender wrote it).
+  read         Boolean  @default(false)
+  sentByUserId String?
+  sentBy       PlatformUser? @relation(fields: [sentByUserId], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([threadId, createdAt])
 }
