@@ -350,6 +350,7 @@ model PlatformUser {
   jobApplicationsHired        HamzoneJobApplication[] @relation("JobApplicationHiredUser")
   staffTasksAssigned          HamzoneStaffTask[] @relation("StaffTaskAssignedTo")
   staffTasksCreated           HamzoneStaffTask[] @relation("StaffTaskAssignedBy")
+  externalContactsAdded       HamzoneExternalContact[]
 }
 
 model PlatformRefreshToken {
@@ -1189,18 +1190,39 @@ model HamzoneTrainerReport {
 // specific role tiers, free-form team tags on PlatformUser (frontend/backend/developer/etc — see
 // PlatformUser.teamTags), and specific named invitees.
 model HamzoneMeeting {
-  id               String       @id @default(uuid())
-  title            String
-  description      String?
-  meetingLink      String?
-  scheduledAt      DateTime
-  audienceRoles    String[]
-  audienceTeamTags String[]
-  invitedUserIds   String[]
-  createdByUserId  String
-  createdBy        PlatformUser @relation(fields: [createdByUserId], references: [id])
-  notifiedAt       DateTime?
-  createdAt        DateTime     @default(now())
+  id                 String       @id @default(uuid())
+  title              String
+  description        String?
+  meetingLink        String?
+  scheduledAt        DateTime
+  audienceRoles      String[]
+  audienceTeamTags   String[]
+  invitedUserIds     String[]
+  // People outside the system entirely (a partner, a client, anyone with no PlatformUser account) —
+  // references HamzoneExternalContact rather than inlining name/email/phone here, so editing a
+  // contact's details later doesn't require hunting down every meeting that invited them.
+  externalContactIds String[]     @default([])
+  createdByUserId    String
+  createdBy          PlatformUser @relation(fields: [createdByUserId], references: [id])
+  notifiedAt         DateTime?
+  createdAt          DateTime     @default(now())
+}
+
+// A lightweight address book of people outside the platform — never a real PlatformUser account, no
+// role, no login, just enough contact detail to notify them again without retyping. Shared by both
+// HamzoneMeeting (externalContactIds) and Campaigns (auto-saved from CampaignTargetsDto.external —
+// see CampaignsService.create()) so adding someone once from either place makes them pickable from
+// the other. Always surfaced in the UI as "External contact — not in the system," never conflated
+// with a real account.
+model HamzoneExternalContact {
+  id              String       @id @default(uuid())
+  name            String
+  email           String?
+  phone           String?
+  notes           String?
+  createdByUserId String
+  createdBy       PlatformUser @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime     @default(now())
 }
 
 // A personal outreach/gig-management log — explicitly NOT Hamzone company business (see

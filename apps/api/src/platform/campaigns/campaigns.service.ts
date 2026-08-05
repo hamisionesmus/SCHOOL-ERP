@@ -5,6 +5,7 @@ import { PlatformSettingsService } from '../platform-settings/platform-settings.
 import { EMAIL_PROVIDER, EmailProvider } from '../email/email-provider.interface';
 import { SMS_PROVIDER, SmsProvider } from '../../communications/providers/sms-provider.interface';
 import { buildLogoAttachment, wrapWithLogo } from '../messaging/render-email-html';
+import { ExternalContactsService } from '../external-contacts/external-contacts.service';
 import { CampaignTargetsDto, CreateCampaignDto } from './dto/create-campaign.dto';
 
 interface RecipientDraft {
@@ -30,6 +31,7 @@ export class CampaignsService {
   constructor(
     private readonly platformPrisma: PlatformPrismaService,
     private readonly settings: PlatformSettingsService,
+    private readonly externalContacts: ExternalContactsService,
     @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
     @Inject(SMS_PROVIDER) private readonly smsProvider: SmsProvider,
   ) {}
@@ -138,6 +140,18 @@ export class CampaignsService {
     const recipients = await this.resolveRecipients(dto.targets);
     if (recipients.length === 0) {
       throw new BadRequestException('No recipients matched your selection — pick at least one school, admin, or contact');
+    }
+
+    // Save each freshly-typed external recipient to the shared address book (deduping against an
+    // existing one by email/phone) so they're pickable next time instead of being retyped — see
+    // ExternalContactsService.findOrCreate(). Best-effort: never blocks the send over a save hiccup.
+    for (const ext of dto.targets.external ?? []) {
+      if (!ext.email && !ext.phone) continue;
+      try {
+        await this.externalContacts.findOrCreate({ name: ext.name, email: ext.email, phone: ext.phone }, userId);
+      } catch {
+        // Non-fatal — the campaign still sends to this address either way.
+      }
     }
 
     const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;

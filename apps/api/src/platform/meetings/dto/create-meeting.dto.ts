@@ -37,4 +37,10 @@ export class CreateMeetingDto {
   @IsArray()
   @IsString({ each: true })
   invitedUserIds?: string[];
+
+  @ApiProperty({ required: false, type: [String], description: 'HamzoneExternalContact ids — people outside the system to invite' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  externalContactIds?: string[];
 }

@@ -54,12 +54,19 @@ export class HamzoneMeetingsService {
     if (dto.audienceRoles?.length) where.push({ role: { in: dto.audienceRoles } });
     if (dto.audienceTeamTags?.length) where.push({ teamTags: { hasSome: dto.audienceTeamTags } });
     if (dto.invitedUserIds?.length) where.push({ id: { in: dto.invitedUserIds } });
-    if (where.length === 0) return [];
 
-    return this.platformPrisma.platformUser.findMany({
-      where: { OR: where, deletedAt: null },
-      select: { email: true, phone: true },
-    });
+    const [users, externalContacts] = await Promise.all([
+      where.length
+        ? this.platformPrisma.platformUser.findMany({ where: { OR: where, deletedAt: null }, select: { email: true, phone: true } })
+        : Promise.resolve([]),
+      dto.externalContactIds?.length
+        ? this.platformPrisma.hamzoneExternalContact.findMany({
+            where: { id: { in: dto.externalContactIds } },
+            select: { email: true, phone: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    return [...users, ...externalContacts];
   }
 
   async create(dto: CreateMeetingDto, userId: string) {
@@ -72,6 +79,7 @@ export class HamzoneMeetingsService {
         audienceRoles: dto.audienceRoles ?? [],
         audienceTeamTags: dto.audienceTeamTags ?? [],
         invitedUserIds: dto.invitedUserIds ?? [],
+        externalContactIds: dto.externalContactIds ?? [],
         createdByUserId: userId,
       },
       include: { createdBy: { select: { fullName: true } } },

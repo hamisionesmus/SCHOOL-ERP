@@ -29,6 +29,12 @@ interface ExternalRow {
   email: string;
   phone: string;
 }
+interface ExternalContact {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
 
 const OCCASIONS: { key: string; label: string; subject: string; email: string; sms: string }[] = [
   {
@@ -153,8 +159,10 @@ export default function NewCampaignPage() {
   const [tenantIds, setTenantIds] = useState<string[]>([]);
   const [adminIds, setAdminIds] = useState<string[]>([]);
   const [externalRows, setExternalRows] = useState<ExternalRow[]>([]);
+  const [savedContactIds, setSavedContactIds] = useState<string[]>([]);
   const [schoolSearch, setSchoolSearch] = useState('');
   const [adminSearch, setAdminSearch] = useState('');
+  const [contactSearch, setContactSearch] = useState('');
 
   const { data: schoolsData } = useQuery({
     queryKey: ['tenants-picker', schoolSearch],
@@ -165,6 +173,10 @@ export default function NewCampaignPage() {
     queryKey: ['admins-picker', adminSearch],
     queryFn: () => apiFetch<AdminOption[]>(`/platform/admins${adminSearch ? `?q=${encodeURIComponent(adminSearch)}` : ''}`),
   });
+  const { data: contactsData } = useQuery({
+    queryKey: ['external-contacts-picker', contactSearch],
+    queryFn: () => apiFetch<ExternalContact[]>(`/platform/external-contacts${contactSearch ? `?q=${encodeURIComponent(contactSearch)}` : ''}`),
+  });
   const activeAdmins = (adminsData ?? []).filter((a) => !a.deletedAt);
 
   const targets = useMemo(
@@ -174,11 +186,16 @@ export default function NewCampaignPage() {
       allPlatformAdmins: allAdmins,
       tenantIds: allSchools ? [] : tenantIds,
       platformUserIds: allAdmins ? [] : adminIds,
-      external: externalRows
-        .filter((r) => r.name.trim() && (r.email.trim() || r.phone.trim()))
-        .map((r) => ({ name: r.name.trim(), email: r.email.trim() || undefined, phone: r.phone.trim() || undefined })),
+      external: [
+        ...(contactsData ?? [])
+          .filter((c) => savedContactIds.includes(c.id))
+          .map((c) => ({ name: c.name, email: c.email ?? undefined, phone: c.phone ?? undefined })),
+        ...externalRows
+          .filter((r) => r.name.trim() && (r.email.trim() || r.phone.trim()))
+          .map((r) => ({ name: r.name.trim(), email: r.email.trim() || undefined, phone: r.phone.trim() || undefined })),
+      ],
     }),
-    [allSchools, schoolsWithDebt, allAdmins, tenantIds, adminIds, externalRows],
+    [allSchools, schoolsWithDebt, allAdmins, tenantIds, adminIds, externalRows, savedContactIds, contactsData],
   );
 
   const { data: preview } = useQuery({
@@ -405,8 +422,24 @@ export default function NewCampaignPage() {
               )}
 
               <div>
+                <p className="mb-1 text-xs font-medium text-slate-600">Saved external contacts — not in the system</p>
+                <PickerList
+                  items={contactsData ?? []}
+                  search={contactSearch}
+                  onSearch={setContactSearch}
+                  selected={savedContactIds}
+                  onToggle={(id) => setSavedContactIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))}
+                  renderLabel={(c) => c.name}
+                  renderSub={(c) => c.email ?? c.phone}
+                  keyOf={(c) => c.id}
+                  placeholder="Search saved contacts..."
+                  emptyLabel="No saved external contacts yet"
+                />
+              </div>
+
+              <div>
                 <div className="mb-1 flex items-center justify-between">
-                  <p className="text-xs font-medium text-slate-600">People not in the system</p>
+                  <p className="text-xs font-medium text-slate-600">Add a new person not in the system</p>
                   <button
                     type="button"
                     onClick={() => setExternalRows((rows) => [...rows, { name: '', email: '', phone: '' }])}

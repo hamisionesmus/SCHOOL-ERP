@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, Plus, Video } from 'lucide-react';
+import { CalendarClock, Plus, Trash2, Video } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { getSessionUser } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
@@ -12,6 +12,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const ROLE_TAGS = ['SUPER_ADMIN', 'SUB_ADMIN', 'ASSISTANT_SUPER_ADMIN', 'TRAINER'] as const;
 const TEAM_TAGS = ['DEVELOPER', 'FRONTEND', 'BACKEND', 'LEADS', 'MARKETING'] as const;
+
+interface ExternalContact {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+interface ExternalRow {
+  name: string;
+  email: string;
+  phone: string;
+}
 
 interface Meeting {
   id: string;
@@ -59,10 +71,27 @@ function CreateMeetingDialog({ onCreated }: { onCreated: () => void }) {
   const [scheduledAt, setScheduledAt] = useState('');
   const [audienceRoles, setAudienceRoles] = useState<string[]>([]);
   const [audienceTeamTags, setAudienceTeamTags] = useState<string[]>([]);
+  const [pickedContactIds, setPickedContactIds] = useState<string[]>([]);
+  const [newExternalRows, setNewExternalRows] = useState<ExternalRow[]>([]);
+  const [contactSearch, setContactSearch] = useState('');
+
+  const { data: savedContacts } = useQuery({
+    queryKey: ['external-contacts', contactSearch],
+    queryFn: () => apiFetch<ExternalContact[]>(`/platform/external-contacts${contactSearch ? `?q=${encodeURIComponent(contactSearch)}` : ''}`),
+    enabled: open,
+  });
 
   const create = useMutation({
-    mutationFn: () =>
-      apiFetch('/platform/meetings', {
+    mutationFn: async () => {
+      const newIds: string[] = [];
+      for (const row of newExternalRows.filter((r) => r.name.trim() && (r.email.trim() || r.phone.trim()))) {
+        const contact = await apiFetch<ExternalContact>('/platform/external-contacts', {
+          method: 'POST',
+          body: JSON.stringify({ name: row.name.trim(), email: row.email.trim() || undefined, phone: row.phone.trim() || undefined }),
+        });
+        newIds.push(contact.id);
+      }
+      return apiFetch('/platform/meetings', {
         method: 'POST',
         body: JSON.stringify({
           title,
@@ -71,8 +100,10 @@ function CreateMeetingDialog({ onCreated }: { onCreated: () => void }) {
           scheduledAt: new Date(scheduledAt).toISOString(),
           audienceRoles,
           audienceTeamTags,
+          externalContactIds: [...pickedContactIds, ...newIds],
         }),
-      }),
+      });
+    },
     onSuccess: () => {
       notifySuccess('Meeting scheduled — invites sent by email/SMS');
       setOpen(false);
@@ -82,6 +113,8 @@ function CreateMeetingDialog({ onCreated }: { onCreated: () => void }) {
       setScheduledAt('');
       setAudienceRoles([]);
       setAudienceTeamTags([]);
+      setPickedContactIds([]);
+      setNewExternalRows([]);
       onCreated();
     },
     onError: (err) => notifyError(err, 'Failed to schedule meeting'),
@@ -89,6 +122,10 @@ function CreateMeetingDialog({ onCreated }: { onCreated: () => void }) {
 
   function toggle(arr: string[], setArr: (v: string[]) => void, v: string) {
     setArr(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+  }
+
+  function updateExternalRow(i: number, field: keyof ExternalRow, value: string) {
+    setNewExternalRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
   }
 
   if (!open) {
@@ -147,6 +184,64 @@ function CreateMeetingDialog({ onCreated }: { onCreated: () => void }) {
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium text-slate-600">Audience — other people (not in the system)</p>
+            <div className="rounded-lg border border-slate-200 p-2">
+              <Input
+                value={contactSearch}
+                onChange={(e) => setContactSearch(e.target.value)}
+                placeholder="Search saved external contacts..."
+                className="h-8 text-xs"
+              />
+              <div className="mt-1.5 max-h-28 overflow-y-auto">
+                {!savedContacts || savedContacts.length === 0 ? (
+                  <p className="px-1 py-2 text-center text-xs text-slate-400">No saved external contacts yet — add one below.</p>
+                ) : (
+                  savedContacts.map((c) => (
+                    <label key={c.id} className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-xs hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={pickedContactIds.includes(c.id)}
+                        onChange={() => toggle(pickedContactIds, setPickedContactIds, c.id)}
+                        className="h-3.5 w-3.5"
+                      />
+                      <span className="font-medium text-slate-800">{c.name}</span>
+                      <span className="text-slate-400">{c.email ?? c.phone}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <p className="text-xs text-slate-400">External contact — not a system account</p>
+              <button
+                type="button"
+                onClick={() => setNewExternalRows((rows) => [...rows, { name: '', email: '', phone: '' }])}
+                className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+              >
+                <Plus size={12} /> Add new
+              </button>
+            </div>
+            {newExternalRows.length > 0 && (
+              <div className="mt-1.5 space-y-1.5">
+                {newExternalRows.map((row, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <Input value={row.name} onChange={(e) => updateExternalRow(i, 'name', e.target.value)} placeholder="Name" className="h-8 text-xs" />
+                    <Input value={row.email} onChange={(e) => updateExternalRow(i, 'email', e.target.value)} placeholder="Email" className="h-8 text-xs" />
+                    <Input value={row.phone} onChange={(e) => updateExternalRow(i, 'phone', e.target.value)} placeholder="Phone" className="h-8 text-xs" />
+                    <button
+                      type="button"
+                      onClick={() => setNewExternalRows((rows) => rows.filter((_, idx) => idx !== i))}
+                      className="flex-shrink-0 text-slate-400 hover:text-rose-600"
+                      aria-label="Remove"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-6 flex gap-3">
