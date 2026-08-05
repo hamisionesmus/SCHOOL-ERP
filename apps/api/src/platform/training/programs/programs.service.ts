@@ -63,4 +63,13 @@ export class HamzoneProgramsService {
       include: PROGRAM_INCLUDE,
     });
   }
+
+  async updateStatus(id: string, status: string) {
+    await this.findOne(id);
+    return this.platformPrisma.hamzoneTrainingProgram.update({
+      where: { id },
+      data: { status: status as never },
+      include: PROGRAM_INCLUDE,
+    });
+  }
 }

@@ -7,6 +7,7 @@ import { CurrentUser, JwtUserPayload } from '../../../common/decorators/current-
 import { HamzoneProgramsService } from './programs.service';
 import { HamzoneTrainersService } from '../trainers/trainers.service';
 import { UpsertProgramDto } from './dto/upsert-program.dto';
+import { UpdateProgramStatusDto } from './dto/update-status.dto';
 
 @ApiTags('platform/training/programs')
 @ApiBearerAuth()
@@ -47,5 +48,13 @@ export class HamzoneProgramsController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpsertProgramDto) {
     return this.programs.update(id, dto);
+  }
+
+  // Lets an admin flip SCHEDULED -> ACTIVE (unblocking the trainer's daily-link resend, which only
+  // ever looks at ACTIVE programs) without having to resend every other field on the program.
+  @RequirePlatformRole()
+  @Patch(':id/status')
+  updateStatus(@Param('id') id: string, @Body() dto: UpdateProgramStatusDto) {
+    return this.programs.updateStatus(id, dto.status);
   }
 }

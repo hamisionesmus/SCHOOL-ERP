@@ -145,6 +145,16 @@ export default function ProgramsPage() {
   const { data: centers } = useQuery({ queryKey: ['training-centers'], queryFn: () => apiFetch<Center[]>('/platform/training/centers') });
   const { data: trainers } = useQuery({ queryKey: ['training-trainers'], queryFn: () => apiFetch<TrainerProfile[]>('/platform/training/trainers') });
 
+  const updateStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiFetch(`/platform/training/programs/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    onSuccess: () => {
+      notifySuccess('Program status updated');
+      queryClient.invalidateQueries({ queryKey: ['training-programs'] });
+    },
+    onError: (err) => notifyError(err, 'Failed to update status'),
+  });
+
   return (
     <>
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -174,6 +184,7 @@ export default function ProgramsPage() {
                   <th className="py-2 font-medium">Trainer</th>
                   <th className="py-2 font-medium">Dates</th>
                   <th className="py-2 font-medium">Status</th>
+                  <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -193,6 +204,28 @@ export default function ProgramsPage() {
                     </td>
                     <td className="py-2">
                       <Badge status={p.status} />
+                    </td>
+                    <td className="py-2 text-right">
+                      {(p.status === 'SCHEDULED' || p.status === 'CANCELLED') && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={updateStatus.isPending}
+                          onClick={() => updateStatus.mutate({ id: p.id, status: 'ACTIVE' })}
+                        >
+                          Activate
+                        </Button>
+                      )}
+                      {p.status === 'ACTIVE' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={updateStatus.isPending}
+                          onClick={() => updateStatus.mutate({ id: p.id, status: 'COMPLETED' })}
+                        >
+                          Mark Complete
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}
