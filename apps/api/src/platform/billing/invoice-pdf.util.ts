@@ -2,11 +2,11 @@ import PDFDocument from 'pdfkit';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-function kes(n: number) {
+export function kes(n: number) {
   return `KES ${n.toLocaleString()}`;
 }
 
-function resolveUploadPath(url: string | null | undefined): string | null {
+export function resolveUploadPath(url: string | null | undefined): string | null {
   if (!url) return null;
   const path = join(process.cwd(), url.replace(/^\/+/, ''));
   return existsSync(path) ? path : null;
@@ -100,7 +100,7 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELLED: 'CANCELLED',
 };
 
-function fmtDate(d: Date) {
+export function fmtDate(d: Date) {
   return d.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
@@ -128,7 +128,7 @@ function drawStatusRibbon(doc: PDFKit.PDFDocument, status: string) {
   doc.restore();
 }
 
-function band(doc: PDFKit.PDFDocument, x: number, y: number, width: number, height: number, color: string) {
+export function band(doc: PDFKit.PDFDocument, x: number, y: number, width: number, height: number, color: string) {
   doc.rect(x, y, width, height).fill(color);
 }
 
@@ -291,7 +291,11 @@ export function renderPlatformInvoicePdf(input: PlatformInvoicePdfInput): Promis
       .font('Helvetica')
       .fontSize(7.5)
       .fillColor('#94a3b8')
-      .text(`PDF generated on ${fmtDate(input.generatedAt)}`, left, 780, { width: contentWidth, align: 'center' });
+      .text('This is an electronically generated invoice and does not require a signature.', left, 766, {
+        width: contentWidth,
+        align: 'center',
+      });
+    doc.text(`PDF generated on ${fmtDate(input.generatedAt)}`, left, 780, { width: contentWidth, align: 'center' });
 
     doc.end();
   });

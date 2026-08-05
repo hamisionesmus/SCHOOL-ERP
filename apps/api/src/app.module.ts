@@ -57,6 +57,7 @@ import { SystemHealthModule } from './platform/system-health/system-health.modul
 import { MailboxesModule } from './platform/mailboxes/mailboxes.module';
 import { PresenceModule } from './platform/presence/presence.module';
 import { CampaignsModule } from './platform/campaigns/campaigns.module';
+import { CrmModule } from './platform/crm/crm.module';
 import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
 
 @Module({
@@ -126,6 +127,7 @@ import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
     MailboxesModule,
     PresenceModule,
     CampaignsModule,
+    CrmModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

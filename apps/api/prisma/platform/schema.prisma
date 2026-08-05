@@ -184,6 +184,7 @@ model Tenant {
   feedback TenantFeedback[]
   ticketEscalations PlatformTicketEscalation[]
   campaignRecipients CampaignRecipient[]
+  hamzoneClients     HamzoneClient[]
 }
 
 // Global email → school lookup, kept in sync whenever a tenant-side User is created (see
@@ -291,6 +292,13 @@ model PlatformUser {
   moduleGrants           PlatformAdminModuleGrant[]
   campaigns              Campaign[]
   campaignRecipients     CampaignRecipient[]
+  hamzoneClientsCreated       HamzoneClient[]
+  hamzoneClientNotes          HamzoneClientNote[]
+  hamzoneInvoicesCreated      HamzoneInvoice[]
+  hamzoneTrainingRecords      HamzoneTrainingRecord[]
+  hamzoneMarketingLeads       HamzoneMarketingLead[]
+  hamzoneDocumentsUploaded    HamzoneDocument[]
+  hamzoneApiKeysCreated       HamzoneApiKey[]
 }
 
 model PlatformRefreshToken {
@@ -666,6 +674,203 @@ model PlatformTicketEscalation {
   updatedAt        DateTime @updatedAt
 
   feedback         TenantFeedback[]
+}
+
+enum HamzoneProductLine {
+  SCHOOL_ERP
+  DTP_TRAINING
+  CODING_ROBOTICS
+  WEBSITES
+  SACCO_SYSTEMS
+  HOSPITAL_SYSTEMS
+  OTHER
+}
+
+enum HamzoneClientType {
+  INDIVIDUAL
+  SCHOOL
+  BUSINESS
+}
+
+enum HamzoneInvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum HamzoneTrainingTrack {
+  FRONTEND
+  BACKEND
+  CODING_ROBOTICS
+  OTHER
+}
+
+enum HamzoneTrainingStatus {
+  ENROLLED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum HamzoneLeadStatus {
+  NEW
+  CONTACTED
+  CONVERTED
+  LOST
+}
+
+enum HamzoneDocumentCategory {
+  POSTER
+  CERTIFICATE
+  BROCHURE
+  OTHER
+}
+
+// Hamzone Technologies' own company CRM — deliberately separate from the school-ERP's platform
+// billing (PlatformInvoice/PlatformPayment, which is specifically the recurring subscription a
+// school pays to use this system). A HamzoneClient can be a school that also uses the ERP
+// (tenantId set, so "total clients" never double-counts them) or a standalone client of any other
+// Hamzone product line (training, websites, SACCO systems, hospital systems) with no ERP presence
+// at all. Revenue from HamzoneInvoice is folded into PlatformFinanceService.overview()'s totals —
+// same company, one real "how much do we make" figure — see that service's doc comment.
+model HamzoneClient {
+  id               String                @id @default(uuid())
+  name             String
+  type             HamzoneClientType     @default(INDIVIDUAL)
+  productLines     HamzoneProductLine[]
+  contactName      String?
+  email            String?
+  phone            String?
+  // The client's own website/system/domain, if applicable (a hospital system, a SACCO portal, a
+  // built website) — distinct from Tenant.website, which is a school's own public site, not this.
+  systemUrl        String?
+  domainActive     Boolean?
+  nextPaymentDueAt DateTime?
+  tenantId         String?
+  tenant           Tenant?               @relation(fields: [tenantId], references: [id])
+  createdByUserId  String
+  createdBy        PlatformUser          @relation(fields: [createdByUserId], references: [id])
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  notes            HamzoneClientNote[]
+  invoices         HamzoneInvoice[]
+  trainingRecords  HamzoneTrainingRecord[]
+}
+
+// Call/meeting log — conversations, promises, and agreements made with a client, so nothing
+// depends on one person's memory. Plain chronological list, same shape as TicketComment.
+model HamzoneClientNote {
+  id           String        @id @default(uuid())
+  clientId     String
+  client       HamzoneClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  authorUserId String
+  author       PlatformUser  @relation(fields: [authorUserId], references: [id])
+  body         String
+  createdAt    DateTime      @default(now())
+
+  @@index([clientId, createdAt])
+}
+
+// A company invoice for any Hamzone product line — VAT-inclusive (Kenya's standard rate, 16%,
+// stored per-invoice rather than hardcoded so a future rate change or a specific exemption doesn't
+// need a migration). Deliberately simpler than PlatformInvoice/PlatformPayment's split (no separate
+// payments table, no M-Pesa STK integration) — a single "mark paid" action records the settlement
+// directly on the row, since this is a manually-run company ledger, not a self-service payment flow.
+model HamzoneInvoice {
+  id               String               @id @default(uuid())
+  invoiceNumber    String               @unique
+  clientId         String
+  client           HamzoneClient        @relation(fields: [clientId], references: [id])
+  productLine      HamzoneProductLine
+  description      String
+  subtotal         Int
+  vatRate          Int                  @default(16)
+  vatAmount        Int
+  total            Int
+  status           HamzoneInvoiceStatus @default(PENDING)
+  dueDate          DateTime
+  paidAt           DateTime?
+  paymentMethod    String?
+  paymentReference String?
+  emailSentAt      DateTime?
+  smsSentAt        DateTime?
+  createdByUserId  String
+  createdBy        PlatformUser         @relation(fields: [createdByUserId], references: [id])
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+}
+
+// Who has trained with Hamzone (frontend/backend/coding & robotics), independent of whether
+// they're linked to a paying HamzoneClient — a training cohort often includes people who haven't
+// become clients yet. Exposed read-only to the public website via HamzoneApiKey.
+model HamzoneTrainingRecord {
+  id              String                 @id @default(uuid())
+  clientId        String?
+  client          HamzoneClient?         @relation(fields: [clientId], references: [id])
+  traineeName     String
+  traineeEmail    String?
+  traineePhone    String?
+  track           HamzoneTrainingTrack
+  status          HamzoneTrainingStatus  @default(ENROLLED)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  notes            String?
+  createdByUserId  String
+  createdBy        PlatformUser          @relation(fields: [createdByUserId], references: [id])
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+}
+
+// Field-submitted by the marketing team (which every platform admin tier can act as, plus anyone
+// specifically invited for it) the moment they get a lead — real-time, not end-of-day notes, so
+// follow-ups don't go cold. Not a HamzoneClient yet; converts into one manually once qualified.
+model HamzoneMarketingLead {
+  id                String             @id @default(uuid())
+  submittedByUserId String
+  submittedBy       PlatformUser       @relation(fields: [submittedByUserId], references: [id])
+  clientName        String
+  contactPhone      String?
+  contactEmail      String?
+  interest          HamzoneProductLine
+  location          String?
+  notes             String?
+  followUpAt        DateTime?
+  status            HamzoneLeadStatus  @default(NEW)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+// Shareable company documents (posters, certificates, brochures) — stored via the existing
+// /uploads pipeline (same as a school logo), listed here so anyone with dashboard access can find
+// and share the link rather than hunting through email/WhatsApp history for the latest version.
+model HamzoneDocument {
+  id               String                   @id @default(uuid())
+  title            String
+  category         HamzoneDocumentCategory  @default(OTHER)
+  fileUrl          String
+  uploadedByUserId String
+  uploadedBy       PlatformUser             @relation(fields: [uploadedByUserId], references: [id])
+  createdAt        DateTime                 @default(now())
+}
+
+// Lets Hamzone's own public website (or any other third-party system) pull select, non-sensitive
+// CRM data — training records, document listings, client counts — without a human admin login
+// session. Only the key's hash is stored (shown once at creation, same "never retrievable again"
+// precedent as every other secret in this codebase); `scopes` gates exactly which read endpoints
+// under /public/api/v1 the key can call — see HamzoneApiKeyGuard.
+model HamzoneApiKey {
+  id              String    @id @default(uuid())
+  label           String
+  keyHash         String    @unique
+  keyPreview      String
+  scopes          String[]
+  createdByUserId String
+  createdBy       PlatformUser @relation(fields: [createdByUserId], references: [id])
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
 }
 
 // A manual money-in/money-out log (salaries, hosting costs, one-off revenue not captured by

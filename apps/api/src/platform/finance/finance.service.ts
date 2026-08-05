@@ -32,10 +32,15 @@ export class PlatformFinanceService {
   }
 
   async overview() {
-    const [manualInAgg, manualOutAgg, paymentsAgg, byCategory, monthly] = await Promise.all([
+    const [manualInAgg, manualOutAgg, paymentsAgg, hamzoneInvoiceAgg, byCategory, monthly] = await Promise.all([
       this.platformPrisma.platformFinanceEntry.aggregate({ where: { type: 'IN' }, _sum: { amount: true } }),
       this.platformPrisma.platformFinanceEntry.aggregate({ where: { type: 'OUT' }, _sum: { amount: true } }),
       this.platformPrisma.platformPayment.aggregate({ _sum: { amount: true } }),
+      // Hamzone's own company invoices (training, websites, SACCO/hospital systems, etc.) —
+      // distinct revenue stream from school-ERP subscriptions, but the same company, so it's
+      // folded into the one combined "how much do we make" total — see HamzoneInvoice's schema
+      // doc comment. Only PAID invoices count as realized revenue, same as schoolRevenue below.
+      this.platformPrisma.hamzoneInvoice.aggregate({ where: { status: 'PAID' }, _sum: { total: true } }),
       this.platformPrisma.platformFinanceEntry.groupBy({
         by: ['category'],
         where: { type: 'OUT' },
@@ -46,8 +51,9 @@ export class PlatformFinanceService {
 
     const manualIn = manualInAgg._sum.amount ?? 0;
     const schoolRevenue = paymentsAgg._sum.amount ?? 0;
+    const hamzoneRevenue = hamzoneInvoiceAgg._sum.total ?? 0;
     const totalOut = manualOutAgg._sum.amount ?? 0;
-    const totalIn = manualIn + schoolRevenue;
+    const totalIn = manualIn + schoolRevenue + hamzoneRevenue;
 
     const now = new Date();
     const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -56,6 +62,7 @@ export class PlatformFinanceService {
     return {
       totalIn,
       schoolRevenue,
+      hamzoneRevenue,
       manualIn,
       totalOut,
       net: totalIn - totalOut,
@@ -67,14 +74,16 @@ export class PlatformFinanceService {
   }
 
   /** Last 12 calendar months — same in-memory bucketing pattern as AnalyticsService.monthlyRevenue(),
-   * extended to combine PlatformPayment (always "in") with manual PlatformFinanceEntry rows. */
+   * extended to combine PlatformPayment (always "in"), manual PlatformFinanceEntry rows, and paid
+   * HamzoneInvoice totals (bucketed by paidAt — when the money actually came in, not when the
+   * invoice was raised). */
   private async monthlyBreakdown() {
     const since = new Date();
     since.setMonth(since.getMonth() - 11);
     since.setDate(1);
     since.setHours(0, 0, 0, 0);
 
-    const [payments, entries] = await Promise.all([
+    const [payments, entries, hamzoneInvoices] = await Promise.all([
       this.platformPrisma.platformPayment.findMany({
         where: { createdAt: { gte: since } },
         select: { amount: true, createdAt: true },
@@ -82,6 +91,10 @@ export class PlatformFinanceService {
       this.platformPrisma.platformFinanceEntry.findMany({
         where: { createdAt: { gte: since } },
         select: { amount: true, type: true, createdAt: true },
+      }),
+      this.platformPrisma.hamzoneInvoice.findMany({
+        where: { status: 'PAID', paidAt: { gte: since } },
+        select: { total: true, paidAt: true },
       }),
     ]);
 
@@ -102,6 +115,11 @@ export class PlatformFinanceService {
       if (!bucket) continue;
       if (e.type === 'IN') bucket.in += e.amount;
       else bucket.out += e.amount;
+    }
+    for (const inv of hamzoneInvoices) {
+      if (!inv.paidAt) continue;
+      const bucket = buckets.get(keyOf(inv.paidAt));
+      if (bucket) bucket.in += inv.total;
     }
     return Array.from(buckets.entries()).map(([month, v]) => ({ month, in: v.in, out: v.out }));
   }

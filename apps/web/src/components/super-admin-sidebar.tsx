@@ -23,6 +23,8 @@ import {
   Search,
   Megaphone,
   Trash2,
+  Building2,
+  Code2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -31,6 +33,7 @@ import { apiFetch, API_ORIGIN } from '@/lib/api';
 const SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
   { href: '/dashboard/admins', label: 'Admins', icon: Users },
+  { href: '/dashboard/crm', label: 'Hamzone CRM', icon: Building2 },
   { href: '/dashboard/inbox', label: 'Inbox', icon: Mail },
   { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
@@ -42,6 +45,7 @@ const SUPER_ADMIN_NAV = [
   { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
   { href: '/dashboard/backups', label: 'Backups', icon: DatabaseBackup },
   { href: '/dashboard/data-cleanup', label: 'Data Cleanup', icon: Trash2 },
+  { href: '/dashboard/api-docs', label: 'API & Architecture', icon: Code2 },
 ];
 
 // A Sub-Admin can create schools, see revenue, and handle escalated tickets (assigned to them or
@@ -49,6 +53,7 @@ const SUPER_ADMIN_NAV = [
 // both here and enforced server-side via @RequirePlatformRole('SUPER_ADMIN').
 const SUB_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
+  { href: '/dashboard/crm', label: 'Hamzone CRM', icon: Building2 },
   { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
 ];
 
@@ -57,11 +62,13 @@ const SUB_ADMIN_NAV = [
 // docs/RBAC.md.
 const ASSISTANT_SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
+  { href: '/dashboard/crm', label: 'Hamzone CRM', icon: Building2 },
   { href: '/dashboard/inbox', label: 'Inbox', icon: Mail },
   { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/dashboard/finance', label: 'Finance', icon: Landmark },
   { href: '/dashboard/presence', label: "Who's Online", icon: Radio },
   { href: '/dashboard/system-health', label: 'System Health', icon: Activity },
+  { href: '/dashboard/api-docs', label: 'API & Architecture', icon: Code2 },
 ];
 
 // Nav item to surface when a module is individually granted (see PlatformAdminModuleGrant) and
