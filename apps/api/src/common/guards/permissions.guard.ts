@@ -5,6 +5,12 @@ import { PLATFORM_ONLY_KEY } from '../decorators/require-platform-role.decorator
 import { PLATFORM_MODULE_KEY } from '../decorators/require-platform-module.decorator';
 import { JwtUserPayload } from '../decorators/current-user.decorator';
 
+// The three admin tiers a bare @RequirePlatformRole() (no explicit role list) has always meant —
+// kept as an explicit whitelist so adding a new platform role (e.g. TRAINER, scoped to a handful
+// of its own endpoints) never silently gains access to every admin-tier route that just uses the
+// bare decorator. A new role must be named explicitly wherever it should reach.
+const ADMIN_TIER_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN', 'ASSISTANT_SUPER_ADMIN'];
+
 /**
  * Server-side RBAC enforcement. Effective permission codes are embedded in the JWT at login time
  * (see AuthService) rather than re-fetched per request — a deliberate trade-off documented in
@@ -35,6 +41,9 @@ export class PermissionsGuard implements CanActivate {
 
     if (platformOnly && user.realm !== 'platform') {
       throw new ForbiddenException('Super Admin access required');
+    }
+    if (platformOnly === true && !ADMIN_TIER_ROLES.includes(user.role ?? '')) {
+      throw new ForbiddenException('Admin access required');
     }
     if (Array.isArray(platformOnly) && !platformOnly.includes(user.role ?? '')) {
       // A per-admin module grant (see PlatformAdminModuleGrant) lets a Sub-Admin/Assistant Super

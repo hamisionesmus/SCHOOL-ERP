@@ -9,15 +9,28 @@ import { CreateDocumentDto } from './dto/create-document.dto';
 export class HamzoneDocumentsService {
   constructor(private readonly platformPrisma: PlatformPrismaService) {}
 
-  list() {
+  list(trainingProgramId?: string) {
     return this.platformPrisma.hamzoneDocument.findMany({
-      include: { uploadedBy: { select: { fullName: true } } },
+      where: trainingProgramId ? { trainingProgramId } : {},
+      include: { uploadedBy: { select: { fullName: true } }, suggestedBy: { select: { fullName: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  create(dto: CreateDocumentDto, uploadedByUserId: string) {
-    return this.platformPrisma.hamzoneDocument.create({ data: { ...dto, uploadedByUserId } });
+  /** `suggestedByUserId` is set (rather than `uploadedByUserId`) when a trainer is the one
+   * proposing the addition — distinguishes "a lead shared this resource" from "a trainer suggested
+   * we add this" without a separate approval workflow. */
+  create(dto: CreateDocumentDto, uploadedByUserId: string, isTrainerSuggestion: boolean) {
+    return this.platformPrisma.hamzoneDocument.create({
+      data: {
+        title: dto.title,
+        category: dto.category,
+        fileUrl: dto.fileUrl,
+        trainingProgramId: dto.trainingProgramId,
+        uploadedByUserId,
+        suggestedByUserId: isTrainerSuggestion ? uploadedByUserId : undefined,
+      },
+    });
   }
 
   remove(id: string) {

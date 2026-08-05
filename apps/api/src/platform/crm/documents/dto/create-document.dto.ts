@@ -16,4 +16,9 @@ export class CreateDocumentDto {
   @ApiProperty({ description: 'The /uploads/... URL returned by POST /uploads' })
   @IsString()
   fileUrl!: string;
+
+  @ApiProperty({ required: false, description: 'Set when this is a training resource tied to a specific cohort' })
+  @IsOptional()
+  @IsString()
+  trainingProgramId?: string;
 }

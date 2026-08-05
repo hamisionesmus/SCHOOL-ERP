@@ -13,7 +13,10 @@ export type MessageTemplateKey =
   | 'TICKET_ESCALATED'
   | 'TICKET_ASSIGNED'
   | 'TICKET_RESOLVED'
-  | 'TICKET_FEEDBACK_RECEIVED';
+  | 'TICKET_FEEDBACK_RECEIVED'
+  | 'TRAINER_WELCOME'
+  | 'GIG_WORKER_WELCOME'
+  | 'MEETING_INVITE';
 
 export interface MessageTemplateContent {
   subject?: string;
@@ -142,5 +145,28 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
     emailBody:
       '"{{schoolName}}" left feedback on their resolved ticket "{{subject}}": {{rating}}/5.\n\nView it here: {{dashboardUrl}}',
     smsBody: 'Hamzone Technologies: "{{schoolName}}" rated their resolved ticket "{{subject}}" {{rating}}/5 — view in dashboard.',
+  },
+  TRAINER_WELCOME: {
+    variables: ['fullName', 'loginUrl', 'email', 'tempPassword', 'centerName', 'track'],
+    subject: 'Welcome to the Hamzone Technologies training team',
+    emailBody:
+      'Hi {{fullName}},\n\nYou\'ve been added as a trainer on our training portal{{centerName}}{{track}}.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nFrom there you can log your daily register, submit progress reports, and see any resources or meetings shared with trainers. Please change your password as soon as you sign in.',
+    smsBody:
+      'Hamzone Technologies: you\'ve been added as a trainer. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
+  },
+  GIG_WORKER_WELCOME: {
+    variables: ['fullName', 'loginUrl', 'email', 'tempPassword', 'invitedByName'],
+    subject: 'Your account is ready',
+    emailBody:
+      'Hi {{fullName}},\n\n{{invitedByName}} has set up an account for you to report on the work you\'ve been assigned.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nFrom there you can see what\'s been assigned to you and log your earnings and any challenges. Please change your password as soon as you sign in.',
+    smsBody:
+      'Hamzone Technologies: your account is ready. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
+  },
+  MEETING_INVITE: {
+    variables: ['title', 'scheduledAt', 'meetingLink', 'organizerName'],
+    subject: 'Meeting scheduled: {{title}}',
+    emailBody:
+      '{{organizerName}} scheduled a meeting you\'re invited to.\n\n{{title}}\nWhen: {{scheduledAt}}\nJoin link: {{meetingLink}}',
+    smsBody: 'Hamzone Technologies: meeting "{{title}}" at {{scheduledAt}}. Join: {{meetingLink}}',
   },
 };

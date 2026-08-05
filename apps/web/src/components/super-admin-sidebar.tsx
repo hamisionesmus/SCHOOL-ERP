@@ -25,6 +25,9 @@ import {
   Trash2,
   Building2,
   Code2,
+  GraduationCap,
+  CalendarClock,
+  UserCog,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -34,6 +37,9 @@ const SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
   { href: '/dashboard/admins', label: 'Admins', icon: Users },
   { href: '/dashboard/crm', label: 'Hamzone CRM', icon: Building2 },
+  { href: '/dashboard/training', label: 'Training', icon: GraduationCap },
+  { href: '/dashboard/meetings', label: 'Meetings', icon: CalendarClock },
+  { href: '/dashboard/outreach', label: 'Outreach', icon: UserCog },
   { href: '/dashboard/inbox', label: 'Inbox', icon: Mail },
   { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
@@ -54,6 +60,9 @@ const SUPER_ADMIN_NAV = [
 const SUB_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
   { href: '/dashboard/crm', label: 'Hamzone CRM', icon: Building2 },
+  { href: '/dashboard/training', label: 'Training', icon: GraduationCap },
+  { href: '/dashboard/meetings', label: 'Meetings', icon: CalendarClock },
+  { href: '/dashboard/outreach', label: 'Outreach', icon: UserCog },
   { href: '/dashboard/tickets', label: 'Tickets', icon: LifeBuoy },
 ];
 
@@ -63,12 +72,30 @@ const SUB_ADMIN_NAV = [
 const ASSISTANT_SUPER_ADMIN_NAV = [
   { href: '/dashboard', label: 'Schools', icon: LayoutDashboard },
   { href: '/dashboard/crm', label: 'Hamzone CRM', icon: Building2 },
+  { href: '/dashboard/training', label: 'Training', icon: GraduationCap },
+  { href: '/dashboard/meetings', label: 'Meetings', icon: CalendarClock },
+  { href: '/dashboard/outreach', label: 'Outreach', icon: UserCog },
   { href: '/dashboard/inbox', label: 'Inbox', icon: Mail },
   { href: '/dashboard/campaigns', label: 'Campaigns', icon: Megaphone },
   { href: '/dashboard/finance', label: 'Finance', icon: Landmark },
   { href: '/dashboard/presence', label: "Who's Online", icon: Radio },
   { href: '/dashboard/system-health', label: 'System Health', icon: Activity },
   { href: '/dashboard/api-docs', label: 'API & Architecture', icon: Code2 },
+];
+
+// A trainer's whole world — their own assignment/contract, registers, reports, shared resources,
+// and meetings they're invited to. Nothing from the admin side (CRM, Finance, Settings, etc).
+const TRAINER_NAV = [
+  { href: '/dashboard/training', label: 'My Training', icon: GraduationCap },
+  { href: '/dashboard/crm/documents', label: 'Resources', icon: Building2 },
+  { href: '/dashboard/meetings', label: 'Meetings', icon: CalendarClock },
+];
+
+// A gig worker's whole world — the outreach entries assigned to them (report earnings/challenges)
+// and any meetings they're invited to. Nothing else.
+const GIG_WORKER_NAV = [
+  { href: '/dashboard/outreach', label: 'My Work', icon: UserCog },
+  { href: '/dashboard/meetings', label: 'Meetings', icon: CalendarClock },
 ];
 
 // Nav item to surface when a module is individually granted (see PlatformAdminModuleGrant) and
@@ -114,7 +141,16 @@ export function SuperAdminSidebar({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const baseNav = role === 'SUB_ADMIN' ? SUB_ADMIN_NAV : role === 'ASSISTANT_SUPER_ADMIN' ? ASSISTANT_SUPER_ADMIN_NAV : SUPER_ADMIN_NAV;
+  const baseNav =
+    role === 'SUB_ADMIN'
+      ? SUB_ADMIN_NAV
+      : role === 'ASSISTANT_SUPER_ADMIN'
+        ? ASSISTANT_SUPER_ADMIN_NAV
+        : role === 'TRAINER'
+          ? TRAINER_NAV
+          : role === 'GIG_WORKER'
+            ? GIG_WORKER_NAV
+            : SUPER_ADMIN_NAV;
   const grantedNav = (moduleGrants ?? [])
     .map((m) => MODULE_NAV_ITEM[m])
     .filter((item): item is { href: string; label: string; icon: React.ElementType } => !!item)

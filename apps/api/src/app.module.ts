@@ -58,6 +58,9 @@ import { MailboxesModule } from './platform/mailboxes/mailboxes.module';
 import { PresenceModule } from './platform/presence/presence.module';
 import { CampaignsModule } from './platform/campaigns/campaigns.module';
 import { CrmModule } from './platform/crm/crm.module';
+import { TrainingModule } from './platform/training/training.module';
+import { HamzoneMeetingsModule } from './platform/meetings/meetings.module';
+import { HamzoneOutreachModule } from './platform/outreach/outreach.module';
 import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
 
 @Module({
@@ -128,6 +131,9 @@ import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
     PresenceModule,
     CampaignsModule,
     CrmModule,
+    TrainingModule,
+    HamzoneMeetingsModule,
+    HamzoneOutreachModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

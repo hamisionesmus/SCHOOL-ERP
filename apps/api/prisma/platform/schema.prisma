@@ -35,6 +35,17 @@ enum PlatformRole {
   // Security, Backups, Audit Logs, Platform Settings, and Message Templates — see
   // RequirePlatformRole('SUPER_ADMIN') usages.
   SUB_ADMIN
+  // A much more restricted role than the three admin tiers above: scoped only to the training
+  // portal (their own assignment, daily registers, progress reports, resources, meetings) — never
+  // implicitly included by a bare @RequirePlatformRole() (see PermissionsGuard's ADMIN_TIER_ROLES
+  // whitelist); every endpoint a trainer should reach names 'TRAINER' explicitly.
+  TRAINER
+  // Someone the Super Admin has personally hired/assigned to manage an outside account or gig —
+  // nothing to do with Hamzone's own business, see HamzoneOutreachEntry's doc comment (that money
+  // is explicitly personal, never folded into PlatformFinanceService's company totals). Scoped only
+  // to reporting earnings/challenges against outreach entries assigned to them; excluded from every
+  // bare @RequirePlatformRole() route the same way TRAINER is.
+  GIG_WORKER
 }
 
 enum Gender {
@@ -272,6 +283,10 @@ model PlatformUser {
   avatarUrl        String?
   role             PlatformRole @default(SUPER_ADMIN)
   gender           Gender?
+  // Free-form team labels (e.g. "FRONTEND", "BACKEND", "DEVELOPER") a Super Admin can set on any
+  // admin/trainer — not a role, just a tag HamzoneMeeting's audience targeting can match against so
+  // "meeting for frontend and backend" doesn't need a new PlatformRole per team.
+  teamTags         String[]  @default([])
   twoFactorEnabled Boolean   @default(false)
   twoFactorSecret  String?
   createdAt        DateTime  @default(now())
@@ -297,8 +312,17 @@ model PlatformUser {
   hamzoneInvoicesCreated      HamzoneInvoice[]
   hamzoneTrainingRecords      HamzoneTrainingRecord[]
   hamzoneMarketingLeads       HamzoneMarketingLead[]
-  hamzoneDocumentsUploaded    HamzoneDocument[]
+  hamzoneDocumentsUploaded    HamzoneDocument[] @relation("DocumentUploadedBy")
+  hamzoneDocumentsSuggested   HamzoneDocument[] @relation("DocumentSuggestedBy")
   hamzoneApiKeysCreated       HamzoneApiKey[]
+  trainingCentersHeaded       HamzoneTrainingCenter[] @relation("TrainingCenterHead")
+  trainingCentersCreated      HamzoneTrainingCenter[] @relation("TrainingCenterCreatedBy")
+  trainerProfile              HamzoneTrainerProfile?
+  trainingProgramsCreated     HamzoneTrainingProgram[]
+  meetingsCreated             HamzoneMeeting[]
+  outreachEntriesCreated      HamzoneOutreachEntry[] @relation("OutreachCreatedBy")
+  outreachEntriesAssigned     HamzoneOutreachEntry[] @relation("OutreachAssignedTo")
+  outreachEarningsRecorded    HamzoneOutreachEarning[]
 }
 
 model PlatformRefreshToken {
@@ -809,6 +833,10 @@ model HamzoneTrainingRecord {
   id              String                 @id @default(uuid())
   clientId        String?
   client          HamzoneClient?         @relation(fields: [clientId], references: [id])
+  // Which cohort/course run this trainee belongs to — nullable since standalone training records
+  // predate HamzoneTrainingProgram and can still be created without one.
+  programId       String?
+  program         HamzoneTrainingProgram? @relation(fields: [programId], references: [id])
   traineeName     String
   traineeEmail    String?
   traineePhone    String?
@@ -851,7 +879,15 @@ model HamzoneDocument {
   category         HamzoneDocumentCategory  @default(OTHER)
   fileUrl          String
   uploadedByUserId String
-  uploadedBy       PlatformUser             @relation(fields: [uploadedByUserId], references: [id])
+  uploadedBy       PlatformUser             @relation("DocumentUploadedBy", fields: [uploadedByUserId], references: [id])
+  // Set when this is a training resource tied to a specific cohort ("leads can upload resources...
+  // used by the trainers"). Null for general company documents (posters/certificates/brochures).
+  trainingProgramId String?
+  trainingProgram    HamzoneTrainingProgram? @relation(fields: [trainingProgramId], references: [id])
+  // Set when a trainer suggested this addition themselves rather than a lead uploading it —
+  // distinguishes "here's a resource" from "here's a resource I think we should add".
+  suggestedByUserId String?
+  suggestedBy       PlatformUser?           @relation("DocumentSuggestedBy", fields: [suggestedByUserId], references: [id])
   createdAt        DateTime                 @default(now())
 }
 
@@ -871,6 +907,212 @@ model HamzoneApiKey {
   lastUsedAt      DateTime?
   revokedAt       DateTime?
   createdAt       DateTime  @default(now())
+}
+
+enum HamzoneTrainerStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+}
+
+enum HamzoneProgramStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum HamzoneOutreachType {
+  ACCOUNT_MANAGEMENT
+  TASKING
+  OUTLIER
+  HANDSHAKE
+  OTHER
+}
+
+enum HamzoneOutreachStatus {
+  NEW
+  ONBOARDING
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+}
+
+enum HamzoneEarningPeriod {
+  DAILY
+  WEEKLY
+}
+
+// A physical or virtual location where Hamzone runs training — "this center has been assigned this
+// person" (headUser) and "the number of students" (studentsCount) from the original request.
+// Distinct from a School-ERP Tenant: a center is a training venue, not a paying school.
+model HamzoneTrainingCenter {
+  id              String        @id @default(uuid())
+  name            String
+  location        String?
+  headUserId      String?
+  headUser        PlatformUser? @relation("TrainingCenterHead", fields: [headUserId], references: [id])
+  studentsCount   Int?
+  notes           String?
+  createdByUserId String
+  createdBy       PlatformUser  @relation("TrainingCenterCreatedBy", fields: [createdByUserId], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  programs        HamzoneTrainingProgram[]
+  trainerProfiles HamzoneTrainerProfile[]
+}
+
+// One row per TRAINER-role PlatformUser — where they're assigned, what they're paid, and their
+// contract window. Kept separate from PlatformUser itself (rather than bolting salary/contract
+// fields onto it) since no other role has anything like this. contractDocumentUrl points at the
+// auto-generated PDF (see trainer-contract-pdf.util.ts) — regenerated whenever the contract terms
+// change, so it's always in sync with what's actually stored here, not a one-time snapshot.
+model HamzoneTrainerProfile {
+  id                  String                @id @default(uuid())
+  userId              String                @unique
+  user                PlatformUser          @relation(fields: [userId], references: [id])
+  centerId            String?
+  center              HamzoneTrainingCenter? @relation(fields: [centerId], references: [id])
+  track               HamzoneTrainingTrack?
+  monthlySalaryKes    Int?
+  contractStartDate   DateTime?
+  contractEndDate     DateTime?
+  contractDocumentUrl String?
+  status              HamzoneTrainerStatus  @default(ACTIVE)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  programs            HamzoneTrainingProgram[]
+  registers           HamzoneDailyRegister[]
+  reports             HamzoneTrainerReport[]
+}
+
+// A cohort/course run with real start/end dates ("training dates from this to this") — the unit a
+// trainer is assigned to and that trainees (HamzoneTrainingRecord, extended below with a nullable
+// programId) enroll in.
+model HamzoneTrainingProgram {
+  id              String                 @id @default(uuid())
+  title           String
+  track           HamzoneTrainingTrack
+  centerId        String?
+  center          HamzoneTrainingCenter? @relation(fields: [centerId], references: [id])
+  trainerId       String?
+  trainer         HamzoneTrainerProfile? @relation(fields: [trainerId], references: [id])
+  startDate       DateTime
+  endDate         DateTime
+  description     String?
+  status          HamzoneProgramStatus   @default(SCHEDULED)
+  createdByUserId String
+  createdBy       PlatformUser           @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  trainees        HamzoneTrainingRecord[]
+  registers       HamzoneDailyRegister[]
+  reports         HamzoneTrainerReport[]
+  resources       HamzoneDocument[]
+}
+
+// A trainer's daily attendance + coverage log ("daily register of trainees... how things they have
+// covered") — the record that's downloaded as a PDF and is the primary evidence of whether a
+// trainer is actually running sessions.
+model HamzoneDailyRegister {
+  id              String                 @id @default(uuid())
+  programId       String
+  program         HamzoneTrainingProgram @relation(fields: [programId], references: [id])
+  trainerId       String
+  trainer         HamzoneTrainerProfile  @relation(fields: [trainerId], references: [id])
+  date            DateTime
+  traineesPresent Int
+  traineesTotal   Int
+  topicsCovered   String
+  notes           String?
+  createdAt       DateTime               @default(now())
+
+  @@index([programId, date])
+}
+
+// A trainer's periodic (weekly/monthly) check-in — progress narrative + challenges, distinct from
+// the daily register's per-session attendance log. This is the "are they actually working" signal
+// alongside the salary/contract fields on HamzoneTrainerProfile.
+model HamzoneTrainerReport {
+  id              String                  @id @default(uuid())
+  trainerId       String
+  trainer         HamzoneTrainerProfile   @relation(fields: [trainerId], references: [id])
+  programId       String?
+  program         HamzoneTrainingProgram? @relation(fields: [programId], references: [id])
+  periodStart     DateTime
+  periodEnd       DateTime
+  progressSummary String
+  challenges      String?
+  createdAt       DateTime                @default(now())
+}
+
+// A scheduled meeting with a Zoom/Google-Meet link, communicated in-app and via SMS. Audience is
+// resolved as the union of three independent selectors (mirrors the Campaign targeting pattern):
+// specific role tiers, free-form team tags on PlatformUser (frontend/backend/developer/etc — see
+// PlatformUser.teamTags), and specific named invitees.
+model HamzoneMeeting {
+  id               String       @id @default(uuid())
+  title            String
+  description      String?
+  meetingLink      String?
+  scheduledAt      DateTime
+  audienceRoles    String[]
+  audienceTeamTags String[]
+  invitedUserIds   String[]
+  createdByUserId  String
+  createdBy        PlatformUser @relation(fields: [createdByUserId], references: [id])
+  notifiedAt       DateTime?
+  createdAt        DateTime     @default(now())
+}
+
+// A personal outreach/gig-management log — explicitly NOT Hamzone company business (see
+// HamzoneOutreachEarning's doc comment on why its money is never folded into the company finance
+// totals). One admin's private record of an external contact who handed them an account to manage
+// or a task to run, who it's assigned to (a real PlatformUser — including a GIG_WORKER account
+// created specifically for this — or just a name/phone for someone outside the system entirely),
+// and which browser/anti-detect-browser profile the managed account logs in through.
+model HamzoneOutreachEntry {
+  id                      String                 @id @default(uuid())
+  createdByUserId         String
+  createdBy               PlatformUser           @relation("OutreachCreatedBy", fields: [createdByUserId], references: [id])
+  contactName             String
+  contactPhone            String?
+  contactEmail            String?
+  type                    HamzoneOutreachType    @default(OTHER)
+  status                  HamzoneOutreachStatus  @default(NEW)
+  receivedAt              DateTime
+  loginBrowser            String?
+  assignedToUserId        String?
+  assignedTo              PlatformUser?          @relation("OutreachAssignedTo", fields: [assignedToUserId], references: [id])
+  assignedToExternalName  String?
+  assignedToExternalPhone String?
+  notes                   String?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  earnings                HamzoneOutreachEarning[]
+}
+
+// Recurring income logged against one managed account/gig — deliberately kept out of
+// PlatformFinanceService's company-wide revenue totals entirely (no join, no query references it
+// there): this is the recording admin's own personal money, not Hamzone Technologies', per explicit
+// instruction. recordedByUserId is whoever actually submitted this entry (the creator, or the
+// assignee reporting their own earnings back in).
+model HamzoneOutreachEarning {
+  id               String               @id @default(uuid())
+  entryId          String
+  entry            HamzoneOutreachEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  period           HamzoneEarningPeriod
+  periodDate       DateTime
+  amount           Int
+  challenges       String?
+  notes            String?
+  recordedByUserId String
+  recordedBy       PlatformUser         @relation(fields: [recordedByUserId], references: [id])
+  createdAt        DateTime             @default(now())
 }
 
 // A manual money-in/money-out log (salaries, hosting costs, one-off revenue not captured by
