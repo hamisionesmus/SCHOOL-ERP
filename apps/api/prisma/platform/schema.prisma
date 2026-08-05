@@ -343,6 +343,7 @@ model PlatformUser {
   trainerProfile              HamzoneTrainerProfile?
   trainingProgramsCreated     HamzoneTrainingProgram[]
   meetingsCreated             HamzoneMeeting[]
+  meetingMinutesUpdates        HamzoneMeeting[] @relation("MeetingMinutesUpdatedBy")
   outreachEntriesCreated      HamzoneOutreachEntry[] @relation("OutreachCreatedBy")
   outreachEntriesAssigned     HamzoneOutreachEntry[] @relation("OutreachAssignedTo")
   outreachEarningsRecorded    HamzoneOutreachEarning[]
@@ -1193,6 +1194,9 @@ model HamzoneMeeting {
   id                 String       @id @default(uuid())
   title              String
   description        String?
+  // Shown in the invite email/SMS and on the meeting card — plain ordered list, same "no rich text
+  // anywhere in this codebase" convention as every other notes-type field.
+  agenda             String[]     @default([])
   meetingLink        String?
   scheduledAt        DateTime
   audienceRoles      String[]
@@ -1205,7 +1209,30 @@ model HamzoneMeeting {
   createdByUserId    String
   createdBy          PlatformUser @relation(fields: [createdByUserId], references: [id])
   notifiedAt         DateTime?
+  minutes                String?
+  minutesUpdatedAt       DateTime?
+  minutesUpdatedByUserId String?
+  minutesUpdatedBy       PlatformUser? @relation("MeetingMinutesUpdatedBy", fields: [minutesUpdatedByUserId], references: [id])
+  attendance         HamzoneMeetingAttendance[]
   createdAt          DateTime     @default(now())
+}
+
+// One row per person who actually opened their personalized join link (see
+// HamzoneMeetingsService.signJoinToken/recordJoin) — the closest thing to a real "who showed up"
+// record without a Zoom/Meet webhook integration. `matched` distinguishes a real invitee (email
+// matched the resolved audience) from someone who joined with a different email; attendance summary
+// ("present" vs "absent") is always computed against the resolved invitee list at read time, not
+// stored per-invitee, so editing the audience after the fact never leaves stale rows behind.
+model HamzoneMeetingAttendance {
+  id        String         @id @default(uuid())
+  meetingId String
+  meeting   HamzoneMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  email     String
+  name      String?
+  matched   Boolean        @default(true)
+  joinedAt  DateTime       @default(now())
+
+  @@unique([meetingId, email])
 }
 
 // A lightweight address book of people outside the platform — never a real PlatformUser account, no

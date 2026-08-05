@@ -43,4 +43,10 @@ export class CreateMeetingDto {
   @IsArray()
   @IsString({ each: true })
   externalContactIds?: string[];
+
+  @ApiProperty({ required: false, type: [String], description: 'Agenda items, shown in order on the invite and the meeting card' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  agenda?: string[];
 }

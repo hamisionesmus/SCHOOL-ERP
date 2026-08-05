@@ -168,11 +168,11 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
       'Hamzone Technologies: your account is ready. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
   },
   MEETING_INVITE: {
-    variables: ['title', 'scheduledAt', 'meetingLink', 'organizerName'],
+    variables: ['title', 'scheduledAt', 'meetingLink', 'organizerName', 'agendaList', 'joinUrl'],
     subject: 'Meeting scheduled: {{title}}',
     emailBody:
-      '{{organizerName}} scheduled a meeting you\'re invited to.\n\n{{title}}\nWhen: {{scheduledAt}}\nJoin link: {{meetingLink}}',
-    smsBody: 'Hamzone Technologies: meeting "{{title}}" at {{scheduledAt}}. Join: {{meetingLink}}',
+      '{{organizerName}} scheduled a meeting you\'re invited to.\n\n{{title}}\nWhen: {{scheduledAt}}\n\nAgenda:\n{{agendaList}}\n\nJoin using the link below — it\'s tied to the email address you were invited with, so opening it marks you present automatically. If it asks you to confirm your email, please use the exact one this invite was sent to.\n\n{{joinUrl}}',
+    smsBody: 'Hamzone Technologies: meeting "{{title}}" at {{scheduledAt}}. Join (marks you present): {{joinUrl}}',
   },
   JOB_INTERVIEW_SCHEDULED: {
     variables: ['fullName', 'positionTitle', 'interviewAt', 'notes'],

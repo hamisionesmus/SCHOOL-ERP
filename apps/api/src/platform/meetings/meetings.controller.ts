@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -6,6 +6,7 @@ import { RequirePlatformRole } from '../../common/decorators/require-platform-ro
 import { CurrentUser, JwtUserPayload } from '../../common/decorators/current-user.decorator';
 import { HamzoneMeetingsService } from './meetings.service';
 import { CreateMeetingDto } from './dto/create-meeting.dto';
+import { UpdateMeetingMinutesDto } from './dto/update-meeting-minutes.dto';
 
 const ANY_PLATFORM_ROLE = ['SUPER_ADMIN', 'SUB_ADMIN', 'ASSISTANT_SUPER_ADMIN', 'TRAINER', 'GIG_WORKER'] as const;
 
@@ -40,5 +41,17 @@ export class HamzoneMeetingsController {
   @Post()
   create(@Body() dto: CreateMeetingDto, @CurrentUser() user: JwtUserPayload) {
     return this.meetings.create(dto, user.sub);
+  }
+
+  @RequirePlatformRole([...ANY_PLATFORM_ROLE])
+  @Get(':id/attendance')
+  attendance(@Param('id') id: string) {
+    return this.meetings.attendanceSummary(id);
+  }
+
+  @RequirePlatformRole([...ANY_PLATFORM_ROLE])
+  @Patch(':id/minutes')
+  updateMinutes(@Param('id') id: string, @Body() dto: UpdateMeetingMinutesDto, @CurrentUser() user: JwtUserPayload) {
+    return this.meetings.updateMinutes(id, user.sub, user.role ?? '', dto.minutes);
   }
 }
