@@ -54,7 +54,13 @@ services:
     # Also configures the connection-pool tuning in TenantPrismaService/PlatformPrismaService (see
     # those files); defaults there already match postgres's max_connections=60 above, these env vars
     # just make it explicit/adjustable.
-    mem_limit: 512m
+    # Raised from 512m: prisma:tenant:migrate:all (run via ts-node on every deploy — see
+    # docker-entrypoint.sh) has grown to need more headroom as the number of provisioned tenant
+    # schemas has grown, and was hitting "JavaScript heap out of memory" inside the old ceiling
+    # before the app ever booted (a full outage, not a graceful degrade — see incident on
+    # 2026-08-05). 896m still leaves real slack on the 1.9GiB host alongside postgres/web/postfix/
+    # caddy's own ceilings (their actual usage is far below what they're capped at).
+    mem_limit: 896m
     environment:
       DB_POOL_PER_TENANT: "3"
       DB_MAX_CACHED_TENANT_CLIENTS: "15"
