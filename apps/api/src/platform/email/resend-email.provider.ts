@@ -39,7 +39,7 @@ export class ResendEmailProvider implements EmailProvider {
     const from =
       settings.resendFromAddress ||
       this.config.get<string>('RESEND_FROM_ADDRESS') ||
-      'School ERP <no-reply@myschoolapp.xyz>';
+      `${settings.systemName || 'School ERP'} <no-reply@myschoolapp.xyz>`;
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',

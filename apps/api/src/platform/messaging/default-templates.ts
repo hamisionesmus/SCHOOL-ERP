@@ -46,26 +46,26 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
       'Hamzone Technologies: {{requestedByName}} requested to create "{{schoolName}}" — confirm with code {{code}}. Expires in 15 min. Ignore if unexpected.',
   },
   OTP_ADMIN: {
-    variables: ['schoolName', 'otpCode', 'creatorLabel'],
-    subject: 'Welcome to School ERP — confirm you\'re the admin for {{schoolName}}',
+    variables: ['schoolName', 'otpCode', 'creatorLabel', 'systemName'],
+    subject: 'Welcome to {{systemName}} — confirm you\'re the admin for {{schoolName}}',
     emailBody:
-      'Welcome to School ERP!\n\n{{creatorLabel}} is setting up "{{schoolName}}" and named you as its administrator. Your verification code is {{otpCode}} — give it to them to confirm it\'s really you and that you consent. It expires in 15 minutes.\n\nIf you didn\'t expect this, you can safely ignore this message — nothing is created without your code.',
+      'Welcome to {{systemName}}!\n\n{{creatorLabel}} is setting up "{{schoolName}}" and named you as its administrator. Your verification code is {{otpCode}} — give it to them to confirm it\'s really you and that you consent. It expires in 15 minutes.\n\nIf you didn\'t expect this, you can safely ignore this message — nothing is created without your code.',
     smsBody:
       'Welcome to Hamzone Technologies! {{creatorLabel}} is setting up "{{schoolName}}" and named you as its administrator. Your code is {{otpCode}} — give it to them to confirm it\'s really you. Expires in 15 min. Ignore if unexpected.',
   },
   WELCOME_DEMO: {
-    variables: ['schoolName', 'loginUrl', 'email', 'tempPassword', 'expiryDate'],
-    subject: 'Welcome to your School ERP demo — {{schoolName}}',
+    variables: ['schoolName', 'loginUrl', 'email', 'tempPassword', 'expiryDate', 'systemName'],
+    subject: 'Welcome to your {{systemName}} demo — {{schoolName}}',
     emailBody:
-      'Welcome to your School ERP demo!\n\n"{{schoolName}}" is ready to explore, no payment needed.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change this password once you sign in.\n\nThis demo runs until {{expiryDate}} — after that, sign-in will be paused until you extend it or move to a full account. Enjoy exploring!',
+      'Welcome to your {{systemName}} demo!\n\n"{{schoolName}}" is ready to explore, no payment needed.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change this password once you sign in.\n\nThis demo runs until {{expiryDate}} — after that, sign-in will be paused until you extend it or move to a full account. Enjoy exploring!',
     smsBody:
       'Welcome to your Hamzone Technologies demo! "{{schoolName}}" is ready. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}}. Runs until {{expiryDate}}.',
   },
   WELCOME_REAL: {
-    variables: ['schoolName', 'activationUrl', 'amountKes', 'loginUrl', 'slug', 'email'],
-    subject: 'Welcome to School ERP — activate {{schoolName}}',
+    variables: ['schoolName', 'activationUrl', 'amountKes', 'loginUrl', 'slug', 'email', 'systemName'],
+    subject: 'Welcome to {{systemName}} — activate {{schoolName}}',
     emailBody:
-      'Welcome to School ERP! "{{schoolName}}" has been created — one step left before you can sign in.\n\nActivate now: {{activationUrl}}\nAmount due: KES {{amountKes}}\n\nYou can pay instantly by M-Pesa STK Push, or by Bank transfer / Paybill — bank and paybill payments take a little longer to confirm, so after paying that way just paste the confirmation message you receive on the activation page and we\'ll verify it and unlock your account.\n\nOnce payment is confirmed you\'ll get another message with your login details.\nSchool code: {{slug}}\nAdmin email: {{email}}\n\nThis is an automated message from a no-reply address — please don\'t reply to it.',
+      'Welcome to {{systemName}}! "{{schoolName}}" has been created — one step left before you can sign in.\n\nActivate now: {{activationUrl}}\nAmount due: KES {{amountKes}}\n\nYou can pay instantly by M-Pesa STK Push, or by Bank transfer / Paybill — bank and paybill payments take a little longer to confirm, so after paying that way just paste the confirmation message you receive on the activation page and we\'ll verify it and unlock your account.\n\nOnce payment is confirmed you\'ll get another message with your login details.\nSchool code: {{slug}}\nAdmin email: {{email}}\n\nThis is an automated message from a no-reply address — please don\'t reply to it.',
     smsBody:
       'Welcome to Hamzone Technologies! "{{schoolName}}" has been created. Activate now (KES {{amountKes}}): {{activationUrl}} — pay by M-Pesa, bank, or paybill. Your login details follow once payment is confirmed.',
   },
@@ -115,10 +115,10 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
     smsBody: 'Hamzone Technologies: {{requestedByName}} requested to {{operation}}. Confirm with code {{code}}. Expires in 15 min.',
   },
   SUB_ADMIN_WELCOME: {
-    variables: ['fullName', 'loginUrl', 'email', 'tempPassword', 'invitedByName', 'capabilities'],
-    subject: 'You\'ve been added as a School ERP admin',
+    variables: ['fullName', 'loginUrl', 'email', 'tempPassword', 'invitedByName', 'capabilities', 'systemName'],
+    subject: 'You\'ve been added as a {{systemName}} admin',
     emailBody:
-      'Hi {{fullName}},\n\n{{invitedByName}} has added you as an admin on School ERP. {{capabilities}} Other administrative areas stay with the account owner.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password as soon as you sign in.',
+      'Hi {{fullName}},\n\n{{invitedByName}} has added you as an admin on {{systemName}}. {{capabilities}} Other administrative areas stay with the account owner.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password as soon as you sign in.',
     smsBody:
       'Hamzone Technologies: {{invitedByName}} added you as an admin. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
   },

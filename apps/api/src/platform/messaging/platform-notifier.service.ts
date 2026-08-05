@@ -51,7 +51,12 @@ export class PlatformNotifierService {
     key: MessageTemplateKey,
     options: { to: { email?: string | null; phone?: string | null }; vars: Record<string, string | number> },
   ): Promise<void> {
-    const [rendered, settings] = await Promise.all([this.render(key, options.vars), this.settings.get()]);
+    const settings = await this.settings.get();
+    // Every template's {{systemName}} resolves from the Super-Admin-configured branding name here,
+    // so no individual call site needs to pass it — matches how logo/enabled-channel checks below
+    // are already sourced from the same settings row rather than hardcoded per template.
+    const vars = { ...options.vars, systemName: settings.systemName || 'School ERP' };
+    const rendered = await this.render(key, vars);
 
     if (settings.emailEnabled && options.to.email && rendered.emailBody) {
       const logoAttachment = await buildLogoAttachment(settings.loginLogoUrl);

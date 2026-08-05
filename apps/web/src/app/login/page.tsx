@@ -125,9 +125,9 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute -left-24 top-1/3 h-80 w-80 rounded-full bg-emerald-500/20 blur-3xl" />
         <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 rounded-full bg-amber-400/10 blur-3xl" />
 
-        <div className="animate-float-up relative flex items-center gap-2.5">
+        <div className="animate-float-up relative flex min-w-0 items-center gap-2.5">
           <LoginLogo url={branding.loginLogoUrl} />
-          <span className="text-lg font-semibold text-white">{branding.systemName}</span>
+          <span className="truncate text-lg font-semibold text-white">{branding.systemName}</span>
         </div>
 
         <div className="animate-float-up relative" style={{ animationDelay: '80ms' }}>
@@ -143,9 +143,9 @@ export default function LoginPage() {
       {/* Sign-in panel */}
       <div className="flex w-full flex-col justify-center px-6 py-12 lg:w-1/2 lg:px-16 xl:px-24">
         <div className="animate-float-up mx-auto w-full max-w-sm">
-          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
+          <div className="mb-8 flex min-w-0 items-center gap-2.5 lg:hidden">
             <LoginLogo url={branding.loginLogoUrl} />
-            <span className="text-lg font-semibold text-white">{branding.systemName}</span>
+            <span className="truncate text-lg font-semibold text-white">{branding.systemName}</span>
           </div>
 
           <h2 className="text-2xl font-semibold text-white">{branding.loginHeading || DEFAULT_BRANDING.loginHeading}</h2>
@@ -229,11 +229,18 @@ export default function LoginPage() {
 function LoginLogo({ url }: { url: string | null }) {
   if (url) {
     const src = url.startsWith('http') ? url : `${API_ORIGIN}${url}`;
-    // eslint-disable-next-line @next/next/no-img-element -- external/uploaded URL, not a static asset
-    return <img src={src} alt="" className="h-10 w-10 rounded-xl object-cover shadow-lg shadow-emerald-900/40" />;
+    // object-contain (not object-cover) so a non-square upload — e.g. an icon-mark-plus-wordmark
+    // logo — scales to fit instead of being cropped; the dark padded box gives it a consistent frame
+    // regardless of the source image's own background.
+    return (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 p-1 shadow-lg shadow-emerald-900/40">
+        {/* eslint-disable-next-line @next/next/no-img-element -- external/uploaded URL, not a static asset */}
+        <img src={src} alt="" className="h-full w-full object-contain" />
+      </div>
+    );
   }
   return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
       <GraduationCap size={20} className="text-emerald-950" />
     </div>
   );
