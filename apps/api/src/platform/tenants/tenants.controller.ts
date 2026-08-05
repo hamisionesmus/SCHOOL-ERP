@@ -7,6 +7,8 @@ import { ConfirmTenantDto } from './dto/confirm-tenant.dto';
 import { UpdatePaymentConfigDto } from './dto/update-payment-config.dto';
 import { UpdateStorageLimitDto } from './dto/update-storage-limit.dto';
 import { BulkDeleteTenantsDto } from './dto/bulk-delete-tenants.dto';
+import { RequestSystemResetDto } from './dto/request-system-reset.dto';
+import { ConfirmSystemResetDto } from './dto/confirm-system-reset.dto';
 import { InitiateActivationPaymentDto } from '../activation/dto/initiate-activation-payment.dto';
 import { ActivationService } from '../activation/activation.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -53,6 +55,22 @@ export class TenantsController {
   @Post('bulk-delete')
   bulkDelete(@Body() dto: BulkDeleteTenantsDto, @CurrentUser() user: JwtUserPayload) {
     return this.tenantsService.bulkDeleteTestTenants(dto.ids, user);
+  }
+
+  // "Restart the system" — for moving from testing/development into real onboarding. Unlike every
+  // other delete path above, this isn't limited to Test-flagged schools, so it's Super-Admin-only
+  // and gated by the same email+phone confirmation-code flow as every other platform-wide config
+  // change (see SettingsOtpService) rather than the lighter Test-only delete authorization.
+  @RequirePlatformRole('SUPER_ADMIN')
+  @Post('request-system-reset')
+  requestSystemReset(@Body() dto: RequestSystemResetDto, @CurrentUser() user: JwtUserPayload) {
+    return this.tenantsService.requestSystemReset(user.sub, dto.keepTenantId);
+  }
+
+  @RequirePlatformRole('SUPER_ADMIN')
+  @Post('confirm-system-reset')
+  confirmSystemReset(@Body() dto: ConfirmSystemResetDto) {
+    return this.tenantsService.confirmSystemReset(dto.requestId, dto.code);
   }
 
   @Get(':id/usage')

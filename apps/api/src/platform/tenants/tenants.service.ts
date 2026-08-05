@@ -20,7 +20,9 @@ import { PlatformNotifierService } from '../messaging/platform-notifier.service'
 import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 import { PricingTiersService } from '../pricing-tiers/pricing-tiers.service';
 import { SystemHealthService } from '../system-health/system-health.service';
+import { SettingsOtpService } from '../settings-otp/settings-otp.service';
 import { JwtUserPayload } from '../../common/decorators/current-user.decorator';
+import { Tenant } from '../../../generated/platform-client';
 
 const CREATION_CODE_TTL_MS = 15 * 60 * 1000;
 
@@ -36,6 +38,7 @@ export class TenantsService {
     private readonly platformSettings: PlatformSettingsService,
     private readonly pricingTiers: PricingTiersService,
     private readonly systemHealth: SystemHealthService,
+    private readonly settingsOtp: SettingsOtpService,
   ) {}
 
   // Sub-Admins only see schools they personally created; every other role (Super Admin, Assistant
@@ -390,11 +393,42 @@ export class TenantsService {
     };
   }
 
-  /** Permanently removes a Test tenant — schema, uploads, and every platform-schema row that
-   * references it. Hard-guarded to isTest tenants only, unconditionally (not just a UI affordance):
-   * a Demo or Real tenant can never reach this path even via a direct API call. Sub-Admins and
-   * Assistant Super Admins may only delete tenants they themselves created; Super Admin can delete
-   * any test tenant — same visibility boundary as scopeToOwnSchools(). */
+  /** The actual deletion — schema, uploads, and every platform-schema row that references the
+   * tenant. No authorization checks of its own (callers decide who's allowed to reach it); shared
+   * by deleteTestTenant (Test-only, guarded below) and confirmSystemReset (OTP-gated, deliberately
+   * bypasses the Test-only rule since a full restart needs to clear Demo/Real schools too). */
+  private async purgeTenant(tenant: Tenant) {
+    await this.platformPrisma.$transaction([
+      // Explicit even though the DB's ON DELETE CASCADE/SET NULL would handle these automatically —
+      // keeps every model this delete touches visible in one place instead of relying on schema-level
+      // behavior a future reader would have to go dig up. HamzoneClient itself is NOT deleted (a CRM
+      // client can outlive its ERP tenant record — e.g. a school that stops using the ERP but is
+      // still a Hamzone client for other product lines) — only the link is cleared.
+      this.platformPrisma.hamzoneClient.updateMany({ where: { tenantId: tenant.id }, data: { tenantId: null } }),
+      this.platformPrisma.userDirectoryEntry.deleteMany({ where: { tenantId: tenant.id } }),
+      this.platformPrisma.campaignRecipient.deleteMany({ where: { tenantId: tenant.id } }),
+      this.platformPrisma.platformPayment.deleteMany({ where: { invoice: { tenantId: tenant.id } } }),
+      this.platformPrisma.platformMpesaStkRequest.deleteMany({ where: { tenantId: tenant.id } }),
+      this.platformPrisma.platformPaymentProof.deleteMany({ where: { tenantId: tenant.id } }),
+      this.platformPrisma.platformInvoice.deleteMany({ where: { tenantId: tenant.id } }),
+      this.platformPrisma.tenantFeedback.deleteMany({ where: { tenantId: tenant.id } }),
+      this.platformPrisma.platformTicketEscalation.deleteMany({ where: { tenantId: tenant.id } }),
+      this.platformPrisma.auditLogAccessRequest.deleteMany({ where: { tenantId: tenant.id } }),
+      this.platformPrisma.tenant.delete({ where: { id: tenant.id } }),
+    ]);
+
+    await this.platformPrisma.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${tenant.schemaName}" CASCADE`);
+    try {
+      rmSync(join(process.cwd(), 'uploads', tenant.schemaName), { recursive: true, force: true });
+    } catch {
+      // Best-effort — a missing uploads folder (e.g. school never uploaded anything) isn't an error.
+    }
+  }
+
+  /** Permanently removes a Test tenant. Hard-guarded to isTest tenants only, unconditionally (not
+   * just a UI affordance): a Demo or Real tenant can never reach this path even via a direct API
+   * call. Sub-Admins and Assistant Super Admins may only delete tenants they themselves created;
+   * Super Admin can delete any test tenant — same visibility boundary as scopeToOwnSchools(). */
   async deleteTestTenant(id: string, user: JwtUserPayload) {
     const tenant = await this.platformPrisma.tenant.findUnique({ where: { id } });
     if (!tenant) throw new NotFoundException('School not found');
@@ -405,32 +439,7 @@ export class TenantsService {
       throw new BadRequestException('You can only delete test schools you created yourself');
     }
 
-    await this.platformPrisma.$transaction([
-      // Explicit even though the DB's ON DELETE CASCADE/SET NULL would handle these automatically —
-      // keeps every model this delete touches visible in one place instead of relying on schema-level
-      // behavior a future reader would have to go dig up. HamzoneClient itself is NOT deleted (a CRM
-      // client can outlive its ERP tenant record — e.g. a school that stops using the ERP but is
-      // still a Hamzone client for other product lines) — only the link is cleared.
-      this.platformPrisma.hamzoneClient.updateMany({ where: { tenantId: id }, data: { tenantId: null } }),
-      this.platformPrisma.userDirectoryEntry.deleteMany({ where: { tenantId: id } }),
-      this.platformPrisma.campaignRecipient.deleteMany({ where: { tenantId: id } }),
-      this.platformPrisma.platformPayment.deleteMany({ where: { invoice: { tenantId: id } } }),
-      this.platformPrisma.platformMpesaStkRequest.deleteMany({ where: { tenantId: id } }),
-      this.platformPrisma.platformPaymentProof.deleteMany({ where: { tenantId: id } }),
-      this.platformPrisma.platformInvoice.deleteMany({ where: { tenantId: id } }),
-      this.platformPrisma.tenantFeedback.deleteMany({ where: { tenantId: id } }),
-      this.platformPrisma.platformTicketEscalation.deleteMany({ where: { tenantId: id } }),
-      this.platformPrisma.auditLogAccessRequest.deleteMany({ where: { tenantId: id } }),
-      this.platformPrisma.tenant.delete({ where: { id } }),
-    ]);
-
-    await this.platformPrisma.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${tenant.schemaName}" CASCADE`);
-    try {
-      rmSync(join(process.cwd(), 'uploads', tenant.schemaName), { recursive: true, force: true });
-    } catch {
-      // Best-effort — a missing uploads folder (e.g. school never uploaded anything) isn't an error.
-    }
-
+    await this.purgeTenant(tenant);
     return { deleted: true };
   }
 
@@ -449,5 +458,40 @@ export class TenantsService {
       }
     }
     return results;
+  }
+
+  /** "Start the system fresh" — for going from a testing/development period into real onboarding.
+   * Unlike every other deletion path on this service, this one is NOT limited to Test-flagged
+   * tenants: it's meant to clear out Demo and Real schools created while building/trialling the
+   * platform too. That's real destructive power, so it goes through the same email+phone OTP gate
+   * as every other platform-wide config change (see SettingsOtpService) rather than reusing the
+   * lighter Test-only delete authorization. Optionally keeps one named school (e.g. a dedicated
+   * ongoing test account) — every other tenant is deleted. */
+  async requestSystemReset(userId: string, keepTenantId?: string) {
+    let keptTenantName: string | undefined;
+    if (keepTenantId) {
+      const kept = await this.platformPrisma.tenant.findUnique({ where: { id: keepTenantId } });
+      if (!kept) throw new NotFoundException('The school chosen to keep was not found');
+      keptTenantName = kept.name;
+    }
+    const affectedCount = await this.platformPrisma.tenant.count({
+      where: keepTenantId ? { id: { not: keepTenantId } } : {},
+    });
+    const result = await this.settingsOtp.request(userId, 'SYSTEM_RESET', { keepTenantId, affectedCount });
+    return { ...result, affectedCount, keptTenantName };
+  }
+
+  async confirmSystemReset(requestId: string, code: string) {
+    const { scope, changes } = await this.settingsOtp.verifyAndConsume(requestId, code);
+    if (scope !== 'SYSTEM_RESET') throw new BadRequestException('This code is not for a system reset');
+    const { keepTenantId } = changes as { keepTenantId?: string };
+
+    const tenants = await this.platformPrisma.tenant.findMany({
+      where: keepTenantId ? { id: { not: keepTenantId } } : {},
+    });
+    for (const tenant of tenants) {
+      await this.purgeTenant(tenant);
+    }
+    return { deletedCount: tenants.length };
   }
 }
