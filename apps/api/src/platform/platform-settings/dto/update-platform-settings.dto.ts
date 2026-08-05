@@ -171,4 +171,21 @@ export class UpdatePlatformSettingsDto {
   @IsOptional()
   @IsString()
   builtByText?: string;
+
+  // Real contact details shown on invoice PDFs (both PlatformInvoice and HamzoneInvoice) — replaces
+  // what used to be a hardcoded phone/website string baked into the PDF-drawing code.
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  supportPhone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  supportWebsite?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  billingEmail?: string;
 }

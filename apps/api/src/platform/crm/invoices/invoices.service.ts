@@ -62,6 +62,7 @@ export class HamzoneInvoicesService {
         invoiceNumber,
         clientId: dto.clientId,
         productLine: dto.productLine,
+        purpose: dto.productLine === 'OTHER' ? dto.purpose : undefined,
         description: dto.description,
         subtotal: dto.subtotal,
         vatRate,
@@ -100,6 +101,7 @@ export class HamzoneInvoicesService {
       clientContactLines: contactLines,
       invoiceNumber: invoice.invoiceNumber,
       productLine: invoice.productLine,
+      purpose: invoice.purpose,
       description: invoice.description,
       invoiceDate: invoice.createdAt,
       dueDate: invoice.dueDate,
@@ -117,6 +119,11 @@ export class HamzoneInvoicesService {
         bankAccountName: settings.bankAccountName,
         bankAccountNumber: settings.bankAccountNumber,
       },
+      contact: {
+        supportPhone: settings.supportPhone,
+        supportWebsite: settings.supportWebsite,
+        billingEmail: settings.billingEmail,
+      },
       generatedAt: new Date(),
     });
   }
@@ -129,7 +136,10 @@ export class HamzoneInvoicesService {
 
   /** Emails and/or SMSes the invoice (PDF attached to the email) to whatever contact details the
    * client has on file — same direct-provider pattern as CampaignsService, since this is one-off
-   * authored content per invoice rather than a keyed system template. */
+   * authored content per invoice rather than a keyed system template. Actually inspects each
+   * provider's result rather than treating "didn't throw" as delivered — mirrors
+   * CampaignRecipient's emailStatus/smsStatus/emailError/smsError tracking, since "we called the
+   * provider" and "the client actually received it" are not the same claim. */
   async send(id: string) {
     const invoice = await this.findOne(id);
     if (!invoice.client.email && !invoice.client.phone) {
@@ -139,20 +149,51 @@ export class HamzoneInvoicesService {
     const buffer = await this.buildPdf(invoice);
     const body = `Invoice ${invoice.invoiceNumber} from Hamzone Technologies — ${invoice.description}. Total due: KES ${invoice.total.toLocaleString()} by ${invoice.dueDate.toLocaleDateString()}. This is an electronically generated invoice.`;
 
+    const data: Record<string, unknown> = {};
+
     if (invoice.client.email && settings.emailEnabled) {
-      const logoAttachment = await buildLogoAttachment(settings.loginLogoUrl);
-      const html = wrapWithLogo(body, !!logoAttachment);
-      const attachments = [
-        { filename: `${invoice.invoiceNumber}.pdf`, content: buffer, contentType: 'application/pdf' },
-        ...(logoAttachment ? [logoAttachment] : []),
-      ];
-      await this.emailProvider.send(invoice.client.email, `Invoice ${invoice.invoiceNumber} — Hamzone Technologies`, body, attachments, html);
-      await this.platformPrisma.hamzoneInvoice.update({ where: { id }, data: { emailSentAt: new Date() } });
+      try {
+        const logoAttachment = await buildLogoAttachment(settings.loginLogoUrl);
+        const html = wrapWithLogo(body, !!logoAttachment);
+        const attachments = [
+          { filename: `${invoice.invoiceNumber}.pdf`, content: buffer, contentType: 'application/pdf' },
+          ...(logoAttachment ? [logoAttachment] : []),
+        ];
+        const result = await this.emailProvider.send(
+          invoice.client.email,
+          `Invoice ${invoice.invoiceNumber} — Hamzone Technologies`,
+          body,
+          attachments,
+          html,
+        );
+        data.emailSentAt = new Date();
+        data.emailStatus = result.success ? 'SENT' : 'FAILED';
+        data.emailError = result.success ? null : 'Email provider reported the send failed';
+      } catch (err) {
+        data.emailSentAt = new Date();
+        data.emailStatus = 'FAILED';
+        data.emailError = err instanceof Error ? err.message : 'Unknown email delivery error';
+      }
+    } else {
+      data.emailStatus = 'SKIPPED';
     }
+
     if (invoice.client.phone && settings.smsEnabled) {
-      await this.smsProvider.send(invoice.client.phone, body);
-      await this.platformPrisma.hamzoneInvoice.update({ where: { id }, data: { smsSentAt: new Date() } });
+      try {
+        const result = await this.smsProvider.send(invoice.client.phone, body);
+        data.smsSentAt = new Date();
+        data.smsStatus = result.success ? 'SENT' : 'FAILED';
+        data.smsError = result.success ? null : 'SMS provider reported the send failed';
+      } catch (err) {
+        data.smsSentAt = new Date();
+        data.smsStatus = 'FAILED';
+        data.smsError = err instanceof Error ? err.message : 'Unknown SMS delivery error';
+      }
+    } else {
+      data.smsStatus = 'SKIPPED';
     }
+
+    await this.platformPrisma.hamzoneInvoice.update({ where: { id }, data });
     return this.findOne(id);
   }
 }

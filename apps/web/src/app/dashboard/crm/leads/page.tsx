@@ -23,8 +23,9 @@ interface Lead {
   interest: string;
   location: string | null;
   status: string;
+  source: string;
   createdAt: string;
-  submittedBy: { fullName: string };
+  submittedBy: { fullName: string } | null;
 }
 
 function SubmitLeadDialog({ onCreated }: { onCreated: () => void }) {
@@ -166,7 +167,9 @@ export default function CrmLeadsPage() {
                         {l.contactPhone ?? '—'}
                         {l.contactEmail && <div className="text-xs">{l.contactEmail}</div>}
                       </td>
-                      <td className="py-2 text-slate-500">{l.submittedBy.fullName}</td>
+                      <td className="py-2 text-slate-500">
+                        {l.submittedBy?.fullName ?? <span className="italic text-slate-400">Website (public form)</span>}
+                      </td>
                       <td className="py-2 text-right">
                         <select
                           value={l.status}

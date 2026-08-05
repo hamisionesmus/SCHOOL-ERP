@@ -63,6 +63,9 @@ interface PlatformSettings {
   loginHelperText: string | null;
   loginFooterText: string | null;
   builtByText: string | null;
+  supportPhone: string | null;
+  supportWebsite: string | null;
+  billingEmail: string | null;
 }
 
 interface PricingTier {
@@ -344,6 +347,9 @@ function PaymentDetailsTab({ data, onRequested }: { data?: PlatformSettings; onR
         stkEnabled: data.stkEnabled,
         bankTransferEnabled: data.bankTransferEnabled,
         paybillEnabled: data.paybillEnabled,
+        supportPhone: data.supportPhone ?? '',
+        supportWebsite: data.supportWebsite ?? '',
+        billingEmail: data.billingEmail ?? '',
       };
       const draft = loadDraft();
       setForm(draft ? { ...fromServer, ...draft } : fromServer);
@@ -368,7 +374,9 @@ function PaymentDetailsTab({ data, onRequested }: { data?: PlatformSettings; onR
     onError: (err) => notifyError(err, 'Failed to request settings change'),
   });
 
-  function field(key: 'bankName' | 'bankAccountName' | 'bankAccountNumber' | 'paybillNumber' | 'paybillAccountName') {
+  function field(
+    key: 'bankName' | 'bankAccountName' | 'bankAccountNumber' | 'paybillNumber' | 'paybillAccountName' | 'supportPhone' | 'supportWebsite' | 'billingEmail',
+  ) {
     return {
       value: (form[key] as string) ?? '',
       onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [key]: e.target.value })),
@@ -433,6 +441,27 @@ function PaymentDetailsTab({ data, onRequested }: { data?: PlatformSettings; onR
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-slate-700">Account name</label>
             <Input {...field('paybillAccountName')} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Support contact</CardTitle>
+          <CardDescription>Shown on invoice PDFs (both school subscription and Hamzone CRM invoices) — pulled from here rather than hardcoded.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Support phone</label>
+            <Input placeholder="e.g. +254 711 562526" {...field('supportPhone')} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Website</label>
+            <Input placeholder="e.g. hamzonetechnologies.com" {...field('supportWebsite')} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Billing email</label>
+            <Input placeholder="e.g. billing@hamzonetechnologies.com" {...field('billingEmail')} />
           </div>
         </CardContent>
       </Card>

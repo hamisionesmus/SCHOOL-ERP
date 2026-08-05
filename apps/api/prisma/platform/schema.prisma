@@ -463,6 +463,11 @@ model PlatformSettings {
   loginHelperText      String?
   loginFooterText      String?
   builtByText          String?
+  // Real, editable contact details shown on invoice PDFs (both PlatformInvoice and HamzoneInvoice) —
+  // replaces what used to be a hardcoded phone/website string baked into the PDF-drawing code.
+  supportPhone      String?
+  supportWebsite    String?
+  billingEmail      String?
   updatedAt         DateTime @updatedAt
 }
 
@@ -744,6 +749,11 @@ enum HamzoneLeadStatus {
   LOST
 }
 
+enum HamzoneLeadSource {
+  ADMIN
+  PUBLIC_API
+}
+
 enum HamzoneDocumentCategory {
   POSTER
   CERTIFICATE
@@ -808,6 +818,7 @@ model HamzoneInvoice {
   clientId         String
   client           HamzoneClient        @relation(fields: [clientId], references: [id])
   productLine      HamzoneProductLine
+  purpose          String?
   description      String
   subtotal         Int
   vatRate          Int                  @default(16)
@@ -820,6 +831,10 @@ model HamzoneInvoice {
   paymentReference String?
   emailSentAt      DateTime?
   smsSentAt        DateTime?
+  emailStatus      CampaignDeliveryStatus @default(PENDING)
+  smsStatus        CampaignDeliveryStatus @default(PENDING)
+  emailError       String?
+  smsError         String?
   createdByUserId  String
   createdBy        PlatformUser         @relation(fields: [createdByUserId], references: [id])
   createdAt        DateTime             @default(now())
@@ -854,10 +869,14 @@ model HamzoneTrainingRecord {
 // Field-submitted by the marketing team (which every platform admin tier can act as, plus anyone
 // specifically invited for it) the moment they get a lead — real-time, not end-of-day notes, so
 // follow-ups don't go cold. Not a HamzoneClient yet; converts into one manually once qualified.
+// submittedByUserId is nullable because a lead can also arrive from the public marketing-site
+// contact form (see PublicCrmController's leads:write-scoped endpoint) with no logged-in admin
+// behind it — `source` distinguishes the two without guessing from a null FK.
 model HamzoneMarketingLead {
   id                String             @id @default(uuid())
-  submittedByUserId String
-  submittedBy       PlatformUser       @relation(fields: [submittedByUserId], references: [id])
+  submittedByUserId String?
+  submittedBy       PlatformUser?      @relation(fields: [submittedByUserId], references: [id])
+  source            HamzoneLeadSource  @default(ADMIN)
   clientName        String
   contactPhone      String?
   contactEmail      String?

@@ -29,6 +29,11 @@ export interface PlatformInvoicePdfInput {
     bankAccountName: string | null;
     bankAccountNumber: string | null;
   };
+  contact: {
+    supportPhone: string | null;
+    supportWebsite: string | null;
+    billingEmail: string | null;
+  };
   payments: { receiptNumber: string; amount: number; method: string; createdAt: Date }[];
   generatedAt: Date;
 }
@@ -59,6 +64,9 @@ export function buildPlatformInvoicePdfInput(
     bankName: string | null;
     bankAccountName: string | null;
     bankAccountNumber: string | null;
+    supportPhone?: string | null;
+    supportWebsite?: string | null;
+    billingEmail?: string | null;
   },
 ): PlatformInvoicePdfInput {
   const addressLines = [tenant.address, [tenant.town, tenant.county].filter(Boolean).join(', ') || null, 'Kenya'].filter(
@@ -80,6 +88,11 @@ export function buildPlatformInvoicePdfInput(
       bankName: settings.bankTransferEnabled ? settings.bankName : null,
       bankAccountName: settings.bankAccountName,
       bankAccountNumber: settings.bankAccountNumber,
+    },
+    contact: {
+      supportPhone: settings.supportPhone ?? null,
+      supportWebsite: settings.supportWebsite ?? null,
+      billingEmail: settings.billingEmail ?? null,
     },
     payments: invoice.payments,
     generatedAt: new Date(),
@@ -186,7 +199,8 @@ export function renderPlatformInvoicePdf(input: PlatformInvoicePdfInput): Promis
       ry += 16;
     }
     if (!input.payment.paybillNumber && !input.payment.bankName) {
-      doc.text('Contact billing@hamzonetechnologies.com for payment', rx, ry, { width: rw, align: 'right' });
+      const fallbackContact = input.contact.billingEmail ?? 'the school administrator';
+      doc.text(`Contact ${fallbackContact} for payment`, rx, ry, { width: rw, align: 'right' });
       ry += 11;
       doc.text('instructions.', rx, ry, { width: rw, align: 'right' });
       ry += 16;
@@ -200,8 +214,20 @@ export function renderPlatformInvoicePdf(input: PlatformInvoicePdfInput): Promis
     ry += 10;
     doc.text('transfers may take a business day.', rx, ry, { width: rw, align: 'right' });
     ry += 14;
-    doc.text('+254 711 562526 · hamzonetechnologies.com', rx, ry, { width: rw, align: 'right' });
-    ry += 14;
+
+    // Contact block anchored at a fixed minimum offset (not floating right after whatever payment
+    // blocks preceded it) so it never drifts or overlaps — sourced from PlatformSettings, never
+    // hardcoded.
+    ry = Math.max(ry, 118 + 20 + 44 + 24);
+    const contactLine = [input.contact.supportPhone, input.contact.supportWebsite].filter((p): p is string => !!p).join(' · ');
+    if (contactLine) {
+      doc.text(contactLine, rx, ry, { width: rw, align: 'right' });
+      ry += 11;
+    }
+    if (input.contact.billingEmail) {
+      doc.text(input.contact.billingEmail, rx, ry, { width: rw, align: 'right' });
+      ry += 11;
+    }
 
     // ---- Grey banner: invoice number + dates ----
     let y = Math.max(ry + 14, 210);

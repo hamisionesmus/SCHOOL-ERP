@@ -7,6 +7,7 @@ export interface HamzoneInvoicePdfInput {
   clientContactLines: string[];
   invoiceNumber: string;
   productLine: string;
+  purpose: string | null;
   description: string;
   invoiceDate: Date;
   dueDate: Date;
@@ -23,6 +24,11 @@ export interface HamzoneInvoicePdfInput {
     bankName: string | null;
     bankAccountName: string | null;
     bankAccountNumber: string | null;
+  };
+  contact: {
+    supportPhone: string | null;
+    supportWebsite: string | null;
+    billingEmail: string | null;
   };
   generatedAt: Date;
 }
@@ -101,8 +107,25 @@ export function renderHamzoneInvoicePdf(input: HamzoneInvoicePdfInput): Promise<
       doc.text(`Account No: ${input.payment.bankAccountNumber ?? ''}`, rx, ry, { width: rw, align: 'right' });
       ry += 16;
     }
-    doc.text('+254 711 562526 · hamzonetechnologies.com', rx, ry, { width: rw, align: 'right' });
-    ry += 14;
+    if (!input.payment.paybillNumber && !input.payment.bankName) {
+      doc.text('Contact billing for payment instructions.', rx, ry, { width: rw, align: 'right' });
+      ry += 16;
+    }
+
+    // Contact line always anchored at a fixed minimum offset (rather than floating right after
+    // whatever payment blocks happened to draw above it) so its vertical position and styling never
+    // drift between invoices — and always sourced from PlatformSettings, never hardcoded.
+    ry = Math.max(ry, 118 + 20 + 44);
+    doc.font('Helvetica').fontSize(7.5).fillColor('#94a3b8');
+    const contactLine = [input.contact.supportPhone, input.contact.supportWebsite].filter((p): p is string => !!p).join(' · ');
+    if (contactLine) {
+      doc.text(contactLine, rx, ry, { width: rw, align: 'right' });
+      ry += 11;
+    }
+    if (input.contact.billingEmail) {
+      doc.text(input.contact.billingEmail, rx, ry, { width: rw, align: 'right' });
+      ry += 11;
+    }
 
     let y = Math.max(ry + 14, 210);
     band(doc, left, y, contentWidth, 62, '#f1f5f9');
@@ -122,6 +145,13 @@ export function renderHamzoneInvoicePdf(input: HamzoneInvoicePdfInput): Promise<
       y += 13;
     }
     y += 15;
+
+    if (input.productLine === 'OTHER' && input.purpose) {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#0f172a').text('Payment For', left, y);
+      y += 13;
+      doc.font('Helvetica').fontSize(9.5).fillColor('#334155').text(input.purpose, left, y, { width: contentWidth });
+      y += 18;
+    }
 
     const col2 = right - 110;
     band(doc, left, y, contentWidth, 22, '#e2e8f0');

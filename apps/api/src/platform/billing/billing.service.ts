@@ -215,6 +215,11 @@ export class BillingService {
         bankAccountName: settings.bankAccountName,
         bankAccountNumber: settings.bankAccountNumber,
       },
+      contact: {
+        supportPhone: settings.supportPhone,
+        supportWebsite: settings.supportWebsite,
+        billingEmail: settings.billingEmail,
+      },
       payments: [],
       generatedAt: new Date(),
     };

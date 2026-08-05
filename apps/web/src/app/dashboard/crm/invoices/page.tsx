@@ -21,6 +21,7 @@ interface Invoice {
   id: string;
   invoiceNumber: string;
   productLine: string;
+  purpose: string | null;
   description: string;
   subtotal: number;
   vatRate: number;
@@ -30,7 +31,30 @@ interface Invoice {
   dueDate: string;
   emailSentAt: string | null;
   smsSentAt: string | null;
+  emailStatus: string;
+  smsStatus: string;
+  emailError: string | null;
+  smsError: string | null;
   client: { name: string; email: string | null; phone: string | null };
+}
+
+function DeliveryBadges({ inv }: { inv: Invoice }) {
+  const parts: { label: string; status: string; error: string | null }[] = [];
+  if (inv.client.email) parts.push({ label: 'Email', status: inv.emailStatus, error: inv.emailError });
+  if (inv.client.phone) parts.push({ label: 'SMS', status: inv.smsStatus, error: inv.smsError });
+  if (parts.length === 0) return <span className="text-xs text-slate-400">No contact on file</span>;
+  return (
+    <div className="flex flex-col gap-1">
+      {parts.map((p) => (
+        <div key={p.label} className="flex items-center gap-1.5" title={p.error ?? undefined}>
+          <span className="text-xs text-slate-400">{p.label}:</span>
+          <Badge status={p.status} className="text-[10px]">
+            {p.status === 'PENDING' ? 'Not sent yet' : p.status === 'SKIPPED' ? 'Channel disabled' : p.status}
+          </Badge>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 interface ClientOption {
@@ -42,6 +66,7 @@ function CreateInvoiceDialog({ defaultClientId, onCreated }: { defaultClientId?:
   const [open, setOpen] = useState(!!defaultClientId);
   const [clientId, setClientId] = useState(defaultClientId ?? '');
   const [productLine, setProductLine] = useState<(typeof PRODUCT_LINES)[number]>('OTHER');
+  const [purpose, setPurpose] = useState('');
   const [description, setDescription] = useState('');
   const [subtotal, setSubtotal] = useState('');
   const [vatRate, setVatRate] = useState('16');
@@ -57,11 +82,20 @@ function CreateInvoiceDialog({ defaultClientId, onCreated }: { defaultClientId?:
     mutationFn: () =>
       apiFetch('/platform/crm/invoices', {
         method: 'POST',
-        body: JSON.stringify({ clientId, productLine, description, subtotal: Number(subtotal), vatRate: Number(vatRate), dueDate: new Date(dueDate).toISOString() }),
+        body: JSON.stringify({
+          clientId,
+          productLine,
+          purpose: productLine === 'OTHER' ? purpose : undefined,
+          description,
+          subtotal: Number(subtotal),
+          vatRate: Number(vatRate),
+          dueDate: new Date(dueDate).toISOString(),
+        }),
       }),
     onSuccess: () => {
       notifySuccess('Invoice created');
       setOpen(false);
+      setPurpose('');
       setDescription('');
       setSubtotal('');
       setDueDate('');
@@ -99,6 +133,13 @@ function CreateInvoiceDialog({ defaultClientId, onCreated }: { defaultClientId?:
               </option>
             ))}
           </select>
+          {productLine === 'OTHER' && (
+            <Input
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder="What is this payment for? (required — shown on the invoice before the description)"
+            />
+          )}
           <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (e.g. Website development — phase 1)" />
           <div className="grid grid-cols-2 gap-3">
             <Input type="number" value={subtotal} onChange={(e) => setSubtotal(e.target.value)} placeholder="Subtotal (KES)" />
@@ -117,7 +158,14 @@ function CreateInvoiceDialog({ defaultClientId, onCreated }: { defaultClientId?:
           </Button>
           <Button
             className="flex-1"
-            disabled={!clientId || !description.trim() || !subtotalNum || !dueDate || create.isPending}
+            disabled={
+              !clientId ||
+              !description.trim() ||
+              !subtotalNum ||
+              !dueDate ||
+              (productLine === 'OTHER' && !purpose.trim()) ||
+              create.isPending
+            }
             onClick={() => create.mutate()}
           >
             {create.isPending ? 'Creating...' : 'Create Invoice'}
@@ -212,6 +260,7 @@ export default function CrmInvoicesPage() {
                     <th className="py-2 font-medium">Total</th>
                     <th className="py-2 font-medium">Status</th>
                     <th className="py-2 font-medium">Due</th>
+                    <th className="py-2 font-medium">Delivery</th>
                     <th className="py-2" />
                   </tr>
                 </thead>
@@ -225,6 +274,9 @@ export default function CrmInvoicesPage() {
                         <Badge status={inv.status} />
                       </td>
                       <td className="py-2 text-slate-500">{new Date(inv.dueDate).toLocaleDateString()}</td>
+                      <td className="py-2">
+                        <DeliveryBadges inv={inv} />
+                      </td>
                       <td className="py-2 text-right">
                         <div className="flex justify-end gap-1.5">
                           <Button size="sm" variant="outline" onClick={() => downloadPdf(inv.id, inv.invoiceNumber)} title="Download PDF">

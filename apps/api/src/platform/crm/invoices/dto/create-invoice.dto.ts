@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsInt, IsISO8601, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsISO8601, IsOptional, IsString, Min, MinLength, ValidateIf } from 'class-validator';
 
 const PRODUCT_LINES = ['SCHOOL_ERP', 'DTP_TRAINING', 'CODING_ROBOTICS', 'WEBSITES', 'SACCO_SYSTEMS', 'HOSPITAL_SYSTEMS', 'OTHER'] as const;
 
@@ -11,6 +11,15 @@ export class CreateInvoiceDto {
   @ApiProperty({ enum: PRODUCT_LINES })
   @IsIn(PRODUCT_LINES)
   productLine!: (typeof PRODUCT_LINES)[number];
+
+  @ApiProperty({
+    required: false,
+    description: 'What this payment is for — required when productLine is OTHER, shown on the invoice before the description',
+  })
+  @ValidateIf((o) => o.productLine === 'OTHER')
+  @IsString()
+  @MinLength(1, { message: 'purpose is required when productLine is OTHER — state what the payment is for' })
+  purpose?: string;
 
   @ApiProperty()
   @IsString()

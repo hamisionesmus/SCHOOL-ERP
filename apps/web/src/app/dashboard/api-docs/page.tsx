@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink } from 'lucide-react';
+import { Download, ExternalLink } from 'lucide-react';
 import { API_ORIGIN } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -156,10 +156,29 @@ GET ${API_ORIGIN}/public/api/v1/crm/documents
 X-API-Key: hz_live_...`}</CodeBlock>
             <p className="text-sm text-slate-600">
               Each key is scoped to exactly what it needs (<code>training:read</code>, <code>clients:read</code>,{' '}
-              <code>documents:read</code>) and can be revoked instantly if it&apos;s ever compromised. These routes are
-              intentionally read-only and never expose client contact details, invoices, or marketing leads.
+              <code>documents:read</code>, <code>leads:write</code>) and can be revoked instantly if it&apos;s ever
+              compromised. The read scopes are intentionally read-only and never expose client contact details,
+              invoices, or marketing leads; <code>leads:write</code> is one-directional — it can submit a new lead
+              (e.g. from a contact form) but can never read leads back.
             </p>
           </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Building a companion site or app (e.g. with Lovable)</CardTitle>
+              <CardDescription>
+                A self-contained reference — public endpoints, request/response shapes, API-key setup, a working code
+                sample — sized to hand directly to Lovable or any other AI app-builder.
+              </CardDescription>
+            </div>
+            <a href="/lovable-api-reference.md" download="hamzone-api-reference.md">
+              <Button className="gap-1.5">
+                Download reference <Download size={14} />
+              </Button>
+            </a>
+          </CardHeader>
         </Card>
 
         <Card>

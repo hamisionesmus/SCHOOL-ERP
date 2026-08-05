@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PlatformPrismaService } from '../../../common/prisma/platform-prisma.service';
 import { UpsertLeadDto } from './dto/upsert-lead.dto';
+import { PublicSubmitLeadDto } from './dto/public-submit-lead.dto';
 
 /** Real-time field submissions from the marketing team (every platform admin tier plus anyone
  * invited specifically for marketing — see HamzoneMarketingLead's schema doc comment). Submitted
@@ -38,6 +39,22 @@ export class HamzoneLeadsService {
         notes: dto.notes,
         followUpAt: dto.followUpAt ? new Date(dto.followUpAt) : undefined,
         submittedByUserId,
+      },
+    });
+  }
+
+  /** Entry point for the public, API-key-gated marketing-site contact form — no logged-in admin
+   * behind it, so submittedByUserId stays null and `source: PUBLIC_API` marks how it arrived. */
+  createPublic(dto: PublicSubmitLeadDto) {
+    return this.platformPrisma.hamzoneMarketingLead.create({
+      data: {
+        clientName: dto.clientName,
+        interest: dto.interest,
+        contactPhone: dto.contactPhone,
+        contactEmail: dto.contactEmail,
+        location: dto.location,
+        notes: dto.notes,
+        source: 'PUBLIC_API',
       },
     });
   }
