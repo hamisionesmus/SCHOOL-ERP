@@ -18,6 +18,7 @@ interface RosterEntry {
   phone: string | null;
   address: string | null;
   age: number | null;
+  educationLevel: string | null;
 }
 
 interface DailyLinkInfo {
@@ -28,6 +29,7 @@ interface DailyLinkInfo {
   isFirstTime: boolean;
   roster: RosterEntry[];
   alreadySubmitted: boolean;
+  locked: boolean;
   hadTrainingToday: boolean | null;
   noTrainingReason: string | null;
   topicsCovered: string | null;
@@ -44,6 +46,7 @@ interface AttendanceRow {
   phone: string;
   address: string;
   age: string;
+  educationLevel: string;
   present: boolean;
 }
 
@@ -76,6 +79,7 @@ export default function DailyLinkPage() {
   const [photo2Url, setPhoto2Url] = useState<string | null>(null);
   const [uploading, setUploading] = useState<1 | 2 | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
 
   useEffect(() => {
     apiFetch<DailyLinkInfo>(`/public/daily-link/${token}`)
@@ -87,6 +91,7 @@ export default function DailyLinkPage() {
         setNotes(data.notes ?? '');
         setPhoto1Url(data.photo1Url);
         setPhoto2Url(data.photo2Url);
+        setLocked(data.locked);
         setRows(
           data.roster.map((r) => ({
             id: r.id,
@@ -95,6 +100,7 @@ export default function DailyLinkPage() {
             phone: r.phone ?? '',
             address: r.address ?? '',
             age: r.age != null ? String(r.age) : '',
+            educationLevel: r.educationLevel ?? '',
             present: data.attendance.find((a) => a.traineeId === r.id)?.present ?? true,
           })),
         );
@@ -113,6 +119,7 @@ export default function DailyLinkPage() {
     try {
       await apiFetch(`/public/daily-link/${token}/no-training`, { method: 'POST', body: JSON.stringify({ reason }) });
       setReasonSaved(true);
+      setLocked(true);
     } catch (err) {
       setReasonError(err instanceof ApiError ? err.message : 'Could not save — please try again.');
     } finally {
@@ -121,7 +128,7 @@ export default function DailyLinkPage() {
   }
 
   function addRow() {
-    setRows((r) => [...r, { fullName: '', gender: 'MALE', phone: '', address: '', age: '', present: true }]);
+    setRows((r) => [...r, { fullName: '', gender: 'MALE', phone: '', address: '', age: '', educationLevel: '', present: true }]);
   }
 
   function removeRow(index: number) {
@@ -154,6 +161,7 @@ export default function DailyLinkPage() {
             phone: r.phone.trim() || undefined,
             address: r.address.trim() || undefined,
             age: r.age.trim() ? Number(r.age) : undefined,
+            educationLevel: r.educationLevel.trim() || undefined,
             present: r.present,
           })),
           topicsCovered: topicsCovered.trim() || undefined,
@@ -161,6 +169,7 @@ export default function DailyLinkPage() {
         }),
       });
       setRegisterSaved(true);
+      setLocked(true);
     } catch (err) {
       setRegisterError(err instanceof ApiError ? err.message : 'Could not save — please try again.');
     } finally {
@@ -227,14 +236,22 @@ export default function DailyLinkPage() {
                 {info.trainerName} · {info.date}
               </p>
 
+              {locked && (
+                <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
+                  <p className="font-medium">Today&apos;s register is submitted and locked</p>
+                  <p className="mt-1 text-xs text-amber-300/80">It can&apos;t be edited from here — contact your admin if a correction is needed. You can still add proof photos below.</p>
+                </div>
+              )}
+
               <div className="mt-5">
                 <label className="text-xs font-medium uppercase tracking-wide text-slate-400">Is there training today?</label>
                 <div className="mt-2 flex gap-2">
                   <button
                     type="button"
+                    disabled={locked}
                     onClick={() => setHadTraining(true)}
                     className={cn(
-                      'flex-1 rounded-md border px-4 py-2.5 text-sm font-medium transition-colors',
+                      'flex-1 rounded-md border px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
                       hadTraining === true
                         ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
                         : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10',
@@ -244,9 +261,10 @@ export default function DailyLinkPage() {
                   </button>
                   <button
                     type="button"
+                    disabled={locked}
                     onClick={() => setHadTraining(false)}
                     className={cn(
-                      'flex-1 rounded-md border px-4 py-2.5 text-sm font-medium transition-colors',
+                      'flex-1 rounded-md border px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
                       hadTraining === false
                         ? 'border-rose-500 bg-rose-500/15 text-rose-300'
                         : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10',
@@ -264,22 +282,25 @@ export default function DailyLinkPage() {
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     rows={3}
+                    disabled={locked}
                     placeholder="Why is there no training today?"
-                    className="mt-1.5 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    className="mt-1.5 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-60"
                   />
                   {reasonError && <p className="mt-2 text-xs text-rose-400">{reasonError}</p>}
                   {reasonSaved && (
                     <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-emerald-400">
-                      <CheckCircle2 size={14} /> Saved
+                      <CheckCircle2 size={14} /> Saved and locked
                     </p>
                   )}
-                  <Button
-                    disabled={savingReason}
-                    onClick={submitNoTraining}
-                    className="mt-3 h-11 w-full bg-gradient-to-r from-emerald-500 to-amber-400 font-medium text-emerald-950 hover:from-emerald-400 hover:to-amber-300 disabled:opacity-80"
-                  >
-                    {savingReason ? 'Saving…' : registerSaved ? 'Update' : 'Save'}
-                  </Button>
+                  {!locked && (
+                    <Button
+                      disabled={savingReason}
+                      onClick={submitNoTraining}
+                      className="mt-3 h-11 w-full bg-gradient-to-r from-emerald-500 to-amber-400 font-medium text-emerald-950 hover:from-emerald-400 hover:to-amber-300 disabled:opacity-80"
+                    >
+                      {savingReason ? 'Saving…' : 'Save'}
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -289,13 +310,15 @@ export default function DailyLinkPage() {
                     <label className="text-xs font-medium uppercase tracking-wide text-slate-400">
                       Trainees ({presentCount}/{rows.length} present)
                     </label>
-                    <button
-                      type="button"
-                      onClick={addRow}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20"
-                    >
-                      <Plus size={14} /> Add trainee
-                    </button>
+                    {!locked && (
+                      <button
+                        type="button"
+                        onClick={addRow}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20"
+                      >
+                        <Plus size={14} /> Add trainee
+                      </button>
+                    )}
                   </div>
 
                   {rows.length === 0 && (
@@ -315,12 +338,14 @@ export default function DailyLinkPage() {
                             value={row.fullName}
                             onChange={(e) => updateRow(i, { fullName: e.target.value })}
                             placeholder="Full name"
-                            className="h-9 border-white/10 bg-white/5 text-sm text-white placeholder:text-slate-500 focus-visible:ring-emerald-500"
+                            disabled={locked}
+                            className="h-9 border-white/10 bg-white/5 text-sm text-white placeholder:text-slate-500 focus-visible:ring-emerald-500 disabled:opacity-60"
                           />
                           <select
                             value={row.gender}
                             onChange={(e) => updateRow(i, { gender: e.target.value as Gender })}
-                            className="h-9 rounded-md border border-white/10 bg-white/5 px-2 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                            disabled={locked}
+                            className="h-9 rounded-md border border-white/10 bg-white/5 px-2 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-60"
                           >
                             {GENDERS.map((g) => (
                               <option key={g} value={g} className="bg-[#0b1a15]">
@@ -328,34 +353,46 @@ export default function DailyLinkPage() {
                               </option>
                             ))}
                           </select>
-                          <button
-                            type="button"
-                            onClick={() => removeRow(i)}
-                            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-white/10 text-slate-400 hover:bg-rose-500/10 hover:text-rose-400"
-                            aria-label="Remove trainee"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          {!locked && (
+                            <button
+                              type="button"
+                              onClick={() => removeRow(i)}
+                              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-white/10 text-slate-400 hover:bg-rose-500/10 hover:text-rose-400"
+                              aria-label="Remove trainee"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
                         {info.isFirstTime && (
-                          <div className="mt-2 grid grid-cols-3 gap-2">
+                          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                             <Input
                               value={row.phone}
                               onChange={(e) => updateRow(i, { phone: e.target.value })}
                               placeholder="Phone (optional)"
-                              className="h-8 border-white/10 bg-white/5 text-xs text-white placeholder:text-slate-500 focus-visible:ring-emerald-500"
+                              disabled={locked}
+                              className="h-8 border-white/10 bg-white/5 text-xs text-white placeholder:text-slate-500 focus-visible:ring-emerald-500 disabled:opacity-60"
                             />
                             <Input
                               value={row.address}
                               onChange={(e) => updateRow(i, { address: e.target.value })}
                               placeholder="Address (optional)"
-                              className="h-8 border-white/10 bg-white/5 text-xs text-white placeholder:text-slate-500 focus-visible:ring-emerald-500"
+                              disabled={locked}
+                              className="h-8 border-white/10 bg-white/5 text-xs text-white placeholder:text-slate-500 focus-visible:ring-emerald-500 disabled:opacity-60"
                             />
                             <Input
                               value={row.age}
                               onChange={(e) => updateRow(i, { age: e.target.value.replace(/\D/g, '') })}
                               placeholder="Age (optional)"
-                              className="h-8 border-white/10 bg-white/5 text-xs text-white placeholder:text-slate-500 focus-visible:ring-emerald-500"
+                              disabled={locked}
+                              className="h-8 border-white/10 bg-white/5 text-xs text-white placeholder:text-slate-500 focus-visible:ring-emerald-500 disabled:opacity-60"
+                            />
+                            <Input
+                              value={row.educationLevel}
+                              onChange={(e) => updateRow(i, { educationLevel: e.target.value })}
+                              placeholder="Education level (optional)"
+                              disabled={locked}
+                              className="h-8 border-white/10 bg-white/5 text-xs text-white placeholder:text-slate-500 focus-visible:ring-emerald-500 disabled:opacity-60"
                             />
                           </div>
                         )}
@@ -364,7 +401,8 @@ export default function DailyLinkPage() {
                             type="checkbox"
                             checked={row.present}
                             onChange={(e) => updateRow(i, { present: e.target.checked })}
-                            className="h-4 w-4 rounded border-white/20 bg-white/5"
+                            disabled={locked}
+                            className="h-4 w-4 rounded border-white/20 bg-white/5 disabled:opacity-60"
                           />
                           Present today
                         </label>
@@ -379,7 +417,8 @@ export default function DailyLinkPage() {
                       onChange={(e) => setTopicsCovered(e.target.value)}
                       rows={2}
                       placeholder="What was covered today?"
-                      className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                      disabled={locked}
+                      className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-60"
                     />
                   </div>
                   <div className="mt-3 flex flex-col gap-1.5">
@@ -388,23 +427,26 @@ export default function DailyLinkPage() {
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       rows={2}
-                      className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                      disabled={locked}
+                      className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-60"
                     />
                   </div>
 
                   {registerError && <p className="mt-3 text-xs text-rose-400">{registerError}</p>}
                   {registerSaved && (
                     <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-emerald-400">
-                      <CheckCircle2 size={14} /> Saved — you can keep editing today until this link expires
+                      <CheckCircle2 size={14} /> Saved and locked — contact your admin if a correction is needed
                     </p>
                   )}
-                  <Button
-                    disabled={savingRegister}
-                    onClick={submitRegister}
-                    className="mt-3 h-11 w-full bg-gradient-to-r from-emerald-500 to-amber-400 font-medium text-emerald-950 hover:from-emerald-400 hover:to-amber-300 disabled:opacity-80"
-                  >
-                    {savingRegister ? 'Saving…' : 'Save register'}
-                  </Button>
+                  {!locked && (
+                    <Button
+                      disabled={savingRegister}
+                      onClick={submitRegister}
+                      className="mt-3 h-11 w-full bg-gradient-to-r from-emerald-500 to-amber-400 font-medium text-emerald-950 hover:from-emerald-400 hover:to-amber-300 disabled:opacity-80"
+                    >
+                      {savingRegister ? 'Saving…' : 'Save register'}
+                    </Button>
+                  )}
 
                   <div className="mt-6">
                     <label className="text-xs font-medium uppercase tracking-wide text-slate-400">

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsISO8601, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
+import { IsIn, IsISO8601, IsInt, IsOptional, IsString, Max, Min, MinLength, ValidateIf } from 'class-validator';
 
 const TRACKS = ['FRONTEND', 'BACKEND', 'CODING_ROBOTICS', 'OTHER'] as const;
 const STATUSES = ['SCHEDULED', 'ACTIVE', 'COMPLETED', 'CANCELLED'] as const;
@@ -56,4 +56,11 @@ export class UpsertProgramDto {
   @IsOptional()
   @IsISO8601()
   plannedProjectDueAt?: string;
+
+  @ApiProperty({ required: false, description: 'What hour (0-23, East Africa Time) the daily register link auto-sends — the trainer can also set this themselves' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  dailyLinkSendHour?: number;
 }

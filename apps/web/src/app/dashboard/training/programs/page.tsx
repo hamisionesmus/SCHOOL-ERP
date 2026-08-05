@@ -42,6 +42,7 @@ function AddProgramDialog({ centers, trainers, onCreated }: { centers: Center[];
   const [trainerId, setTrainerId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [dailyLinkSendHour, setDailyLinkSendHour] = useState('6');
 
   const create = useMutation({
     mutationFn: () =>
@@ -54,6 +55,7 @@ function AddProgramDialog({ centers, trainers, onCreated }: { centers: Center[];
           trainerId: trainerId || undefined,
           startDate: new Date(startDate).toISOString(),
           endDate: new Date(endDate).toISOString(),
+          dailyLinkSendHour: Number(dailyLinkSendHour),
         }),
       }),
     onSuccess: () => {
@@ -107,6 +109,21 @@ function AddProgramDialog({ centers, trainers, onCreated }: { centers: Center[];
           <div className="grid grid-cols-2 gap-3">
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Daily link auto-sends at (EAT)</label>
+            <select
+              value={dailyLinkSendHour}
+              onChange={(e) => setDailyLinkSendHour(e.target.value)}
+              className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+            >
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>
+                  {h.toString().padStart(2, '0')}:00 EAT
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-400">The trainer can also change this themselves later.</p>
           </div>
         </div>
         <div className="mt-6 flex gap-3">

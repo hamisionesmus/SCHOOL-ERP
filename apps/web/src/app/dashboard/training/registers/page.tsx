@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Download, Send } from 'lucide-react';
@@ -17,6 +17,7 @@ interface Program {
   title: string;
   endDate: string;
   status: string;
+  dailyLinkSendHour: number | null;
 }
 interface Register {
   id: string;
@@ -36,6 +37,60 @@ interface RegisterStats {
   totalAbsent: number;
   attendanceRate: number | null;
   byGender: Record<'MALE' | 'FEMALE' | 'OTHER', { present: number; absent: number }>;
+}
+interface AttendanceTrainee {
+  id: string;
+  fullName: string;
+  gender: string;
+  age: number | null;
+  educationLevel: string | null;
+}
+interface AttendanceDetail {
+  date: string;
+  present: AttendanceTrainee[];
+  absent: AttendanceTrainee[];
+}
+
+function AttendanceDetailPanel({ registerId }: { registerId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['register-attendance', registerId],
+    queryFn: () => apiFetch<AttendanceDetail>(`/platform/training/registers/${registerId}/attendance`),
+  });
+
+  if (isLoading) return <p className="p-3 text-xs text-slate-400">Loading trainees...</p>;
+  if (!data) return null;
+
+  const renderList = (trainees: AttendanceTrainee[], label: string, color: string) => (
+    <div>
+      <p className={`mb-1.5 text-xs font-semibold uppercase tracking-wide ${color}`}>
+        {label} ({trainees.length})
+      </p>
+      {trainees.length === 0 ? (
+        <p className="text-xs text-slate-400">None</p>
+      ) : (
+        <ul className="space-y-1">
+          {trainees.map((t) => (
+            <li key={t.id} className="text-xs text-slate-700">
+              <span className="font-medium">{t.fullName}</span>
+              <span className="text-slate-400">
+                {' '}
+                — {t.gender.charAt(0) + t.gender.slice(1).toLowerCase()}
+                {t.age ? `, ${t.age}yrs` : ''}
+                {t.educationLevel ? `, ${t.educationLevel}` : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="grid grid-cols-1 gap-4 rounded-lg bg-slate-50 p-3 sm:grid-cols-2">
+      {renderList(data.present, 'Present', 'text-emerald-600')}
+      {renderList(data.absent, 'Absent', 'text-rose-500')}
+    </div>
+  );
 }
 
 function AttendanceStats({ programId }: { programId: string }) {
@@ -117,6 +172,7 @@ function TrainerRegisters() {
   const [traineesTotal, setTraineesTotal] = useState('');
   const [topicsCovered, setTopicsCovered] = useState('');
   const [notes, setNotes] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const submit = useMutation({
     mutationFn: () =>
@@ -151,6 +207,17 @@ function TrainerRegisters() {
 
   const activeProgram = (programs ?? []).find((p) => p.status === 'ACTIVE') ?? programs?.[0];
 
+  const [sendHour, setSendHour] = useState<string>('');
+  const updateSendTime = useMutation({
+    mutationFn: () =>
+      apiFetch('/platform/training/daily-link/my-send-time', {
+        method: 'PATCH',
+        body: JSON.stringify({ programId: activeProgram?.id, sendHour: Number(sendHour) }),
+      }),
+    onSuccess: () => notifySuccess('Daily link send time updated'),
+    onError: (err) => notifyError(err, 'Failed to update send time'),
+  });
+
   return (
     <>
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -158,11 +225,30 @@ function TrainerRegisters() {
           <h1 className="text-2xl font-semibold text-slate-900">Daily Register</h1>
           <p className="text-sm text-slate-500">Attendance and what you covered today.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {activeProgram && <Countdown endDate={activeProgram.endDate} />}
           <Button size="sm" variant="outline" className="gap-1.5" disabled={resendLink.isPending} onClick={() => resendLink.mutate()}>
             <Send size={13} /> {resendLink.isPending ? 'Sending...' : "Send me today's link"}
           </Button>
+          {activeProgram && (
+            <div className="flex items-center gap-1.5 text-sm text-slate-500">
+              <span>Link sends daily at</span>
+              <select
+                value={sendHour || String(activeProgram.dailyLinkSendHour ?? 6)}
+                onChange={(e) => setSendHour(e.target.value)}
+                className="h-9 rounded-md border border-slate-300 px-2 text-sm"
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {h.toString().padStart(2, '0')}:00 EAT
+                  </option>
+                ))}
+              </select>
+              <Button size="sm" disabled={updateSendTime.isPending || !sendHour} onClick={() => updateSendTime.mutate()}>
+                {updateSendTime.isPending ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -221,18 +307,28 @@ function TrainerRegisters() {
           ) : (
             <div className="space-y-2">
               {registers.map((r) => (
-                <div key={r.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">
-                      {new Date(r.date).toLocaleDateString()} — {r.program.title}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      {r.traineesPresent}/{r.traineesTotal} present
-                    </p>
+                <div key={r.id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <button
+                      className="flex-1 text-left"
+                      onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+                    >
+                      <p className="text-sm font-medium text-slate-900">
+                        {new Date(r.date).toLocaleDateString()} — {r.program.title}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {r.traineesPresent}/{r.traineesTotal} present — {expandedId === r.id ? 'hide names' : 'view names'}
+                      </p>
+                    </button>
+                    <Button size="sm" variant="outline" onClick={() => downloadRegisterPdf(r.id, r.date)}>
+                      <Download size={13} />
+                    </Button>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => downloadRegisterPdf(r.id, r.date)}>
-                    <Download size={13} />
-                  </Button>
+                  {expandedId === r.id && (
+                    <div className="mt-3">
+                      <AttendanceDetailPanel registerId={r.id} />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -245,6 +341,7 @@ function TrainerRegisters() {
 
 function AdminRegisters() {
   const { data: registers, isLoading } = useQuery({ queryKey: ['registers-all'], queryFn: () => apiFetch<Register[]>('/platform/training/registers') });
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
     <>
@@ -274,19 +371,38 @@ function AdminRegisters() {
               </thead>
               <tbody>
                 {registers.map((r) => (
-                  <tr key={r.id} className="border-b border-slate-100">
-                    <td className="py-2 font-medium text-slate-900">{new Date(r.date).toLocaleDateString()}</td>
-                    <td className="py-2 text-slate-500">{r.trainer.user.fullName}</td>
-                    <td className="py-2 text-slate-500">{r.program.title}</td>
-                    <td className="py-2 text-slate-500">
-                      {r.traineesPresent}/{r.traineesTotal}
-                    </td>
-                    <td className="py-2 text-right">
-                      <Button size="sm" variant="outline" onClick={() => downloadRegisterPdf(r.id, r.date)}>
-                        <Download size={13} />
-                      </Button>
-                    </td>
-                  </tr>
+                  <Fragment key={r.id}>
+                    <tr
+                      className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
+                      onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+                    >
+                      <td className="py-2 font-medium text-slate-900">{new Date(r.date).toLocaleDateString()}</td>
+                      <td className="py-2 text-slate-500">{r.trainer.user.fullName}</td>
+                      <td className="py-2 text-slate-500">{r.program.title}</td>
+                      <td className="py-2 text-slate-500">
+                        {r.traineesPresent}/{r.traineesTotal}
+                      </td>
+                      <td className="py-2 text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            downloadRegisterPdf(r.id, r.date);
+                          }}
+                        >
+                          <Download size={13} />
+                        </Button>
+                      </td>
+                    </tr>
+                    {expandedId === r.id && (
+                      <tr className="border-b border-slate-100">
+                        <td colSpan={5} className="py-2">
+                          <AttendanceDetailPanel registerId={r.id} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

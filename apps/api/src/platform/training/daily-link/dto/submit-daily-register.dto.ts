@@ -34,6 +34,11 @@ class TraineeAttendanceEntryDto {
   @Min(1)
   age?: number;
 
+  @ApiProperty({ required: false, description: 'e.g. "Form 4", "Certificate", "Diploma"' })
+  @IsOptional()
+  @IsString()
+  educationLevel?: string;
+
   @ApiProperty()
   @IsBoolean()
   present!: boolean;

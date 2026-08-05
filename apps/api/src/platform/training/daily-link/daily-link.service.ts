@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -18,14 +18,16 @@ interface DailyLinkTokenPayload {
 
 const PHOTO_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const PHOTO_MAX_BYTES = 8 * 1024 * 1024;
+const EAT_OFFSET_HOURS = 3; // Kenya/East Africa Time, no DST
+const DEFAULT_SEND_HOUR = 6; // matches the original fixed 6am EAT behavior when unset
 
 /**
  * Backs the daily magic link every active trainer gets by SMS/email each training day — "one link
  * for a day... does not allow multiple submissions after a day the link expires." Identity and
  * day-scoping are both carried entirely in the signed token (mirrors ActivationService's pattern),
- * so a trainer never has to log in just to mark a register. Re-opening the same day's link before
- * midnight is deliberately still editable (see submitRegister's upsert) — only a *new* calendar day
- * requires a fresh link.
+ * so a trainer never has to log in just to mark a register. A day's register locks (see
+ * HamzoneDailyRegister.submittedAt) the moment real attendance data is submitted — resubmitting is
+ * refused rather than silently overwritten, so "submitted" is a real, final state, not just a draft.
  */
 @Injectable()
 export class DailyLinkService {
@@ -40,6 +42,24 @@ export class DailyLinkService {
 
   private todayKey(): string {
     return new Date().toISOString().slice(0, 10);
+  }
+
+  /** The full UTC calendar-day range "today" spans — used to decide whether a program (whose
+   * startDate/endDate are stored as bare midnight-UTC dates from a date-only `<input type="date">`)
+   * is active *today*, regardless of what time of day "now" actually is. Using a bare `new Date()`
+   * against `endDate: { gte: today }` was the root cause of "no active program" firing for most of a
+   * program's final day — endDate sits at that day's 00:00:00 UTC, so any later moment in the same
+   * UTC day already looked like it was past the end date. */
+  private todayUtcRange(): { start: Date; end: Date } {
+    const now = new Date();
+    return {
+      start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())),
+      end: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999)),
+    };
+  }
+
+  private currentEatHour(): number {
+    return (new Date().getUTCHours() + EAT_OFFSET_HOURS) % 24;
   }
 
   async signLinkToken(programId: string, trainerId: string, date = this.todayKey()): Promise<string> {
@@ -81,7 +101,7 @@ export class DailyLinkService {
       }),
       this.platformPrisma.hamzoneTrainee.findMany({
         where: { programId },
-        select: { id: true, fullName: true, gender: true, phone: true, address: true, age: true },
+        select: { id: true, fullName: true, gender: true, phone: true, address: true, age: true, educationLevel: true },
         orderBy: { fullName: 'asc' },
       }),
       this.platformPrisma.hamzoneDailyRegister.findUnique({
@@ -99,6 +119,7 @@ export class DailyLinkService {
       isFirstTime: roster.length === 0,
       roster,
       alreadySubmitted: !!register,
+      locked: !!register?.submittedAt,
       hadTrainingToday: register?.hadTrainingToday ?? null,
       noTrainingReason: register?.noTrainingReason ?? null,
       topicsCovered: register?.topicsCovered ?? null,
@@ -109,13 +130,34 @@ export class DailyLinkService {
     };
   }
 
+  private async assertNotLocked(programId: string, registerDate: Date) {
+    const existing = await this.platformPrisma.hamzoneDailyRegister.findUnique({
+      where: { programId_date: { programId, date: registerDate } },
+      select: { submittedAt: true },
+    });
+    if (existing?.submittedAt) {
+      throw new BadRequestException(
+        "Today's register has already been submitted and can't be edited. Contact your admin if a correction is needed.",
+      );
+    }
+  }
+
   async submitNoTraining(token: string, reason: string) {
     const { programId, trainerId, date } = await this.verifyToken(token);
     const registerDate = new Date(date);
+    await this.assertNotLocked(programId, registerDate);
     await this.platformPrisma.hamzoneDailyRegister.upsert({
       where: { programId_date: { programId, date: registerDate } },
-      create: { programId, trainerId, date: registerDate, hadTrainingToday: false, noTrainingReason: reason, traineesTotal: 0 },
-      update: { hadTrainingToday: false, noTrainingReason: reason, traineesPresent: 0 },
+      create: {
+        programId,
+        trainerId,
+        date: registerDate,
+        hadTrainingToday: false,
+        noTrainingReason: reason,
+        traineesTotal: 0,
+        submittedAt: new Date(),
+      },
+      update: { hadTrainingToday: false, noTrainingReason: reason, traineesPresent: 0, submittedAt: new Date() },
     });
     return { saved: true };
   }
@@ -123,6 +165,7 @@ export class DailyLinkService {
   async submitRegister(token: string, dto: SubmitDailyRegisterDto) {
     const { programId, trainerId, date } = await this.verifyToken(token);
     const registerDate = new Date(date);
+    await this.assertNotLocked(programId, registerDate);
 
     // Resolve each entry to a real HamzoneTrainee row — first-time names create the roster row,
     // returning names just get their attendance updated. "The very first time... names are required
@@ -143,6 +186,7 @@ export class DailyLinkService {
             phone: entry.phone,
             address: entry.address,
             age: entry.age,
+            educationLevel: entry.educationLevel,
           },
         });
         traineeId = created.id;
@@ -163,6 +207,7 @@ export class DailyLinkService {
         traineesTotal: dto.trainees.length,
         topicsCovered: dto.topicsCovered,
         notes: dto.notes,
+        submittedAt: new Date(),
       },
       update: {
         hadTrainingToday: true,
@@ -171,11 +216,10 @@ export class DailyLinkService {
         traineesTotal: dto.trainees.length,
         topicsCovered: dto.topicsCovered,
         notes: dto.notes,
+        submittedAt: new Date(),
       },
     });
 
-    // Resubmitting within the same day can drop a name that was added by mistake — remove any
-    // attendance rows for trainees no longer in this submission, then upsert the rest.
     await this.platformPrisma.hamzoneAttendanceRecord.deleteMany({
       where: { registerId: register.id, traineeId: { notIn: traineeIds } },
     });
@@ -193,7 +237,8 @@ export class DailyLinkService {
   }
 
   /** Exactly two proof-of-attendance photos per day, enforced by the fixed slot param (1 or 2) —
-   * uploading again to the same slot replaces it, matching the "editable within the day" rule. */
+   * left addable even after the register locks (submittedAt set), since attaching supporting
+   * evidence afterward is benign and shouldn't require reopening the actual attendance data. */
   async savePhoto(token: string, slot: 1 | 2, file: Express.Multer.File): Promise<{ url: string }> {
     const { programId, trainerId, date } = await this.verifyToken(token);
     const ext = extname(file.originalname).toLowerCase();
@@ -229,7 +274,9 @@ export class DailyLinkService {
   }
 
   /** Trainer-initiated resend, for when today's automatic message didn't arrive — scoped to the
-   * trainer's own currently-active program(s) only, resolved from their own JWT identity. */
+   * trainer's own currently-active program(s) only, resolved from their own JWT identity. Uses
+   * todayUtcRange() (not a bare `new Date()`) so a program is correctly seen as active for the whole
+   * of its start/end calendar days. */
   async resendMyLinks(userId: string) {
     const trainer = await this.platformPrisma.hamzoneTrainerProfile.findUnique({
       where: { userId },
@@ -237,9 +284,9 @@ export class DailyLinkService {
     });
     if (!trainer) throw new NotFoundException('Trainer profile not found');
 
-    const today = new Date();
+    const { start, end } = this.todayUtcRange();
     const programs = await this.platformPrisma.hamzoneTrainingProgram.findMany({
-      where: { trainerId: trainer.id, status: 'ACTIVE', startDate: { lte: today }, endDate: { gte: today } },
+      where: { trainerId: trainer.id, status: 'ACTIVE', startDate: { lte: end }, endDate: { gte: start } },
     });
     if (programs.length === 0) {
       throw new BadRequestException('No active training program found for today under your profile.');
@@ -250,21 +297,45 @@ export class DailyLinkService {
     return { sent: programs.length };
   }
 
+  /** Lets a trainer set what hour (0-23, East Africa Time) their own program's daily link should
+   * auto-send — an admin can also set this from the program edit form; whoever touches it last wins,
+   * same single-mutable-field model as everything else on the program record. */
+  async updateMySendTime(userId: string, programId: string, sendHour: number) {
+    if (sendHour < 0 || sendHour > 23) throw new BadRequestException('Send hour must be between 0 and 23.');
+    const trainer = await this.platformPrisma.hamzoneTrainerProfile.findUnique({ where: { userId } });
+    if (!trainer) throw new NotFoundException('Trainer profile not found');
+    const program = await this.platformPrisma.hamzoneTrainingProgram.findUnique({ where: { id: programId } });
+    if (!program) throw new NotFoundException('Program not found');
+    if (program.trainerId !== trainer.id) throw new ForbiddenException('You can only change the send time for your own program.');
+    await this.platformPrisma.hamzoneTrainingProgram.update({ where: { id: programId }, data: { dailyLinkSendHour: sendHour } });
+    return { dailyLinkSendHour: sendHour };
+  }
+
   /** The daily auto-send — "always automatically generated and sent to the phone number and email
-   * every day of the training until the training is over." Runs early morning so the link is ready
-   * before the training day starts; failures for one program never block the rest. */
-  @Cron(CronExpression.EVERY_DAY_AT_6AM)
+   * every day of the training until the training is over." Runs hourly and sends each active
+   * program's link at its own configured hour (EAT), falling back to the original fixed 6am EAT slot
+   * when unset — dailyLinkLastSentDateKey dedupes so a program is never sent twice in one day even
+   * across restarts. Failures for one program never block the rest. */
+  @Cron(CronExpression.EVERY_HOUR)
   async sendDailyLinksToAll() {
-    const today = new Date();
+    const { start, end } = this.todayUtcRange();
+    const currentHour = this.currentEatHour();
+    const todayKey = this.todayKey();
     const programs = await this.platformPrisma.hamzoneTrainingProgram.findMany({
-      where: { status: 'ACTIVE', trainerId: { not: null }, startDate: { lte: today }, endDate: { gte: today } },
+      where: { status: 'ACTIVE', trainerId: { not: null }, startDate: { lte: end }, endDate: { gte: start } },
       include: { trainer: { include: { user: { select: { fullName: true, email: true, phone: true } } } } },
     });
     let sent = 0;
     for (const program of programs) {
       if (!program.trainer) continue;
+      if (program.dailyLinkLastSentDateKey === todayKey) continue;
+      if ((program.dailyLinkSendHour ?? DEFAULT_SEND_HOUR) !== currentHour) continue;
       try {
         await this.sendLinkFor(program, program.trainer);
+        await this.platformPrisma.hamzoneTrainingProgram.update({
+          where: { id: program.id },
+          data: { dailyLinkLastSentDateKey: todayKey },
+        });
         sent++;
       } catch (err) {
         this.logger.error(`Failed to send daily link for program ${program.id}: ${err instanceof Error ? err.message : err}`);

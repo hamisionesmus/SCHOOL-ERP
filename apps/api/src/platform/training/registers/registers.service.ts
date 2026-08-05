@@ -103,6 +103,29 @@ export class HamzoneRegistersService {
     };
   }
 
+  /** Named present/absent trainees for one register — "not just the present number and absent
+   * number... the actual names are very important." Kept as its own lightweight call (rather than
+   * bloating list()/findOne() for every row in the admin table) since it's only fetched when a row
+   * is expanded. */
+  async attendanceDetail(id: string, restrictToTrainerId?: string) {
+    const register = await this.platformPrisma.hamzoneDailyRegister.findUnique({
+      where: { id },
+      include: {
+        attendance: {
+          include: { trainee: { select: { id: true, fullName: true, gender: true, age: true, educationLevel: true } } },
+          orderBy: { trainee: { fullName: 'asc' } },
+        },
+      },
+    });
+    if (!register) throw new NotFoundException('Register not found');
+    if (restrictToTrainerId && register.trainerId !== restrictToTrainerId) {
+      throw new ForbiddenException('You can only view attendance for your own registers');
+    }
+    const present = register.attendance.filter((a) => a.present).map((a) => a.trainee);
+    const absent = register.attendance.filter((a) => !a.present).map((a) => a.trainee);
+    return { date: register.date, present, absent };
+  }
+
   async pdf(id: string) {
     const register = await this.findOne(id);
     const buffer = await renderDailyRegisterPdf({

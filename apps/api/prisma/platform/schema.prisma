@@ -1078,6 +1078,13 @@ model HamzoneTrainingProgram {
   endDate         DateTime
   description     String?
   status          HamzoneProgramStatus   @default(SCHEDULED)
+  // What hour (0-23, East Africa Time) the daily register link auto-sends — settable by an admin on
+  // this program or by the assigned trainer themselves (see DailyLinkController.updateMySendTime).
+  // Null falls back to the original fixed 6am EAT behavior. dailyLinkLastSentDateKey (a plain
+  // YYYY-MM-DD string, same format as DailyLinkService.todayKey()) dedupes the hourly cron so a
+  // program is never sent twice in the same day even if its hour is checked on multiple ticks.
+  dailyLinkSendHour       Int?
+  dailyLinkLastSentDateKey String?
   // What the cohort will build by the end of training (especially robotics) — captured early for
   // cost planning, with a submission deadline so trainers commit to a plan rather than deciding at
   // the last minute.
@@ -1117,13 +1124,17 @@ model HamzoneDailyRegister {
   // Exactly two proof-of-attendance photos — enforced at the DTO/service layer, not the schema.
   photo1Url       String?
   photo2Url       String?
+  // Set once, the moment submitRegister/submitNoTraining is first called for this day — distinct
+  // from the row's mere existence (savePhoto can create/touch the row too, e.g. a photo attached
+  // before the register itself is submitted). A non-null value locks attendance/topics/notes against
+  // further edits (see DailyLinkService's lock check); photos remain addable either way.
+  submittedAt     DateTime?
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
   attendance      HamzoneAttendanceRecord[]
 
-  // One register per program per calendar day — the daily-link submission is always an upsert
-  // against this key, which is also what makes "editable within the day, then locked" possible.
+  // One register per program per calendar day — locked via submittedAt once real data is submitted.
   @@unique([programId, date])
   @@index([programId, date])
 }
@@ -1147,6 +1158,10 @@ model HamzoneTrainee {
   phone              String?
   address            String?
   age                Int?
+  // Free-text, same convention as PlatformUser.jobTitle — e.g. "Form 4", "Certificate", "Diploma".
+  // Shown alongside a trainee's name wherever attendance is reviewed, so a named record actually
+  // means something beyond a headcount.
+  educationLevel     String?
   portalEmail        String?                @unique
   portalPasswordHash String?
   portalEnabled      Boolean                @default(false)
