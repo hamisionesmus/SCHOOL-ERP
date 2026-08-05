@@ -183,6 +183,7 @@ model Tenant {
   paymentProofs PlatformPaymentProof[]
   feedback TenantFeedback[]
   ticketEscalations PlatformTicketEscalation[]
+  campaignRecipients CampaignRecipient[]
 }
 
 // Global email → school lookup, kept in sync whenever a tenant-side User is created (see
@@ -288,6 +289,8 @@ model PlatformUser {
   financeEntries         PlatformFinanceEntry[]
   emailsSent             PlatformEmailMessage[]
   moduleGrants           PlatformAdminModuleGrant[]
+  campaigns              Campaign[]
+  campaignRecipients     CampaignRecipient[]
 }
 
 model PlatformRefreshToken {
@@ -700,6 +703,86 @@ model PricingTier {
 enum EmailDirection {
   IN
   OUT
+}
+
+enum CampaignChannel {
+  EMAIL
+  SMS
+  BOTH
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum CampaignRecipientType {
+  SCHOOL
+  PLATFORM_ADMIN
+  EXTERNAL
+}
+
+enum CampaignDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// A one-off broadcast (holiday greetings, maintenance notices, targeted follow-ups) — distinct from
+// PlatformNotifierService's fixed, keyed system templates: campaign content is freeform and
+// authored per-send, so it goes straight through EMAIL_PROVIDER/SMS_PROVIDER rather than the
+// {{template}} substitution layer. Recipients are resolved and snapshotted into CampaignRecipient
+// rows at creation time (not re-computed at send time), giving a stable send list and a durable
+// per-recipient delivery record even if the underlying school/admin data changes later.
+model Campaign {
+  id              String          @id @default(uuid())
+  subject         String
+  emailBody       String?
+  smsBody         String?
+  channel         CampaignChannel @default(BOTH)
+  status          CampaignStatus  @default(DRAFT)
+  // Null means "send immediately" (dispatched synchronously right after creation). When set, a
+  // per-minute cron (CampaignsService.dispatchScheduled()) picks it up once due.
+  scheduledAt     DateTime?
+  sentAt          DateTime?
+  createdByUserId String
+  createdBy       PlatformUser    @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  recipients CampaignRecipient[]
+}
+
+// One row per resolved recipient at the moment the campaign was created — email/phone are copied in
+// at that time (from Tenant.contactEmail/contactPhone or PlatformUser.email/phone), not looked up
+// live at send time, so a later change to a school's contact details doesn't retroactively alter
+// what an already-created campaign was addressed to. emailStatus/smsStatus are tracked
+// independently since a channel a recipient lacks (no phone on file, etc.) is simply never
+// attempted, not a failure.
+model CampaignRecipient {
+  id             String                 @id @default(uuid())
+  campaignId     String
+  campaign       Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  type           CampaignRecipientType
+  tenantId       String?
+  tenant         Tenant?                @relation(fields: [tenantId], references: [id])
+  platformUserId String?
+  platformUser   PlatformUser?          @relation(fields: [platformUserId], references: [id])
+  name           String
+  email          String?
+  phone          String?
+  emailStatus    CampaignDeliveryStatus @default(PENDING)
+  smsStatus      CampaignDeliveryStatus @default(PENDING)
+  emailError     String?
+  smsError       String?
+  createdAt      DateTime               @default(now())
+
+  @@index([campaignId])
 }
 
 // One row per named identity (info@/partner@/billing@/personal@hamzonetechnologies.com) — a fixed,

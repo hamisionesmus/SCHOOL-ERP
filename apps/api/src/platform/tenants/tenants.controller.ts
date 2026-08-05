@@ -6,6 +6,7 @@ import { RequestTenantDto } from './dto/request-tenant.dto';
 import { ConfirmTenantDto } from './dto/confirm-tenant.dto';
 import { UpdatePaymentConfigDto } from './dto/update-payment-config.dto';
 import { UpdateStorageLimitDto } from './dto/update-storage-limit.dto';
+import { BulkDeleteTenantsDto } from './dto/bulk-delete-tenants.dto';
 import { InitiateActivationPaymentDto } from '../activation/dto/initiate-activation-payment.dto';
 import { ActivationService } from '../activation/activation.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -44,6 +45,14 @@ export class TenantsController {
   @Delete(':id')
   deleteTestTenant(@Param('id') id: string, @CurrentUser() user: JwtUserPayload) {
     return this.tenantsService.deleteTestTenant(id, user);
+  }
+
+  // Bulk variant for the Data Cleanup page — same authorization rules as the single-delete route
+  // above (Test tenants only), just looped so a Super Admin can clear out several at once instead
+  // of one confirm dialog at a time.
+  @Post('bulk-delete')
+  bulkDelete(@Body() dto: BulkDeleteTenantsDto, @CurrentUser() user: JwtUserPayload) {
+    return this.tenantsService.bulkDeleteTestTenants(dto.ids, user);
   }
 
   @Get(':id/usage')
@@ -91,6 +100,16 @@ export class TenantsController {
   @Patch(':id/activate')
   activate(@Param('id') id: string) {
     return this.tenantsService.activate(id);
+  }
+
+  // Reclassifies an existing school as disposable Test data (a reversible metadata flag, not a
+  // deletion) so it becomes eligible for the existing isTest-only delete path — see
+  // TenantsService.markAsTest(). Used by the Data Cleanup page for schools created before Test
+  // existed as an account type.
+  @RequirePlatformRole('SUPER_ADMIN')
+  @Patch(':id/mark-test')
+  markAsTest(@Param('id') id: string) {
+    return this.tenantsService.markAsTest(id);
   }
 
   @RequirePlatformRole('SUPER_ADMIN')

@@ -56,6 +56,7 @@ import { PricingTiersModule } from './platform/pricing-tiers/pricing-tiers.modul
 import { SystemHealthModule } from './platform/system-health/system-health.module';
 import { MailboxesModule } from './platform/mailboxes/mailboxes.module';
 import { PresenceModule } from './platform/presence/presence.module';
+import { CampaignsModule } from './platform/campaigns/campaigns.module';
 import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
 
 @Module({
@@ -124,6 +125,7 @@ import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
     SystemHealthModule,
     MailboxesModule,
     PresenceModule,
+    CampaignsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

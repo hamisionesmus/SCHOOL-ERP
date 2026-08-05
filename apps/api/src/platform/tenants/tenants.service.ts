@@ -339,6 +339,16 @@ export class TenantsService {
     return this.platformPrisma.tenant.update({ where: { id }, data: { status: 'ACTIVE' } });
   }
 
+  /** Reclassifies an existing tenant as disposable Test data — a narrow, reversible metadata edit
+   * (isTest/isDemo flags only), not a deletion. Lets a Super Admin clean up schools that were
+   * created before the Test/Demo/Real distinction existed, or simply mislabeled, so they become
+   * eligible for the existing, unmodified isTest-only delete path (see deleteTestTenant) instead of
+   * this endpoint touching delete authorization itself. */
+  async markAsTest(id: string) {
+    await this.findOne(id);
+    return this.platformPrisma.tenant.update({ where: { id }, data: { isTest: true, isDemo: true } });
+  }
+
   async updatePaymentConfig(id: string, dto: UpdatePaymentConfigDto) {
     await this.findOne(id);
     return this.platformPrisma.tenant.update({ where: { id }, data: dto });
@@ -396,6 +406,7 @@ export class TenantsService {
     }
 
     await this.platformPrisma.$transaction([
+      this.platformPrisma.campaignRecipient.deleteMany({ where: { tenantId: id } }),
       this.platformPrisma.platformPayment.deleteMany({ where: { invoice: { tenantId: id } } }),
       this.platformPrisma.platformMpesaStkRequest.deleteMany({ where: { tenantId: id } }),
       this.platformPrisma.platformPaymentProof.deleteMany({ where: { tenantId: id } }),
@@ -414,5 +425,22 @@ export class TenantsService {
     }
 
     return { deleted: true };
+  }
+
+  /** Bulk variant for the Data Cleanup page — loops the single-delete path (same authorization
+   * rules as deleteTestTenant, unchanged: Test tenants only, and only ones the caller created
+   * unless they're the Super Admin) so one bad id doesn't abort the rest of the batch; per-id
+   * results are collected and returned rather than thrown. */
+  async bulkDeleteTestTenants(ids: string[], user: JwtUserPayload) {
+    const results: { id: string; deleted: boolean; error?: string }[] = [];
+    for (const id of ids) {
+      try {
+        await this.deleteTestTenant(id, user);
+        results.push({ id, deleted: true });
+      } catch (err) {
+        results.push({ id, deleted: false, error: err instanceof Error ? err.message : 'Failed to delete' });
+      }
+    }
+    return results;
   }
 }
