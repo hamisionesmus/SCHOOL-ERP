@@ -17,6 +17,11 @@ export class CreateExternalContactDto {
   @IsString()
   phone?: string;
 
+  @ApiProperty({ required: false, description: 'e.g. "Director", "Partner" — shown on any attendee roster' })
+  @IsOptional()
+  @IsString()
+  position?: string;
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()

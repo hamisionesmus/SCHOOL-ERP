@@ -20,7 +20,7 @@ const SCHOOLS_CREATED_PAGE_SIZE_OPTIONS = [5, 10, 30, 50];
 
 // Mirrors apps/api/src/platform/admins/platform-modules.ts — kept in sync manually (no shared
 // package between the two apps yet, same precedent as KENYA_COUNTIES).
-const PLATFORM_MODULES = ['TICKETS', 'SECURITY', 'BACKUPS', 'SETTINGS', 'MESSAGE_TEMPLATES', 'ADMINS', 'AUDIT_LOG'] as const;
+const PLATFORM_MODULES = ['TICKETS', 'SECURITY', 'BACKUPS', 'SETTINGS', 'MESSAGE_TEMPLATES', 'ADMINS', 'AUDIT_LOG', 'MEETINGS'] as const;
 const PLATFORM_MODULE_LABELS: Record<(typeof PLATFORM_MODULES)[number], string> = {
   TICKETS: 'Tickets',
   SECURITY: 'Security',
@@ -29,6 +29,7 @@ const PLATFORM_MODULE_LABELS: Record<(typeof PLATFORM_MODULES)[number], string> 
   MESSAGE_TEMPLATES: 'Message Templates',
   ADMINS: 'Admin management (view only)',
   AUDIT_LOG: 'Audit Log access',
+  MEETINGS: 'Meetings (manage all, not just their own)',
 };
 
 interface AdminDetail {

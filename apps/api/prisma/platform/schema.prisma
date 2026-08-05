@@ -344,6 +344,7 @@ model PlatformUser {
   trainingProgramsCreated     HamzoneTrainingProgram[]
   meetingsCreated             HamzoneMeeting[]
   meetingMinutesUpdates        HamzoneMeeting[] @relation("MeetingMinutesUpdatedBy")
+  meetingsEnded                HamzoneMeeting[] @relation("MeetingEndedBy")
   outreachEntriesCreated      HamzoneOutreachEntry[] @relation("OutreachCreatedBy")
   outreachEntriesAssigned     HamzoneOutreachEntry[] @relation("OutreachAssignedTo")
   outreachEarningsRecorded    HamzoneOutreachEarning[]
@@ -1213,7 +1214,13 @@ model HamzoneMeeting {
   minutesUpdatedAt       DateTime?
   minutesUpdatedByUserId String?
   minutesUpdatedBy       PlatformUser? @relation("MeetingMinutesUpdatedBy", fields: [minutesUpdatedByUserId], references: [id])
+  // Set once, by the host or a platform admin clicking "End meeting" — triggers a one-time round of
+  // thank-you (present) / absence-followup (absent) notices, see HamzoneMeetingsService.endMeeting.
+  endedAt            DateTime?
+  endedByUserId      String?
+  endedBy            PlatformUser? @relation("MeetingEndedBy", fields: [endedByUserId], references: [id])
   attendance         HamzoneMeetingAttendance[]
+  absenceReasons     HamzoneMeetingAbsenceReason[]
   createdAt          DateTime     @default(now())
 }
 
@@ -1230,7 +1237,30 @@ model HamzoneMeetingAttendance {
   email     String
   name      String?
   matched   Boolean        @default(true)
+  // Best-effort verification signal captured at the moment of the actual join action (not page
+  // load) — honest about its limits: this proves *a* browser at this IP submitted this email at
+  // this time, not identity or camera presence, since there's no video-conferencing API/webhook
+  // integration to check against. Still the strongest signal available without one.
+  ipAddress String?
+  userAgent String?
   joinedAt  DateTime       @default(now())
+
+  @@unique([meetingId, email])
+}
+
+// A reason an invitee gave for missing a meeting, submitted from the same personalized link used to
+// join (see the "ended" branch of MeetingJoinPage) — only meaningful once the meeting has been ended
+// (see HamzoneMeeting.endedAt). Never created for someone already marked present.
+model HamzoneMeetingAbsenceReason {
+  id        String         @id @default(uuid())
+  meetingId String
+  meeting   HamzoneMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  email     String
+  name      String?
+  reason    String
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime       @default(now())
 
   @@unique([meetingId, email])
 }
@@ -1246,6 +1276,10 @@ model HamzoneExternalContact {
   name            String
   email           String?
   phone           String?
+  // Free-text position/title (e.g. "Director", "Partner") — shown alongside their name wherever an
+  // attendee roster is displayed (currently just meeting invites), same free-text convention as
+  // PlatformUser.jobTitle rather than a fixed enum.
+  position        String?
   notes           String?
   createdByUserId String
   createdBy       PlatformUser @relation(fields: [createdByUserId], references: [id])

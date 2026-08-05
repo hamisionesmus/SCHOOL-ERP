@@ -17,6 +17,8 @@ export type MessageTemplateKey =
   | 'TRAINER_WELCOME'
   | 'GIG_WORKER_WELCOME'
   | 'MEETING_INVITE'
+  | 'MEETING_THANK_YOU'
+  | 'MEETING_ABSENT_FOLLOWUP'
   | 'JOB_INTERVIEW_SCHEDULED'
   | 'JOB_HIRED'
   | 'JOB_REJECTED'
@@ -168,11 +170,26 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
       'Hamzone Technologies: your account is ready. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}} (please change it once in).',
   },
   MEETING_INVITE: {
-    variables: ['title', 'scheduledAt', 'meetingLink', 'organizerName', 'agendaList', 'joinUrl'],
+    variables: ['title', 'scheduledAt', 'meetingLink', 'organizerName', 'agendaList', 'rosterList', 'joinUrl'],
     subject: 'Meeting scheduled: {{title}}',
     emailBody:
-      '{{organizerName}} scheduled a meeting you\'re invited to.\n\n{{title}}\nWhen: {{scheduledAt}}\n\nAgenda:\n{{agendaList}}\n\nJoin using the link below — it\'s tied to the email address you were invited with, so opening it marks you present automatically. If it asks you to confirm your email, please use the exact one this invite was sent to.\n\n{{joinUrl}}',
+      '{{organizerName}} scheduled a meeting you\'re invited to.\n\n{{title}}\nWhen: {{scheduledAt}}\n\nAgenda:\n{{agendaList}}\n\nWho else to expect:\n{{rosterList}}\n\nJoin using the link below — it only becomes active once the scheduled time arrives, and it\'s tied to the email address you were invited with, so opening it marks you present automatically. If it asks you to confirm your email, please use the exact one this invite was sent to.\n\n{{joinUrl}}',
     smsBody: 'Hamzone Technologies: meeting "{{title}}" at {{scheduledAt}}. Join (marks you present): {{joinUrl}}',
+  },
+  MEETING_THANK_YOU: {
+    variables: ['title', 'scheduledAt'],
+    subject: 'Thank you for attending — {{title}}',
+    emailBody:
+      'Thank you for attending "{{title}}" ({{scheduledAt}}) — our records show you were present. We appreciate you being there.',
+    smsBody: 'Hamzone Technologies: thank you for attending "{{title}}" ({{scheduledAt}}).',
+  },
+  MEETING_ABSENT_FOLLOWUP: {
+    variables: ['title', 'scheduledAt', 'joinUrl'],
+    subject: 'Action needed within 30 minutes — recorded absent for {{title}}',
+    emailBody:
+      'Our records show you were absent for "{{title}}" held {{scheduledAt}}.\n\nIf you did actually attend — perhaps using a different email than the one this was sent to — you can confirm the email you joined with here and we\'ll mark you present: {{joinUrl}}\n\nIf you weren\'t able to make it, the same link lets you give a reason.\n\nThis link expires in 30 minutes — please respond now, because the meeting minutes are being finalized. If we don\'t hear from you in time, you\'ll remain marked absent.',
+    smsBody:
+      'Hamzone Technologies: recorded absent for "{{title}}" ({{scheduledAt}}). Respond within 30 min or you stay marked absent — minutes are being finalized: {{joinUrl}}',
   },
   JOB_INTERVIEW_SCHEDULED: {
     variables: ['fullName', 'positionTitle', 'interviewAt', 'notes'],

@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, CheckCircle2, ChevronDown, ChevronUp, ListChecks, Plus, Trash2, Users, Video } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
-import { getSessionUser } from '@/lib/auth';
+import { CalendarClock, CheckCircle2, ChevronDown, ChevronUp, Download, ListChecks, Mail, Plus, Square, Trash2, Users, Video } from 'lucide-react';
+import { apiFetch, API_ORIGIN } from '@/lib/api';
+import { getAccessToken, getSessionUser } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,11 +18,13 @@ interface ExternalContact {
   name: string;
   email: string | null;
   phone: string | null;
+  position: string | null;
 }
 interface ExternalRow {
   name: string;
   email: string;
   phone: string;
+  position: string;
 }
 
 interface Meeting {
@@ -38,6 +40,7 @@ interface Meeting {
   createdBy: { fullName: string };
   minutes: string | null;
   minutesUpdatedAt: string | null;
+  endedAt: string | null;
   _count: { attendance: number };
 }
 
@@ -104,9 +107,69 @@ function AttendancePanel({ meetingId }: { meetingId: string }) {
   );
 }
 
+function ShareMinutesDialog({ meetingId, onClose }: { meetingId: string; onClose: () => void }) {
+  const [toEmail, setToEmail] = useState('');
+
+  const share = useMutation({
+    mutationFn: () => apiFetch<{ sent: boolean; to: string }>(`/platform/meetings/${meetingId}/minutes/share`, {
+      method: 'POST',
+      body: JSON.stringify({ toEmail: toEmail.trim() }),
+    }),
+    onSuccess: (res) => {
+      notifySuccess(res.sent ? `Minutes emailed to ${res.to}` : `Could not confirm delivery to ${res.to}`);
+      onClose();
+    },
+    onError: (err) => notifyError(err, 'Failed to share minutes'),
+  });
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+        <h3 className="mb-1 text-base font-semibold text-slate-900">Share minutes</h3>
+        <p className="mb-3 text-xs text-slate-500">Sends the minutes as a PDF to any email — a system user or anyone outside it.</p>
+        <Input type="email" value={toEmail} onChange={(e) => setToEmail(e.target.value)} placeholder="name@example.com" />
+        <div className="mt-4 flex gap-2">
+          <Button variant="outline" className="flex-1" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button className="flex-1" disabled={!toEmail.trim() || share.isPending} onClick={() => share.mutate()}>
+            {share.isPending ? 'Sending...' : 'Send'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MinutesSection({ meeting, canEdit, queryClient }: { meeting: Meeting; canEdit: boolean; queryClient: ReturnType<typeof useQueryClient> }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(meeting.minutes ?? '');
+  const [sharing, setSharing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  async function downloadPdf() {
+    setDownloading(true);
+    try {
+      const token = getAccessToken();
+      const res = await fetch(`${API_ORIGIN}/platform/meetings/${meeting.id}/minutes-pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error('Failed to generate minutes PDF');
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filenameMatch?.[1] ?? 'minutes.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      notifyError(err, 'Failed to download minutes');
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   const save = useMutation({
     mutationFn: () => apiFetch(`/platform/meetings/${meeting.id}/minutes`, { method: 'PATCH', body: JSON.stringify({ minutes: draft }) }),
@@ -124,13 +187,28 @@ function MinutesSection({ meeting, canEdit, queryClient }: { meeting: Meeting; c
       <div className="mt-3 rounded-lg border border-slate-200 p-3">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Minutes</p>
-          {canEdit && (
-            <button type="button" onClick={() => setEditing(true)} className="text-xs font-medium text-blue-600 hover:text-blue-700">
-              {meeting.minutes ? 'Edit' : 'Add minutes'}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {meeting.minutes && (
+              <>
+                <button type="button" onClick={downloadPdf} disabled={downloading} className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700">
+                  <Download size={12} /> {downloading ? 'Preparing...' : 'PDF'}
+                </button>
+                {canEdit && (
+                  <button type="button" onClick={() => setSharing(true)} className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700">
+                    <Mail size={12} /> Share
+                  </button>
+                )}
+              </>
+            )}
+            {canEdit && (
+              <button type="button" onClick={() => setEditing(true)} className="text-xs font-medium text-blue-600 hover:text-blue-700">
+                {meeting.minutes ? 'Edit' : 'Add minutes'}
+              </button>
+            )}
+          </div>
         </div>
         <p className="mt-1 whitespace-pre-wrap text-xs text-slate-600">{meeting.minutes || 'No minutes recorded yet.'}</p>
+        {sharing && <ShareMinutesDialog meetingId={meeting.id} onClose={() => setSharing(false)} />}
       </div>
     );
   }
@@ -161,6 +239,17 @@ function MeetingCard({ m, isAdmin, currentUserId, queryClient }: { m: Meeting; i
   const [showAttendance, setShowAttendance] = useState(false);
   const upcoming = new Date(m.scheduledAt).getTime() > Date.now();
   const canManage = isAdmin || m.createdByUserId === currentUserId;
+
+  const endMeeting = useMutation({
+    mutationFn: () => apiFetch<{ presentNotified: number; absentNotified: number }>(`/platform/meetings/${m.id}/end`, { method: 'PATCH' }),
+    onSuccess: (res) => {
+      notifySuccess(`Meeting ended — thank-you sent to ${res.presentNotified}, absence notice sent to ${res.absentNotified}`);
+      queryClient.invalidateQueries({ queryKey: ['meetings-mine'] });
+      queryClient.invalidateQueries({ queryKey: ['meetings-all'] });
+      queryClient.invalidateQueries({ queryKey: ['meeting-attendance', m.id] });
+    },
+    onError: (err) => notifyError(err, 'Failed to end meeting'),
+  });
 
   return (
     <div className="rounded-lg border border-slate-200 p-3">
@@ -210,6 +299,26 @@ function MeetingCard({ m, isAdmin, currentUserId, queryClient }: { m: Meeting; i
               <CheckCircle2 size={12} /> {m._count.attendance} joined
             </span>
           )}
+          {canManage && !m.endedAt && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs"
+              disabled={endMeeting.isPending}
+              onClick={() => {
+                if (
+                  confirm(
+                    'End this meeting now? Everyone recorded present gets a thank-you message. Everyone recorded absent gets 30 minutes to confirm attendance or give a reason before staying marked absent. This can only be done once.',
+                  )
+                ) {
+                  endMeeting.mutate();
+                }
+              }}
+            >
+              <Square size={11} /> {endMeeting.isPending ? 'Ending...' : 'End meeting'}
+            </Button>
+          )}
+          {m.endedAt && <span className="text-xs text-slate-400">Ended {new Date(m.endedAt).toLocaleString()} — notices sent</span>}
         </div>
       </div>
 
@@ -244,7 +353,12 @@ function CreateMeetingDialog({ onCreated }: { onCreated: () => void }) {
       for (const row of newExternalRows.filter((r) => r.name.trim() && (r.email.trim() || r.phone.trim()))) {
         const contact = await apiFetch<ExternalContact>('/platform/external-contacts', {
           method: 'POST',
-          body: JSON.stringify({ name: row.name.trim(), email: row.email.trim() || undefined, phone: row.phone.trim() || undefined }),
+          body: JSON.stringify({
+            name: row.name.trim(),
+            email: row.email.trim() || undefined,
+            phone: row.phone.trim() || undefined,
+            position: row.position.trim() || undefined,
+          }),
         });
         newIds.push(contact.id);
       }
@@ -404,7 +518,10 @@ function CreateMeetingDialog({ onCreated }: { onCreated: () => void }) {
                         className="h-3.5 w-3.5"
                       />
                       <span className="font-medium text-slate-800">{c.name}</span>
-                      <span className="text-slate-400">{c.email ?? c.phone}</span>
+                      <span className="text-slate-400">
+                        {c.position ? `${c.position} · ` : ''}
+                        {c.email ?? c.phone}
+                      </span>
                     </label>
                   ))
                 )}
@@ -414,7 +531,7 @@ function CreateMeetingDialog({ onCreated }: { onCreated: () => void }) {
               <p className="text-xs text-slate-400">External contact — not a system account</p>
               <button
                 type="button"
-                onClick={() => setNewExternalRows((rows) => [...rows, { name: '', email: '', phone: '' }])}
+                onClick={() => setNewExternalRows((rows) => [...rows, { name: '', email: '', phone: '', position: '' }])}
                 className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
               >
                 <Plus size={12} /> Add new
@@ -425,6 +542,7 @@ function CreateMeetingDialog({ onCreated }: { onCreated: () => void }) {
                 {newExternalRows.map((row, i) => (
                   <div key={i} className="flex items-center gap-1.5">
                     <Input value={row.name} onChange={(e) => updateExternalRow(i, 'name', e.target.value)} placeholder="Name" className="h-8 text-xs" />
+                    <Input value={row.position} onChange={(e) => updateExternalRow(i, 'position', e.target.value)} placeholder="Position (e.g. Director)" className="h-8 text-xs" />
                     <Input value={row.email} onChange={(e) => updateExternalRow(i, 'email', e.target.value)} placeholder="Email" className="h-8 text-xs" />
                     <Input value={row.phone} onChange={(e) => updateExternalRow(i, 'phone', e.target.value)} placeholder="Phone" className="h-8 text-xs" />
                     <button
@@ -462,7 +580,11 @@ export default function MeetingsPage() {
   const queryClient = useQueryClient();
   const sessionUser = getSessionUser();
   const role = sessionUser?.role;
-  const isAdmin = role === 'SUPER_ADMIN' || role === 'SUB_ADMIN' || role === 'ASSISTANT_SUPER_ADMIN';
+  // A platform admin tier, or anyone specifically granted the MEETINGS module (see
+  // PlatformAdminModuleGrant / the admin detail page's grants card) — lets a Super Admin delegate
+  // "manage all meetings" to a TRAINER/GIG_WORKER without promoting their whole role tier.
+  const isAdmin =
+    role === 'SUPER_ADMIN' || role === 'SUB_ADMIN' || role === 'ASSISTANT_SUPER_ADMIN' || !!sessionUser?.moduleGrants?.includes('MEETINGS');
 
   const { data: mine, isLoading } = useQuery({ queryKey: ['meetings-mine'], queryFn: () => apiFetch<Meeting[]>('/platform/meetings/mine') });
   const { data: all } = useQuery({ queryKey: ['meetings-all'], queryFn: () => apiFetch<Meeting[]>('/platform/meetings'), enabled: isAdmin });

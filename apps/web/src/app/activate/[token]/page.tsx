@@ -15,6 +15,12 @@ interface ActivationStatus {
   status: 'PENDING' | 'PAID';
 }
 
+interface Branding {
+  systemName: string;
+  loginLogoUrl: string | null;
+}
+const DEFAULT_BRANDING: Branding = { systemName: 'School ERP', loginLogoUrl: null };
+
 interface PaymentDetails {
   bankName: string | null;
   bankAccountName: string | null;
@@ -37,6 +43,7 @@ export default function ActivatePage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [info, setInfo] = useState<ActivationStatus | null>(null);
+  const [branding, setBranding] = useState<Branding>(DEFAULT_BRANDING);
   const [method, setMethod] = useState<Method>('stk');
   const [details, setDetails] = useState<PaymentDetails | null>(null);
 
@@ -92,6 +99,14 @@ export default function ActivatePage() {
     fetchStatus().finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // Same platform-wide branding as the login page — falls back to the default while loading/on
+  // error so the page never flashes blank. See BrandingController / PlatformSettings.systemName.
+  useEffect(() => {
+    apiFetch<Branding>('/public/branding')
+      .then(setBranding)
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (method === 'stk' || details) return;
@@ -158,11 +173,9 @@ export default function ActivatePage() {
         <div className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-16 -right-16 h-56 w-56 rounded-full bg-amber-400/10 blur-3xl" />
 
-        <div className="relative mb-6 flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
-            <GraduationCap size={20} className="text-emerald-950" />
-          </div>
-          <span className="text-lg font-semibold text-white">School ERP</span>
+        <div className="relative mb-6 flex min-w-0 items-center gap-2.5">
+          <ActivationLogo url={branding.loginLogoUrl} />
+          <span className="truncate text-lg font-semibold text-white">{branding.systemName}</span>
         </div>
 
         <div className="relative">
@@ -178,7 +191,7 @@ export default function ActivatePage() {
               <h2 className="text-xl font-semibold text-white">Link not valid</h2>
               <p className="mt-2 text-sm text-slate-400">{loadError}</p>
               <p className="mt-4 text-xs text-slate-500">
-                If you believe this is an error, contact the School ERP team for a new activation link.
+                If you believe this is an error, contact the {branding.systemName} team for a new activation link.
               </p>
             </div>
           )}
@@ -387,6 +400,26 @@ function InvoiceDownloadButton({ downloading, onClick }: { downloading: boolean;
         </span>
       )}
     </Button>
+  );
+}
+
+/** Same object-contain-in-a-padded-frame treatment as the login page's LoginLogo, so a non-square
+ * uploaded logo scales to fit instead of being cropped, and stays consistent across both public
+ * pages a school sees before they can sign in. */
+function ActivationLogo({ url }: { url: string | null }) {
+  if (url) {
+    const src = url.startsWith('http') ? url : `${API_ORIGIN}${url}`;
+    return (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 p-1 shadow-lg shadow-emerald-900/40">
+        {/* eslint-disable-next-line @next/next/no-img-element -- external/uploaded URL, not a static asset */}
+        <img src={src} alt="" className="h-full w-full object-contain" />
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-amber-400 shadow-lg shadow-emerald-900/40">
+      <GraduationCap size={20} className="text-emerald-950" />
+    </div>
   );
 }
 

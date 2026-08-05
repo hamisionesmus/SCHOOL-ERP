@@ -43,7 +43,7 @@ export class ExternalContactsService {
     if (existing) return existing;
 
     return this.platformPrisma.hamzoneExternalContact.create({
-      data: { name: dto.name, email: dto.email, phone: dto.phone, notes: dto.notes, createdByUserId: userId },
+      data: { name: dto.name, email: dto.email, phone: dto.phone, position: dto.position, notes: dto.notes, createdByUserId: userId },
     });
   }
 

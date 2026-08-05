@@ -9,6 +9,7 @@ export const PLATFORM_MODULES = [
   'MESSAGE_TEMPLATES',
   'ADMINS',
   'AUDIT_LOG',
+  'MEETINGS',
 ] as const;
 
 export type PlatformModule = (typeof PLATFORM_MODULES)[number];
@@ -21,6 +22,7 @@ export const PLATFORM_MODULE_LABELS: Record<PlatformModule, string> = {
   MESSAGE_TEMPLATES: 'Message Templates',
   ADMINS: 'Admin management',
   AUDIT_LOG: 'Audit Log access',
+  MEETINGS: 'Meetings (manage all, not just their own)',
 };
 
 export function isPlatformModule(value: string): value is PlatformModule {
