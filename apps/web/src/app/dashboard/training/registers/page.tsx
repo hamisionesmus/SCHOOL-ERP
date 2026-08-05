@@ -2,17 +2,21 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download } from 'lucide-react';
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Download, Send } from 'lucide-react';
 import { apiFetch, API_ORIGIN } from '@/lib/api';
 import { getSessionUser, getAccessToken } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Countdown } from '@/components/ui/countdown';
 
 interface Program {
   id: string;
   title: string;
+  endDate: string;
+  status: string;
 }
 interface Register {
   id: string;
@@ -23,6 +27,68 @@ interface Register {
   notes: string | null;
   program: { title: string; center: { name: string } | null };
   trainer: { user: { fullName: string } };
+}
+interface RegisterStats {
+  programTitle: string;
+  daysRemaining: number;
+  rosterSize: number;
+  totalPresent: number;
+  totalAbsent: number;
+  attendanceRate: number | null;
+  byGender: Record<'MALE' | 'FEMALE' | 'OTHER', { present: number; absent: number }>;
+}
+
+function AttendanceStats({ programId }: { programId: string }) {
+  const { data: stats } = useQuery({
+    queryKey: ['register-stats', programId],
+    queryFn: () => apiFetch<RegisterStats>(`/platform/training/registers/stats?programId=${programId}`),
+    enabled: !!programId,
+  });
+  if (!stats) return null;
+
+  const genderData = (['MALE', 'FEMALE', 'OTHER'] as const)
+    .map((g) => ({ name: g[0] + g.slice(1).toLowerCase(), present: stats.byGender[g].present, absent: stats.byGender[g].absent }))
+    .filter((d) => d.present + d.absent > 0);
+
+  return (
+    <Card className="mb-6">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-base">{stats.programTitle} — Attendance</CardTitle>
+        <Countdown endDate={new Date(Date.now() + stats.daysRemaining * 86_400_000)} />
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4 grid grid-cols-3 gap-3 text-center">
+          <div>
+            <p className="text-xl font-semibold text-slate-900">{stats.rosterSize}</p>
+            <p className="text-xs text-slate-500">Trainees</p>
+          </div>
+          <div>
+            <p className="text-xl font-semibold text-emerald-600">{stats.attendanceRate ?? '—'}%</p>
+            <p className="text-xs text-slate-500">Attendance rate</p>
+          </div>
+          <div>
+            <p className="text-xl font-semibold text-slate-900">
+              {stats.totalPresent}/{stats.totalPresent + stats.totalAbsent}
+            </p>
+            <p className="text-xs text-slate-500">Present marks</p>
+          </div>
+        </div>
+        {genderData.length > 0 && (
+          <div className="h-40 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={genderData}>
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="present" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="absent" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 async function downloadRegisterPdf(id: string, date: string) {
@@ -77,12 +143,30 @@ function TrainerRegisters() {
     onError: (err) => notifyError(err, 'Failed to submit register'),
   });
 
+  const resendLink = useMutation({
+    mutationFn: () => apiFetch<{ sent: number }>('/platform/training/daily-link/resend', { method: 'POST' }),
+    onSuccess: (res) => notifySuccess(res.sent > 0 ? `Sent ${res.sent} link(s) to your phone/email` : 'No active program found for today'),
+    onError: (err) => notifyError(err, 'Failed to send link'),
+  });
+
+  const activeProgram = (programs ?? []).find((p) => p.status === 'ACTIVE') ?? programs?.[0];
+
   return (
     <>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Daily Register</h1>
-        <p className="text-sm text-slate-500">Attendance and what you covered today.</p>
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Daily Register</h1>
+          <p className="text-sm text-slate-500">Attendance and what you covered today.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {activeProgram && <Countdown endDate={activeProgram.endDate} />}
+          <Button size="sm" variant="outline" className="gap-1.5" disabled={resendLink.isPending} onClick={() => resendLink.mutate()}>
+            <Send size={13} /> {resendLink.isPending ? 'Sending...' : "Send me today's link"}
+          </Button>
+        </div>
       </header>
+
+      {activeProgram && <AttendanceStats programId={activeProgram.id} />}
 
       <Card className="mb-6">
         <CardHeader>

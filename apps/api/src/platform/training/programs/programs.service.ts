@@ -39,7 +39,13 @@ export class HamzoneProgramsService {
 
   create(dto: UpsertProgramDto, userId: string) {
     return this.platformPrisma.hamzoneTrainingProgram.create({
-      data: { ...dto, startDate: new Date(dto.startDate), endDate: new Date(dto.endDate), createdByUserId: userId },
+      data: {
+        ...dto,
+        startDate: new Date(dto.startDate),
+        endDate: new Date(dto.endDate),
+        plannedProjectDueAt: dto.plannedProjectDueAt ? new Date(dto.plannedProjectDueAt) : undefined,
+        createdByUserId: userId,
+      },
       include: PROGRAM_INCLUDE,
     });
   }
@@ -48,7 +54,12 @@ export class HamzoneProgramsService {
     await this.findOne(id);
     return this.platformPrisma.hamzoneTrainingProgram.update({
       where: { id },
-      data: { ...dto, startDate: new Date(dto.startDate), endDate: new Date(dto.endDate) },
+      data: {
+        ...dto,
+        startDate: new Date(dto.startDate),
+        endDate: new Date(dto.endDate),
+        plannedProjectDueAt: dto.plannedProjectDueAt ? new Date(dto.plannedProjectDueAt) : undefined,
+      },
       include: PROGRAM_INCLUDE,
     });
   }

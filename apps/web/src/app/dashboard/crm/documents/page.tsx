@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, FileText, Trash2, Upload } from 'lucide-react';
 import { apiFetch, apiUpload, API_ORIGIN } from '@/lib/api';
+import { getSessionUser } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,7 @@ interface Doc {
   fileUrl: string;
   createdAt: string;
   uploadedBy: { fullName: string };
+  suggestedByUserId: string | null;
 }
 
 export default function CrmDocumentsPage() {
@@ -26,6 +28,8 @@ export default function CrmDocumentsPage() {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('OTHER');
   const [uploading, setUploading] = useState(false);
+  const session = getSessionUser();
+  const isAdmin = session?.role === 'SUPER_ADMIN' || session?.role === 'SUB_ADMIN' || session?.role === 'ASSISTANT_SUPER_ADMIN';
 
   const { data, isLoading } = useQuery({
     queryKey: ['crm-documents'],
@@ -105,25 +109,36 @@ export default function CrmDocumentsPage() {
             <p className="text-sm text-slate-500">No documents uploaded yet.</p>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {documents.map((d) => (
-                <div key={d.id} className="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
-                  <FileText size={18} className="mt-0.5 flex-shrink-0 text-slate-400" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-900">{d.title}</p>
-                    <p className="text-xs text-slate-400">
-                      {d.category} · {d.uploadedBy.fullName}
-                    </p>
+              {documents.map((d) => {
+                const canDelete = isAdmin || d.suggestedByUserId === session?.sub;
+                return (
+                  <div key={d.id} className="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
+                    <a href={`${API_ORIGIN}${d.fileUrl}`} target="_blank" rel="noreferrer" className="flex min-w-0 flex-1 items-start gap-3">
+                      <FileText size={18} className="mt-0.5 flex-shrink-0 text-slate-400" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-900 hover:underline">{d.title}</p>
+                        <p className="text-xs text-slate-400">
+                          {d.category} · {d.uploadedBy.fullName}
+                        </p>
+                      </div>
+                    </a>
+                    {(isAdmin || canDelete) && (
+                      <div className="flex flex-shrink-0 gap-1">
+                        {isAdmin && (
+                          <button onClick={() => copyLink(d.fileUrl)} className="rounded p-1 text-slate-400 hover:text-slate-700" title="Copy link">
+                            <Copy size={14} />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button onClick={() => remove.mutate(d.id)} className="rounded p-1 text-slate-400 hover:text-rose-600" title="Delete">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex flex-shrink-0 gap-1">
-                    <button onClick={() => copyLink(d.fileUrl)} className="rounded p-1 text-slate-400 hover:text-slate-700" title="Copy link">
-                      <Copy size={14} />
-                    </button>
-                    <button onClick={() => remove.mutate(d.id)} className="rounded p-1 text-slate-400 hover:text-rose-600" title="Delete">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

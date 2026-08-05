@@ -52,4 +52,11 @@ export class HamzoneTrainersController {
     const { buffer, filename } = await this.trainers.contractPdf(id);
     return new StreamableFile(buffer, { type: 'application/pdf', disposition: `attachment; filename="${filename}"` });
   }
+
+  @RequirePlatformRole(['SUPER_ADMIN', 'SUB_ADMIN', 'ASSISTANT_SUPER_ADMIN', 'TRAINER'])
+  @Get(':id/center-history')
+  async centerHistory(@Param('id') id: string, @CurrentUser() user: JwtUserPayload) {
+    if (user.role === 'TRAINER') await this.trainers.assertOwnsProfile(id, user.sub);
+    return this.trainers.centerHistory(id);
+  }
 }

@@ -16,6 +16,11 @@ export interface JwtUserPayload {
   // default (see PlatformAdminModuleGrant, RequirePlatformModule/PermissionsGuard). Embedded in the
   // JWT the same way `role` is — a grant change takes effect on next login/refresh, not instantly.
   moduleGrants?: string[];
+  // Platform-realm only: true immediately after account creation with a system-generated temp
+  // password (trainers, gig workers, recruitment hires, invited admins) — PermissionsGuard blocks
+  // every route except the change-password/own-profile ones until this clears. See
+  // AllowWithPendingPasswordChange and PlatformUser.mustChangePassword.
+  mustChangePassword?: boolean;
 }
 
 export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext): JwtUserPayload => {

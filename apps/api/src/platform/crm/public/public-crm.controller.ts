@@ -43,7 +43,7 @@ export class PublicCrmController {
   @RequireApiScope('documents:read')
   @Get('documents')
   documents() {
-    return this.documentsService.list();
+    return this.documentsService.listAll();
   }
 
   // Rate-limited independently of the read routes above — a contact-form key is realistically

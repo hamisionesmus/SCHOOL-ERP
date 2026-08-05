@@ -22,8 +22,8 @@ function hashToken(token: string): string {
 
 /** Strips JWT standard claims (iat/exp/jti) so a decoded token can be safely re-signed. */
 function cleanPayload(decoded: JwtUserPayload): JwtUserPayload {
-  const { sub, realm, email, fullName, tenantSchema, tenantSlug, roles, permissions, role, moduleGrants } = decoded;
-  return { sub, realm, email, fullName, tenantSchema, tenantSlug, roles, permissions, role, moduleGrants };
+  const { sub, realm, email, fullName, tenantSchema, tenantSlug, roles, permissions, role, moduleGrants, mustChangePassword } = decoded;
+  return { sub, realm, email, fullName, tenantSchema, tenantSlug, roles, permissions, role, moduleGrants, mustChangePassword };
 }
 
 @Injectable()
@@ -106,7 +106,7 @@ export class AuthService {
     email: string,
     password: string,
     ipAddress: string | undefined,
-    user: { id: string; email: string; fullName: string; passwordHash: string; role: string },
+    user: { id: string; email: string; fullName: string; passwordHash: string; role: string; mustChangePassword: boolean },
     userAgent?: string,
   ) {
     if (!(await bcrypt.compare(password, user.passwordHash))) {
@@ -124,6 +124,7 @@ export class AuthService {
       fullName: user.fullName,
       role: user.role,
       moduleGrants: grants.map((g) => g.module),
+      mustChangePassword: user.mustChangePassword,
     };
     const tokens = await this.issueTokens(payload);
     await this.storeRefreshToken('platform', user.id, tokens.refreshToken);

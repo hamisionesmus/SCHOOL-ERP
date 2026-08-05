@@ -28,6 +28,7 @@ import {
   GraduationCap,
   CalendarClock,
   UserCog,
+  Briefcase,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -38,6 +39,7 @@ const SUPER_ADMIN_NAV = [
   { href: '/dashboard/admins', label: 'Admins', icon: Users },
   { href: '/dashboard/crm', label: 'Hamzone CRM', icon: Building2 },
   { href: '/dashboard/training', label: 'Training', icon: GraduationCap },
+  { href: '/dashboard/recruitment', label: 'Recruitment', icon: Briefcase },
   { href: '/dashboard/meetings', label: 'Meetings', icon: CalendarClock },
   { href: '/dashboard/outreach', label: 'Outreach', icon: UserCog },
   { href: '/dashboard/inbox', label: 'Inbox', icon: Mail },

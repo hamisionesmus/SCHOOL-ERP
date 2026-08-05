@@ -35,6 +35,7 @@ export class HamzoneTrainingService {
         traineeEmail: dto.traineeEmail,
         traineePhone: dto.traineePhone,
         track: dto.track,
+        trackOther: dto.trackOther,
         status: dto.status,
         notes: dto.notes,
         startedAt: dto.startedAt ? new Date(dto.startedAt) : undefined,

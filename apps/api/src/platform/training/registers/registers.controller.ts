@@ -32,6 +32,16 @@ export class HamzoneRegistersController {
   }
 
   @RequirePlatformRole(['SUPER_ADMIN', 'SUB_ADMIN', 'ASSISTANT_SUPER_ADMIN', 'TRAINER'])
+  @Get('stats')
+  async stats(@Query('programId') programId: string, @CurrentUser() user: JwtUserPayload) {
+    if (user.role === 'TRAINER') {
+      const profile = await this.trainers.findByUserId(user.sub);
+      return this.registers.stats(programId, profile.id);
+    }
+    return this.registers.stats(programId);
+  }
+
+  @RequirePlatformRole(['SUPER_ADMIN', 'SUB_ADMIN', 'ASSISTANT_SUPER_ADMIN', 'TRAINER'])
   @Get(':id/pdf')
   async pdf(@Param('id') id: string) {
     const { buffer, filename } = await this.registers.pdf(id);

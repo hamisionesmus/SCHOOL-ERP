@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PlatformPrismaService } from '../../common/prisma/platform-prisma.service';
+import { ADMIN_TIER_ROLES } from '../admins/admins.service';
 
 @Injectable()
 export class AnalyticsService {
@@ -109,15 +110,16 @@ export class AnalyticsService {
   }
 
   async adminsOverview() {
+    const adminTierWhere = { deletedAt: null, role: { in: [...ADMIN_TIER_ROLES] } };
     const [byRole, byGender] = await Promise.all([
       this.platformPrisma.platformUser.groupBy({
         by: ['role'],
-        where: { deletedAt: null },
+        where: adminTierWhere,
         _count: { _all: true },
       }),
       this.platformPrisma.platformUser.groupBy({
         by: ['gender'],
-        where: { deletedAt: null },
+        where: adminTierWhere,
         _count: { _all: true },
       }),
     ]);

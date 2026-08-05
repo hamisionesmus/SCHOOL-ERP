@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsIn, IsISO8601, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 
 const TRACKS = ['FRONTEND', 'BACKEND', 'CODING_ROBOTICS', 'OTHER'] as const;
 const STATUSES = ['ENROLLED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const;
@@ -31,6 +31,12 @@ export class UpsertTrainingDto {
   @IsOptional()
   @IsIn(TRACKS)
   track?: (typeof TRACKS)[number];
+
+  @ApiProperty({ required: false, description: 'Required when track is OTHER' })
+  @ValidateIf((o) => o.track === 'OTHER')
+  @IsString()
+  @MinLength(1, { message: 'trackOther is required when track is OTHER' })
+  trackOther?: string;
 
   @ApiProperty({ enum: STATUSES, required: false })
   @IsOptional()

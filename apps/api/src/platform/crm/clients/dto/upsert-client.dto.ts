@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsEmail, IsIn, IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsIn, IsISO8601, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 
 const CLIENT_TYPES = ['INDIVIDUAL', 'SCHOOL', 'BUSINESS'] as const;
 const PRODUCT_LINES = ['SCHOOL_ERP', 'DTP_TRAINING', 'CODING_ROBOTICS', 'WEBSITES', 'SACCO_SYSTEMS', 'HOSPITAL_SYSTEMS', 'OTHER'] as const;
@@ -20,6 +20,12 @@ export class UpsertClientDto {
   @IsArray()
   @IsIn(PRODUCT_LINES, { each: true })
   productLines?: (typeof PRODUCT_LINES)[number][];
+
+  @ApiProperty({ required: false, description: 'Required when productLines includes OTHER' })
+  @ValidateIf((o) => Array.isArray(o.productLines) && o.productLines.includes('OTHER'))
+  @IsString()
+  @MinLength(1, { message: 'productLinesOther is required when productLines includes OTHER' })
+  productLinesOther?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()

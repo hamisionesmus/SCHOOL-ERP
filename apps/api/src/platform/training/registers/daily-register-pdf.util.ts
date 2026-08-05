@@ -6,9 +6,11 @@ export interface DailyRegisterPdfInput {
   trainerName: string;
   centerName: string | null;
   date: Date;
+  hadTrainingToday: boolean;
+  noTrainingReason: string | null;
   traineesPresent: number;
   traineesTotal: number;
-  topicsCovered: string;
+  topicsCovered: string | null;
   notes: string | null;
   generatedAt: Date;
 }
@@ -44,13 +46,23 @@ export function renderDailyRegisterPdf(input: DailyRegisterPdfInput): Promise<Bu
     line('Trainer', input.trainerName);
     if (input.centerName) line('Center', input.centerName);
     line('Date', fmtDate(input.date));
-    line('Trainees Present', `${input.traineesPresent} of ${input.traineesTotal}`);
+    line('Training held', input.hadTrainingToday ? 'Yes' : 'No');
+    if (input.hadTrainingToday) {
+      line('Trainees Present', `${input.traineesPresent} of ${input.traineesTotal}`);
+    }
     y += 10;
 
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#0f172a').text('Topics Covered', left, y);
-    y += 15;
-    doc.font('Helvetica').fontSize(9.5).fillColor('#334155').text(input.topicsCovered, left, y, { width: contentWidth, lineGap: 3 });
-    y = doc.y + 16;
+    if (input.hadTrainingToday) {
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#0f172a').text('Topics Covered', left, y);
+      y += 15;
+      doc.font('Helvetica').fontSize(9.5).fillColor('#334155').text(input.topicsCovered ?? '—', left, y, { width: contentWidth, lineGap: 3 });
+      y = doc.y + 16;
+    } else {
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#dc2626').text('Reason no training was held', left, y);
+      y += 15;
+      doc.font('Helvetica').fontSize(9.5).fillColor('#334155').text(input.noTrainingReason ?? '—', left, y, { width: contentWidth, lineGap: 3 });
+      y = doc.y + 16;
+    }
 
     if (input.notes) {
       doc.font('Helvetica-Bold').fontSize(10).fillColor('#0f172a').text('Notes / Challenges', left, y);

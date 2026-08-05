@@ -406,6 +406,13 @@ export class TenantsService {
     }
 
     await this.platformPrisma.$transaction([
+      // Explicit even though the DB's ON DELETE CASCADE/SET NULL would handle these automatically —
+      // keeps every model this delete touches visible in one place instead of relying on schema-level
+      // behavior a future reader would have to go dig up. HamzoneClient itself is NOT deleted (a CRM
+      // client can outlive its ERP tenant record — e.g. a school that stops using the ERP but is
+      // still a Hamzone client for other product lines) — only the link is cleared.
+      this.platformPrisma.hamzoneClient.updateMany({ where: { tenantId: id }, data: { tenantId: null } }),
+      this.platformPrisma.userDirectoryEntry.deleteMany({ where: { tenantId: id } }),
       this.platformPrisma.campaignRecipient.deleteMany({ where: { tenantId: id } }),
       this.platformPrisma.platformPayment.deleteMany({ where: { invoice: { tenantId: id } } }),
       this.platformPrisma.platformMpesaStkRequest.deleteMany({ where: { tenantId: id } }),

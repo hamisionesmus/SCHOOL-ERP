@@ -1,7 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { ArrayMinSize, IsArray, IsIn, IsString } from 'class-validator';
 
-export const HAMZONE_API_SCOPES = ['training:read', 'clients:read', 'documents:read', 'leads:write'] as const;
+export const HAMZONE_API_SCOPES = [
+  'training:read',
+  'clients:read',
+  'documents:read',
+  'leads:write',
+  'jobs:read',
+  'jobs:apply',
+] as const;
 
 export class CreateApiKeyDto {
   @ApiProperty({ example: 'Company website' })

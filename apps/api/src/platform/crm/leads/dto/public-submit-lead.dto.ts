@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 
 const PRODUCT_LINES = ['SCHOOL_ERP', 'DTP_TRAINING', 'CODING_ROBOTICS', 'WEBSITES', 'SACCO_SYSTEMS', 'HOSPITAL_SYSTEMS', 'OTHER'] as const;
 
@@ -25,6 +25,12 @@ export class PublicSubmitLeadDto {
   @ApiProperty({ enum: PRODUCT_LINES })
   @IsIn(PRODUCT_LINES)
   interest!: (typeof PRODUCT_LINES)[number];
+
+  @ApiProperty({ required: false, description: 'Required when interest is OTHER' })
+  @ValidateIf((o) => o.interest === 'OTHER')
+  @IsString()
+  @MinLength(1, { message: 'interestOther is required when interest is OTHER' })
+  interestOther?: string;
 
   @ApiProperty({ required: false, description: 'Town/city the enquiry came from' })
   @IsOptional()

@@ -18,8 +18,8 @@ export class HamzoneDocumentsController {
   constructor(private readonly documents: HamzoneDocumentsService) {}
 
   @Get()
-  list(@Query('trainingProgramId') trainingProgramId?: string) {
-    return this.documents.list(trainingProgramId);
+  list(@Query('trainingProgramId') trainingProgramId: string | undefined, @CurrentUser() user: JwtUserPayload) {
+    return this.documents.list(trainingProgramId, user);
   }
 
   @Post()
@@ -28,7 +28,7 @@ export class HamzoneDocumentsController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.documents.remove(id);
+  remove(@Param('id') id: string, @CurrentUser() user: JwtUserPayload) {
+    return this.documents.remove(id, user);
   }
 }

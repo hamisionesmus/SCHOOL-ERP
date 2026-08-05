@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useRequireSuperAdmin } from '@/lib/require-super-admin';
 
-const SCOPES = ['training:read', 'clients:read', 'documents:read'] as const;
+const SCOPES = ['training:read', 'clients:read', 'documents:read', 'leads:write', 'jobs:read', 'jobs:apply'] as const;
 
 interface ApiKey {
   id: string;

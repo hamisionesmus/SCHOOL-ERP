@@ -32,6 +32,8 @@ interface Tenant {
   status: 'TRIAL' | 'PENDING_PAYMENT' | 'ACTIVE' | 'SUSPENDED';
   address: string | null;
   website: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
   billingCycle: 'MONTHLY' | 'YEARLY';
   currentPeriodEnd: string | null;
   mpesaPaybill: string | null;
@@ -142,6 +144,12 @@ export default function SchoolDetailPage() {
               {tenant.createdBy && ` by ${tenant.createdBy.fullName}`}
               {tenant.county && ` · ${tenant.county}${tenant.town ? `, ${tenant.town}` : ''}`}
             </p>
+            {(tenant.contactEmail || tenant.contactPhone) && (
+              <p className="mt-0.5 text-sm text-slate-500">
+                Admin contact: {tenant.contactEmail ?? '—'}
+                {tenant.contactPhone && ` · ${tenant.contactPhone}`}
+              </p>
+            )}
           </div>
           <Badge status={tenant.status} />
         </div>

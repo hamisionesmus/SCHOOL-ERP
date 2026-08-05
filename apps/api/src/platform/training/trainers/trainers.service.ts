@@ -60,19 +60,37 @@ export class HamzoneTrainersService {
     const passwordHash = await bcrypt.hash(tempPassword, 12);
 
     const user = await this.platformPrisma.platformUser.create({
-      data: { email: dto.email, fullName: dto.fullName, phone: dto.phone, passwordHash, role: 'TRAINER' },
+      data: {
+        email: dto.email,
+        fullName: dto.fullName,
+        phone: dto.phone,
+        address: dto.address,
+        passwordHash,
+        role: 'TRAINER',
+        defaultRole: 'TRAINER',
+        mustChangePassword: true,
+      },
     });
     const profile = await this.platformPrisma.hamzoneTrainerProfile.create({
       data: {
         userId: user.id,
         centerId: dto.centerId,
         track: dto.track,
+        trackOther: dto.track === 'OTHER' ? dto.trackOther : undefined,
         monthlySalaryKes: dto.monthlySalaryKes,
         contractStartDate: dto.contractStartDate ? new Date(dto.contractStartDate) : undefined,
         contractEndDate: dto.contractEndDate ? new Date(dto.contractEndDate) : undefined,
       },
       include: PROFILE_INCLUDE,
     });
+
+    // Opens the first center-history row so "assigned to 5+ centers consecutively" has a starting
+    // point from day one, not just from whenever the center is first changed later.
+    if (dto.centerId) {
+      await this.platformPrisma.hamzoneTrainerCenterHistory.create({
+        data: { trainerId: profile.id, centerId: dto.centerId },
+      });
+    }
 
     const center = dto.centerId ? await this.platformPrisma.hamzoneTrainingCenter.findUnique({ where: { id: dto.centerId } }) : null;
     const loginUrl = `${process.env.WEB_ORIGIN ?? 'http://localhost:3000'}/login`;
@@ -91,16 +109,43 @@ export class HamzoneTrainersService {
     return profile;
   }
 
+  /** When centerId actually changes, closes out whatever center-history row is still open (endDate
+   * null) and opens a fresh one for the new center — this is what makes "assigned to 5+ centers
+   * consecutively" a real, queryable history rather than just the current centerId overwriting
+   * itself silently each time. */
   async updateProfile(id: string, dto: UpdateTrainerProfileDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    const centerChanging = dto.centerId !== undefined && dto.centerId !== existing.center?.id;
+
+    if (centerChanging) {
+      await this.platformPrisma.hamzoneTrainerCenterHistory.updateMany({
+        where: { trainerId: id, endDate: null },
+        data: { endDate: new Date() },
+      });
+      if (dto.centerId) {
+        await this.platformPrisma.hamzoneTrainerCenterHistory.create({
+          data: { trainerId: id, centerId: dto.centerId },
+        });
+      }
+    }
+
     return this.platformPrisma.hamzoneTrainerProfile.update({
       where: { id },
       data: {
         ...dto,
+        trackOther: dto.track === 'OTHER' ? dto.trackOther : dto.track ? null : undefined,
         contractStartDate: dto.contractStartDate ? new Date(dto.contractStartDate) : undefined,
         contractEndDate: dto.contractEndDate ? new Date(dto.contractEndDate) : undefined,
       },
       include: PROFILE_INCLUDE,
+    });
+  }
+
+  centerHistory(id: string) {
+    return this.platformPrisma.hamzoneTrainerCenterHistory.findMany({
+      where: { trainerId: id },
+      include: { center: { select: { id: true, name: true } } },
+      orderBy: { startDate: 'desc' },
     });
   }
 

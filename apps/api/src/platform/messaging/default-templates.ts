@@ -16,7 +16,12 @@ export type MessageTemplateKey =
   | 'TICKET_FEEDBACK_RECEIVED'
   | 'TRAINER_WELCOME'
   | 'GIG_WORKER_WELCOME'
-  | 'MEETING_INVITE';
+  | 'MEETING_INVITE'
+  | 'JOB_INTERVIEW_SCHEDULED'
+  | 'JOB_HIRED'
+  | 'JOB_REJECTED'
+  | 'DAILY_TRAINING_LINK'
+  | 'TRAINEE_PORTAL_WELCOME';
 
 export interface MessageTemplateContent {
   subject?: string;
@@ -168,5 +173,40 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
     emailBody:
       '{{organizerName}} scheduled a meeting you\'re invited to.\n\n{{title}}\nWhen: {{scheduledAt}}\nJoin link: {{meetingLink}}',
     smsBody: 'Hamzone Technologies: meeting "{{title}}" at {{scheduledAt}}. Join: {{meetingLink}}',
+  },
+  JOB_INTERVIEW_SCHEDULED: {
+    variables: ['fullName', 'positionTitle', 'interviewAt', 'notes'],
+    subject: 'Interview scheduled — {{positionTitle}}',
+    emailBody:
+      'Hi {{fullName}},\n\nThanks for applying for {{positionTitle}} at Hamzone Technologies. We\'d like to invite you for an interview on {{interviewAt}}.\n\n{{notes}}\n\nPlease reply to confirm you\'ll be able to make it.',
+    smsBody: 'Hamzone Technologies: your interview for {{positionTitle}} is scheduled for {{interviewAt}}. Check your email for details.',
+  },
+  JOB_HIRED: {
+    variables: ['fullName', 'positionTitle', 'loginUrl', 'email', 'tempPassword'],
+    subject: 'Congratulations — welcome to Hamzone Technologies!',
+    emailBody:
+      'Hi {{fullName}},\n\nCongratulations — you\'ve been selected for {{positionTitle}}! We\'re excited to have you on the team.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password as soon as you sign in — you\'ll need to before you can access anything else. Once in, check your assigned tasks to get started.',
+    smsBody: 'Hamzone Technologies: Congratulations! You\'ve been hired for {{positionTitle}}. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}}.',
+  },
+  JOB_REJECTED: {
+    variables: ['fullName', 'positionTitle'],
+    subject: 'Update on your application — {{positionTitle}}',
+    emailBody:
+      'Hi {{fullName}},\n\nThank you for your interest in {{positionTitle}} and for taking the time to apply/interview with us. We\'ve decided to move forward with other candidates for this particular role. We appreciate your interest in Hamzone Technologies and encourage you to apply again in the future.',
+    smsBody: 'Hamzone Technologies: thank you for applying for {{positionTitle}}. We\'ve moved forward with other candidates this time. Check your email for details.',
+  },
+  DAILY_TRAINING_LINK: {
+    variables: ['fullName', 'programTitle', 'date', 'link'],
+    subject: 'Today\'s training link — {{programTitle}}',
+    emailBody:
+      'Hi {{fullName}},\n\nHere\'s today\'s link ({{date}}) to record attendance and progress for {{programTitle}}:\n\n{{link}}\n\nThis link works only for today — a new one is generated and sent automatically each training day.',
+    smsBody: 'Hamzone: today\'s ({{date}}) register link for {{programTitle}}: {{link}} — valid today only.',
+  },
+  TRAINEE_PORTAL_WELCOME: {
+    variables: ['fullName', 'programTitle', 'loginUrl', 'email', 'tempPassword'],
+    subject: 'Your training portal is ready',
+    emailBody:
+      'Hi {{fullName}},\n\nYou now have access to your own portal for {{programTitle}} — check your attendance and see shared learning materials any time.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password once you sign in.',
+    smsBody: 'Hamzone Technologies: your training portal is ready. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}}.',
   },
 };

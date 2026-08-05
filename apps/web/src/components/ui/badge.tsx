@@ -31,6 +31,10 @@ const statusStyles: Record<string, string> = {
   SUPER_ADMIN: 'bg-slate-900 text-white',
   ASSISTANT_SUPER_ADMIN: 'bg-violet-100 text-violet-700',
   SUB_ADMIN: 'bg-slate-100 text-slate-700',
+  TRAINER: 'bg-teal-100 text-teal-700',
+  GIG_WORKER: 'bg-cyan-100 text-cyan-700',
+  SOFTWARE_ENGINEER: 'bg-indigo-100 text-indigo-700',
+  STAFF: 'bg-sky-100 text-sky-700',
   ASSIGNED: 'bg-blue-100 text-blue-700',
   RESOLVED: 'bg-emerald-100 text-emerald-700',
   ESCALATED: 'bg-amber-100 text-amber-700',
@@ -40,6 +44,12 @@ const statusStyles: Record<string, string> = {
   SENDING: 'bg-amber-100 text-amber-700',
   SENT: 'bg-emerald-100 text-emerald-700',
   SKIPPED: 'bg-slate-100 text-slate-500',
+  FILLED: 'bg-slate-200 text-slate-700',
+  SUBMITTED: 'bg-blue-100 text-blue-700',
+  SHORTLISTED: 'bg-amber-100 text-amber-700',
+  INTERVIEW_SCHEDULED: 'bg-violet-100 text-violet-700',
+  INTERVIEWED: 'bg-indigo-100 text-indigo-700',
+  HIRED: 'bg-emerald-100 text-emerald-700',
 };
 
 export function Badge({

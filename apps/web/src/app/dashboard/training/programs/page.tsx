@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonTable } from '@/components/ui/skeleton';
+import { Countdown } from '@/components/ui/countdown';
 
 const TRACKS = ['FRONTEND', 'BACKEND', 'CODING_ROBOTICS', 'OTHER'] as const;
 
@@ -166,7 +167,12 @@ export default function ProgramsPage() {
                     <td className="py-2 text-slate-500">{p.center?.name ?? '—'}</td>
                     <td className="py-2 text-slate-500">{p.trainer?.user.fullName ?? '—'}</td>
                     <td className="py-2 text-slate-500">
-                      {new Date(p.startDate).toLocaleDateString()} – {new Date(p.endDate).toLocaleDateString()}
+                      <div className="flex flex-col gap-1">
+                        <span>
+                          {new Date(p.startDate).toLocaleDateString()} – {new Date(p.endDate).toLocaleDateString()}
+                        </span>
+                        {p.status === 'ACTIVE' && <Countdown endDate={p.endDate} className="w-fit" />}
+                      </div>
                     </td>
                     <td className="py-2">
                       <Badge status={p.status} />

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsIn, IsISO8601, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 
 const PRODUCT_LINES = ['SCHOOL_ERP', 'DTP_TRAINING', 'CODING_ROBOTICS', 'WEBSITES', 'SACCO_SYSTEMS', 'HOSPITAL_SYSTEMS', 'OTHER'] as const;
 const STATUSES = ['NEW', 'CONTACTED', 'CONVERTED', 'LOST'] as const;
@@ -27,6 +27,12 @@ export class UpsertLeadDto {
   @IsOptional()
   @IsIn(PRODUCT_LINES)
   interest?: (typeof PRODUCT_LINES)[number];
+
+  @ApiProperty({ required: false, description: 'Required when interest is OTHER' })
+  @ValidateIf((o) => o.interest === 'OTHER')
+  @IsString()
+  @MinLength(1, { message: 'interestOther is required when interest is OTHER' })
+  interestOther?: string;
 
   @ApiProperty({ required: false, description: 'Where the marketer met this lead — e.g. a town, an event' })
   @IsOptional()

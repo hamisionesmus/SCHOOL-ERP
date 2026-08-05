@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator';
 import { PLATFORM_ONLY_KEY } from '../decorators/require-platform-role.decorator';
 import { PLATFORM_MODULE_KEY } from '../decorators/require-platform-module.decorator';
+import { ALLOW_WITH_PENDING_PASSWORD_CHANGE_KEY } from '../decorators/allow-with-pending-password-change.decorator';
 import { JwtUserPayload } from '../decorators/current-user.decorator';
 
 // The three admin tiers a bare @RequirePlatformRole() (no explicit role list) has always meant —
@@ -38,6 +39,16 @@ export class PermissionsGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user: JwtUserPayload | undefined = request.user;
     if (!user) throw new ForbiddenException('Not authenticated');
+
+    if (user.realm === 'platform' && user.mustChangePassword) {
+      const exempt = this.reflector.getAllAndOverride<boolean | undefined>(ALLOW_WITH_PENDING_PASSWORD_CHANGE_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+      if (!exempt) {
+        throw new ForbiddenException('MUST_CHANGE_PASSWORD: You must change your password before continuing.');
+      }
+    }
 
     if (platformOnly && user.realm !== 'platform') {
       throw new ForbiddenException('Super Admin access required');

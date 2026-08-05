@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsIn, IsISO8601, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 
 const TYPES = ['ACCOUNT_MANAGEMENT', 'TASKING', 'OUTLIER', 'HANDSHAKE', 'OTHER'] as const;
 const STATUSES = ['NEW', 'ONBOARDING', 'IN_PROGRESS', 'COMPLETED', 'ON_HOLD'] as const;
@@ -23,6 +23,12 @@ export class UpsertOutreachEntryDto {
   @IsOptional()
   @IsIn(TYPES)
   type?: (typeof TYPES)[number];
+
+  @ApiProperty({ required: false, description: 'Required when type is OTHER' })
+  @ValidateIf((o) => o.type === 'OTHER')
+  @IsString()
+  @MinLength(1, { message: 'typeOther is required when type is OTHER' })
+  typeOther?: string;
 
   @ApiProperty({ enum: STATUSES, required: false })
   @IsOptional()

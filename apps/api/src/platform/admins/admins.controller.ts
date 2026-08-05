@@ -9,6 +9,7 @@ import { PlatformAdminsService } from './admins.service';
 import { InviteAdminDto } from './dto/invite-admin.dto';
 import { ConfirmSettingsChangeDto } from '../settings-otp/dto/confirm-settings-change.dto';
 import { SetModuleGrantsDto } from './dto/set-module-grants.dto';
+import { ChangeRoleDto } from './dto/change-role.dto';
 
 // Managing who else can act as a platform admin — real Super Admin only, never a Sub-Admin (a
 // delegated admin cannot create or remove other admins, including other Sub-Admins). The ADMINS
@@ -63,5 +64,22 @@ export class PlatformAdminsController {
   @Patch(':id/reactivate')
   reactivate(@Param('id') id: string) {
     return this.adminsService.reactivate(id);
+  }
+
+  // Unrestricted-by-role search, feeding the role-upgrade/downgrade UI — deliberately separate
+  // from list() above (admin-tier-only, for the "Admins" screen).
+  @Get('users/search')
+  searchAnyUser(@Query('q') q?: string) {
+    return this.adminsService.searchAnyUser(q);
+  }
+
+  @Patch(':id/role')
+  changeRole(@Param('id') id: string, @Body() dto: ChangeRoleDto) {
+    return this.adminsService.changeRole(id, dto.role);
+  }
+
+  @Patch(':id/reset-role')
+  resetToDefaultRole(@Param('id') id: string) {
+    return this.adminsService.resetToDefaultRole(id);
   }
 }

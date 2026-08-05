@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 
 const CATEGORIES = ['POSTER', 'CERTIFICATE', 'BROCHURE', 'OTHER'] as const;
 
@@ -12,6 +12,12 @@ export class CreateDocumentDto {
   @IsOptional()
   @IsIn(CATEGORIES)
   category?: (typeof CATEGORIES)[number];
+
+  @ApiProperty({ required: false, description: 'Required when category is OTHER' })
+  @ValidateIf((o) => o.category === 'OTHER')
+  @IsString()
+  @MinLength(1, { message: 'categoryOther is required when category is OTHER' })
+  categoryOther?: string;
 
   @ApiProperty({ description: 'The /uploads/... URL returned by POST /uploads' })
   @IsString()

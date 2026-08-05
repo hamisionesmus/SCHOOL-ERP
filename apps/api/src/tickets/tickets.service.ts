@@ -41,6 +41,7 @@ export class TicketsService {
         subject: dto.subject,
         description: dto.description,
         category: dto.category,
+        categoryOther: dto.categoryOther,
         priority: dto.priority ?? 'NORMAL',
       },
       include: TICKET_INCLUDE,

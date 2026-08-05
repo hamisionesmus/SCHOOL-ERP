@@ -2,7 +2,28 @@ import { SetMetadata } from '@nestjs/common';
 
 export const PLATFORM_ONLY_KEY = 'platformOnly';
 
-export type PlatformRoleLiteral = 'SUPER_ADMIN' | 'ASSISTANT_SUPER_ADMIN' | 'SUB_ADMIN' | 'TRAINER' | 'GIG_WORKER';
+export type PlatformRoleLiteral =
+  | 'SUPER_ADMIN'
+  | 'ASSISTANT_SUPER_ADMIN'
+  | 'SUB_ADMIN'
+  | 'TRAINER'
+  | 'GIG_WORKER'
+  | 'SOFTWARE_ENGINEER'
+  | 'STAFF';
+
+/** Every restricted (non-admin-tier) platform role — the ones a bare @RequirePlatformRole()
+ * deliberately excludes. Used to build the "any platform role at all" list for genuinely
+ * self-service routes like /platform/me, where every account type needs access to its own profile
+ * and password-change regardless of tier. */
+export const ALL_PLATFORM_ROLES: PlatformRoleLiteral[] = [
+  'SUPER_ADMIN',
+  'ASSISTANT_SUPER_ADMIN',
+  'SUB_ADMIN',
+  'TRAINER',
+  'GIG_WORKER',
+  'SOFTWARE_ENGINEER',
+  'STAFF',
+];
 
 /** Marks a route as accessible to authenticated platform-realm users. With no argument, any of the
  * three admin tiers (SUPER_ADMIN, ASSISTANT_SUPER_ADMIN, SUB_ADMIN) may call it — TRAINER is

@@ -46,6 +46,14 @@ enum PlatformRole {
   // to reporting earnings/challenges against outreach entries assigned to them; excluded from every
   // bare @RequirePlatformRole() route the same way TRAINER is.
   GIG_WORKER
+  // Hired through the Recruitment module into a development role — scoped to their own assigned
+  // HamzoneStaffTask rows (repo/task assignments), excluded from every bare @RequirePlatformRole()
+  // route the same way TRAINER/GIG_WORKER are.
+  SOFTWARE_ENGINEER
+  // Generic catch-all for any other hired role the Recruitment module doesn't have a dedicated tier
+  // for yet ("so many others") — same restricted, task-scoped standing as SOFTWARE_ENGINEER. The
+  // specific job title lives on HamzoneJobPosition/PlatformUser, this is just the access tier.
+  STAFF
 }
 
 enum Gender {
@@ -282,6 +290,21 @@ model PlatformUser {
   fullName         String
   avatarUrl        String?
   role             PlatformRole @default(SUPER_ADMIN)
+  // The role this account was originally created/hired as — set once at creation, never touched by
+  // later upgrades/downgrades, so a Super Admin can always "reset to default" a role they changed
+  // experimentally without having to remember what it used to be. Null for the original seeded
+  // Super Admin, whose "default" is simply whatever `role` already is.
+  defaultRole      PlatformRole?
+  // True immediately after an account is created with a system-generated temp password (trainers,
+  // gig workers, recruitment hires, invited admins) — PermissionsGuard blocks every route except the
+  // change-password/profile ones until this clears. Never set for the original seeded Super Admin.
+  mustChangePassword Boolean @default(false)
+  // Physical address — captured at creation for restricted-role accounts (trainer, gig worker,
+  // recruitment hire) so the company knows roughly where someone is based.
+  address          String?
+  // Free-text job title shown alongside a STAFF-tier role, since STAFF is a deliberate catch-all
+  // ("so many others") rather than a dedicated PlatformRole per position.
+  jobTitle         String?
   gender           Gender?
   // Free-form team labels (e.g. "FRONTEND", "BACKEND", "DEVELOPER") a Super Admin can set on any
   // admin/trainer — not a role, just a tag HamzoneMeeting's audience targeting can match against so
@@ -323,6 +346,10 @@ model PlatformUser {
   outreachEntriesCreated      HamzoneOutreachEntry[] @relation("OutreachCreatedBy")
   outreachEntriesAssigned     HamzoneOutreachEntry[] @relation("OutreachAssignedTo")
   outreachEarningsRecorded    HamzoneOutreachEarning[]
+  jobPositionsCreated         HamzoneJobPosition[]
+  jobApplicationsHired        HamzoneJobApplication[] @relation("JobApplicationHiredUser")
+  staffTasksAssigned          HamzoneStaffTask[] @relation("StaffTaskAssignedTo")
+  staffTasksCreated           HamzoneStaffTask[] @relation("StaffTaskAssignedBy")
 }
 
 model PlatformRefreshToken {
@@ -773,6 +800,8 @@ model HamzoneClient {
   name             String
   type             HamzoneClientType     @default(INDIVIDUAL)
   productLines     HamzoneProductLine[]
+  // What "OTHER" means, when it's one of the selected productLines — never left unexplained.
+  productLinesOther String?
   contactName      String?
   email            String?
   phone            String?
@@ -856,6 +885,7 @@ model HamzoneTrainingRecord {
   traineeEmail    String?
   traineePhone    String?
   track           HamzoneTrainingTrack
+  trackOther       String?
   status          HamzoneTrainingStatus  @default(ENROLLED)
   startedAt        DateTime?
   completedAt      DateTime?
@@ -881,6 +911,7 @@ model HamzoneMarketingLead {
   contactPhone      String?
   contactEmail      String?
   interest          HamzoneProductLine
+  interestOther     String?
   location          String?
   notes             String?
   followUpAt        DateTime?
@@ -896,6 +927,7 @@ model HamzoneDocument {
   id               String                   @id @default(uuid())
   title            String
   category         HamzoneDocumentCategory  @default(OTHER)
+  categoryOther    String?
   fileUrl          String
   uploadedByUserId String
   uploadedBy       PlatformUser             @relation("DocumentUploadedBy", fields: [uploadedByUserId], references: [id])
@@ -980,6 +1012,7 @@ model HamzoneTrainingCenter {
 
   programs        HamzoneTrainingProgram[]
   trainerProfiles HamzoneTrainerProfile[]
+  trainerHistory  HamzoneTrainerCenterHistory[]
 }
 
 // One row per TRAINER-role PlatformUser — where they're assigned, what they're paid, and their
@@ -994,6 +1027,7 @@ model HamzoneTrainerProfile {
   centerId            String?
   center              HamzoneTrainingCenter? @relation(fields: [centerId], references: [id])
   track               HamzoneTrainingTrack?
+  trackOther          String?
   monthlySalaryKes    Int?
   contractStartDate   DateTime?
   contractEndDate     DateTime?
@@ -1005,6 +1039,24 @@ model HamzoneTrainerProfile {
   programs            HamzoneTrainingProgram[]
   registers           HamzoneDailyRegister[]
   reports             HamzoneTrainerReport[]
+  centerHistory       HamzoneTrainerCenterHistory[]
+}
+
+// History of every center a trainer has been assigned to, in sequence — "one trainer can be
+// assigned to 5 or more centers consecutively." A new assignment always closes out the prior open
+// row (endDate set) before opening a new one — see TrainersService.updateProfile().
+model HamzoneTrainerCenterHistory {
+  id        String                @id @default(uuid())
+  trainerId String
+  trainer   HamzoneTrainerProfile @relation(fields: [trainerId], references: [id])
+  centerId  String
+  center    HamzoneTrainingCenter @relation(fields: [centerId], references: [id])
+  startDate DateTime              @default(now())
+  endDate   DateTime?
+  notes     String?
+  createdAt DateTime              @default(now())
+
+  @@index([trainerId, startDate])
 }
 
 // A cohort/course run with real start/end dates ("training dates from this to this") — the unit a
@@ -1014,6 +1066,7 @@ model HamzoneTrainingProgram {
   id              String                 @id @default(uuid())
   title           String
   track           HamzoneTrainingTrack
+  trackOther      String?
   centerId        String?
   center          HamzoneTrainingCenter? @relation(fields: [centerId], references: [id])
   trainerId       String?
@@ -1022,6 +1075,11 @@ model HamzoneTrainingProgram {
   endDate         DateTime
   description     String?
   status          HamzoneProgramStatus   @default(SCHEDULED)
+  // What the cohort will build by the end of training (especially robotics) — captured early for
+  // cost planning, with a submission deadline so trainers commit to a plan rather than deciding at
+  // the last minute.
+  plannedProjectDescription String?
+  plannedProjectDueAt       DateTime?
   createdByUserId String
   createdBy       PlatformUser           @relation(fields: [createdByUserId], references: [id])
   createdAt       DateTime               @default(now())
@@ -1031,6 +1089,7 @@ model HamzoneTrainingProgram {
   registers       HamzoneDailyRegister[]
   reports         HamzoneTrainerReport[]
   resources       HamzoneDocument[]
+  roster          HamzoneTrainee[]
 }
 
 // A trainer's daily attendance + coverage log ("daily register of trainees... how things they have
@@ -1043,13 +1102,70 @@ model HamzoneDailyRegister {
   trainerId       String
   trainer         HamzoneTrainerProfile  @relation(fields: [trainerId], references: [id])
   date            DateTime
-  traineesPresent Int
-  traineesTotal   Int
-  topicsCovered   String
+  // "Was there training today?" — No collapses everything below to just a reason; the daily-link
+  // landing page asks this before showing the register at all. Defaults true for registers created
+  // the old way (admin/trainer form, not the daily link), which always implied training happened.
+  hadTrainingToday Boolean               @default(true)
+  noTrainingReason String?
+  traineesPresent Int                    @default(0)
+  traineesTotal   Int                    @default(0)
+  topicsCovered   String?
   notes           String?
+  // Exactly two proof-of-attendance photos — enforced at the DTO/service layer, not the schema.
+  photo1Url       String?
+  photo2Url       String?
   createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
+  attendance      HamzoneAttendanceRecord[]
+
+  // One register per program per calendar day — the daily-link submission is always an upsert
+  // against this key, which is also what makes "editable within the day, then locked" possible.
+  @@unique([programId, date])
   @@index([programId, date])
+}
+
+enum HamzoneGender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+// The named trainee roster for a program — entered once (first time a register is ever marked for
+// that program), then reused every day after by name, never just a headcount. portalEmail/Hash/
+// Enabled back the lightweight self-service portal for adult (20+) learners — see
+// TraineePortalService; left null/false for trainees who never get portal access.
+model HamzoneTrainee {
+  id                 String                 @id @default(uuid())
+  programId          String
+  program            HamzoneTrainingProgram @relation(fields: [programId], references: [id])
+  fullName           String
+  gender             HamzoneGender
+  phone              String?
+  address            String?
+  age                Int?
+  portalEmail        String?                @unique
+  portalPasswordHash String?
+  portalEnabled      Boolean                @default(false)
+  createdAt          DateTime               @default(now())
+
+  attendance         HamzoneAttendanceRecord[]
+
+  @@index([programId])
+}
+
+// Per-trainee, per-day present/absent — replaces the old bare traineesPresent/traineesTotal
+// headcount with real, name-verified attendance (traineesPresent/Total on HamzoneDailyRegister are
+// kept as a denormalized convenience for the existing chart/PDF code, always derived from this).
+model HamzoneAttendanceRecord {
+  id         String               @id @default(uuid())
+  registerId String
+  register   HamzoneDailyRegister @relation(fields: [registerId], references: [id], onDelete: Cascade)
+  traineeId  String
+  trainee    HamzoneTrainee       @relation(fields: [traineeId], references: [id])
+  present    Boolean
+
+  @@unique([registerId, traineeId])
 }
 
 // A trainer's periodic (weekly/monthly) check-in — progress narrative + challenges, distinct from
@@ -1101,6 +1217,7 @@ model HamzoneOutreachEntry {
   contactPhone            String?
   contactEmail            String?
   type                    HamzoneOutreachType    @default(OTHER)
+  typeOther               String?
   status                  HamzoneOutreachStatus  @default(NEW)
   receivedAt              DateTime
   loginBrowser            String?
@@ -1350,4 +1467,102 @@ model PresenceActivity {
   occurredAt DateTime @default(now())
 
   @@index([sessionId, occurredAt])
+}
+
+enum HamzoneJobPositionStatus {
+  OPEN
+  // Applicant cap (maxApplicants) reached — the public apply link shows "at capacity" and rejects
+  // new submissions, but the position isn't necessarily filled yet (interviews may still be ongoing).
+  CLOSED
+  // The intended headcount (requiredPositions) has actually been hired.
+  FILLED
+}
+
+enum HamzoneJobApplicationStatus {
+  SUBMITTED
+  SHORTLISTED
+  INTERVIEW_SCHEDULED
+  INTERVIEWED
+  HIRED
+  REJECTED
+}
+
+// A vacancy the Super Admin opens — deliberately tracks two different numbers, per explicit
+// instruction: `requiredPositions` is how many people the company actually intends to hire;
+// `maxApplicants` is an unrelated cap on how many people are even allowed to apply before the
+// public link closes itself ("fully capacity"). A position can need 2 hires but cap applications at
+// 50 to keep the pool manageable — the two numbers are never assumed equal.
+model HamzoneJobPosition {
+  id                String                   @id @default(uuid())
+  title             String
+  // What tier of system access a successful applicant gets — reuses PlatformRole rather than a
+  // separate enum so hiring maps directly onto the same role ladder RequirePlatformRole enforces.
+  roleType          PlatformRole
+  roleTypeOther     String?
+  description       String
+  requiredPositions Int
+  maxApplicants     Int
+  status            HamzoneJobPositionStatus @default(OPEN)
+  closesAt          DateTime?
+  createdByUserId   String
+  createdBy         PlatformUser             @relation(fields: [createdByUserId], references: [id])
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  applications      HamzoneJobApplication[]
+}
+
+// One public applicant — fullName/experience/links/certificates are exactly what an applicant
+// supplies through the public apply API (see PublicRecruitmentController), never trusted from an
+// authenticated caller. hiredUserId is set only once HamzoneRecruitmentService.hire() actually
+// creates their PlatformUser login.
+model HamzoneJobApplication {
+  id                String                       @id @default(uuid())
+  positionId        String
+  position          HamzoneJobPosition           @relation(fields: [positionId], references: [id])
+  fullName          String
+  email             String
+  phone             String
+  address           String?
+  experienceSummary String?
+  linkedinUrl       String?
+  githubUrl         String?
+  certificateUrls   String[]
+  coverNote         String?
+  status            HamzoneJobApplicationStatus  @default(SUBMITTED)
+  interviewAt       DateTime?
+  interviewNotes    String?
+  rejectedReason    String?
+  hiredUserId       String?
+  hiredUser         PlatformUser?                @relation("JobApplicationHiredUser", fields: [hiredUserId], references: [id])
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+
+  @@index([positionId, status])
+}
+
+enum HamzoneStaffTaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+// A concrete assignment for hired staff ("software engineers... which repo, which task") — deliberately
+// simple (no sprints/boards) since this is meant to give a new hire somewhere to start, not replace a
+// real project-management tool.
+model HamzoneStaffTask {
+  id               String                 @id @default(uuid())
+  assignedToUserId String
+  assignedTo       PlatformUser           @relation("StaffTaskAssignedTo", fields: [assignedToUserId], references: [id])
+  title            String
+  description      String?
+  repoUrl          String?
+  dueDate          DateTime?
+  status           HamzoneStaffTaskStatus @default(TODO)
+  assignedByUserId String
+  assignedBy       PlatformUser           @relation("StaffTaskAssignedBy", fields: [assignedByUserId], references: [id])
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@index([assignedToUserId, status])
 }

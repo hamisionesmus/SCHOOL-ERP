@@ -821,6 +821,7 @@ model Ticket {
   subject           String
   description       String
   category          TicketCategory
+  categoryOther     String?
   priority          TicketPriority @default(NORMAL)
   status            TicketStatus   @default(OPEN)
   // The School Administrator who triaged it — set on resolve or escalate, null while still OPEN.

@@ -86,7 +86,16 @@ export class HamzoneOutreachService {
     const passwordHash = await bcrypt.hash(tempPassword, 12);
 
     const worker = await this.platformPrisma.platformUser.create({
-      data: { email: dto.email, fullName: dto.fullName, phone: dto.phone, passwordHash, role: 'GIG_WORKER' },
+      data: {
+        email: dto.email,
+        fullName: dto.fullName,
+        phone: dto.phone,
+        address: dto.address,
+        passwordHash,
+        role: 'GIG_WORKER',
+        defaultRole: 'GIG_WORKER',
+        mustChangePassword: true,
+      },
       select: { id: true, email: true, fullName: true, phone: true, role: true, createdAt: true },
     });
 

@@ -36,7 +36,13 @@ export class MeService {
       throw new BadRequestException('Current password is incorrect');
     }
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await this.platformPrisma.platformUser.update({ where: { id: userId }, data: { passwordHash } });
+    // Clears the forced-change gate the moment a genuine password change succeeds — the frontend
+    // still redirects to a fresh login afterwards (simpler and safer than re-signing tokens
+    // mid-request), but this is what actually lifts PermissionsGuard's block for their next session.
+    await this.platformPrisma.platformUser.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: false },
+    });
     return { success: true };
   }
 }

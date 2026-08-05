@@ -33,6 +33,7 @@ export class HamzoneLeadsService {
       data: {
         clientName: dto.clientName,
         interest: dto.interest,
+        interestOther: dto.interestOther,
         contactPhone: dto.contactPhone,
         contactEmail: dto.contactEmail,
         location: dto.location,
@@ -50,6 +51,7 @@ export class HamzoneLeadsService {
       data: {
         clientName: dto.clientName,
         interest: dto.interest,
+        interestOther: dto.interestOther,
         contactPhone: dto.contactPhone,
         contactEmail: dto.contactEmail,
         location: dto.location,
