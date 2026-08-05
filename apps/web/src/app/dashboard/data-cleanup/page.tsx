@@ -29,6 +29,8 @@ interface SystemResetRequest {
   devCode?: string;
   affectedCount: number;
   keptTenantName?: string;
+  adminCount: number;
+  crmCount: number;
 }
 
 const RESTART_PHRASE = 'RESTART SYSTEM';
@@ -101,14 +103,16 @@ export default function DataCleanupPage() {
 
   const confirmReset = useMutation({
     mutationFn: () =>
-      apiFetch<{ deletedCount: number }>('/platform/tenants/confirm-system-reset', {
+      apiFetch<{ deletedCount: number; deactivatedAdminCount: number }>('/platform/tenants/confirm-system-reset', {
         method: 'POST',
         body: JSON.stringify({ requestId: resetRequest!.requestId, code: resetCode }),
       }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['tenants-cleanup'] });
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
-      notifySuccess(`System restarted — ${result.deletedCount} school${result.deletedCount === 1 ? '' : 's'} deleted`);
+      notifySuccess(
+        `System restarted — ${result.deletedCount} school${result.deletedCount === 1 ? '' : 's'} deleted, ${result.deactivatedAdminCount} account${result.deactivatedAdminCount === 1 ? '' : 's'} deactivated`,
+      );
       setResetRequest(null);
       setResetCode('');
       setRestartPhrase('');
@@ -246,8 +250,10 @@ export default function DataCleanupPage() {
           </CardTitle>
           <CardDescription className="text-rose-700">
             While the system is still in testing, none of the schools or people in it are real. When you&apos;re ready to
-            start onboarding real schools, use this to wipe every school — Test, Demo, and Real alike — and begin with a
-            clean slate. Optionally keep one school around for ongoing testing.
+            start onboarding real schools, use this to begin with a clean slate: every school (Test, Demo, and Real
+            alike), every other admin/trainer/staff account, and Hamzone&apos;s own CRM data (clients, leads, invoices,
+            training records, documents). Platform configuration (settings, branding, pricing, message templates,
+            credentials) and backup files are never touched.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -267,10 +273,14 @@ export default function DataCleanupPage() {
             </select>
           </div>
 
-          <p className="text-sm font-medium text-rose-800">
-            This will permanently delete {resetAffectedCount} of {tenants.length} school{tenants.length === 1 ? '' : 's'}
-            {keepTenantId && tenants.find((t) => t.id === keepTenantId) ? ` — keeping "${tenants.find((t) => t.id === keepTenantId)!.name}"` : ''}.
-          </p>
+          <ul className="space-y-1 text-sm font-medium text-rose-800">
+            <li>
+              • Delete {resetAffectedCount} of {tenants.length} school{tenants.length === 1 ? '' : 's'}
+              {keepTenantId && tenants.find((t) => t.id === keepTenantId) ? ` — keeping "${tenants.find((t) => t.id === keepTenantId)!.name}"` : ''}
+            </li>
+            <li>• Deactivate every other admin/trainer/staff account (your own account stays active — reversible via reactivate)</li>
+            <li>• Permanently clear all Hamzone CRM data (clients, leads, invoices, training records, documents)</li>
+          </ul>
 
           <div>
             <label className="text-sm font-medium text-slate-700">
@@ -327,11 +337,15 @@ export default function DataCleanupPage() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-2xl">
             <h3 className="text-lg font-semibold text-slate-900">Confirm system restart</h3>
-            <p className="mt-1.5 text-sm text-slate-500">
+            <p className="mt-1.5 text-left text-sm text-slate-500">
               This will permanently delete <strong>{resetRequest.affectedCount}</strong> school
               {resetRequest.affectedCount === 1 ? '' : 's'}
-              {resetRequest.keptTenantName ? ` — keeping "${resetRequest.keptTenantName}"` : ''}. A 6-digit confirmation code
-              was sent to your email and phone. Enter it below to proceed — this cannot be undone.
+              {resetRequest.keptTenantName ? ` — keeping "${resetRequest.keptTenantName}"` : ''}, deactivate{' '}
+              <strong>{resetRequest.adminCount}</strong> other admin/staff account{resetRequest.adminCount === 1 ? '' : 's'} (yours
+              stays active), and clear <strong>{resetRequest.crmCount}</strong> Hamzone CRM record{resetRequest.crmCount === 1 ? '' : 's'}.
+            </p>
+            <p className="mt-2 text-sm text-slate-500">
+              A 6-digit confirmation code was sent to your email and phone. Enter it below to proceed — this cannot be undone.
             </p>
             {resetRequest.devCode && (
               <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-left text-xs text-amber-700">

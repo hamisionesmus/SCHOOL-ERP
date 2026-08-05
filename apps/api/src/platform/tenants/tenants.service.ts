@@ -463,10 +463,12 @@ export class TenantsService {
   /** "Start the system fresh" — for going from a testing/development period into real onboarding.
    * Unlike every other deletion path on this service, this one is NOT limited to Test-flagged
    * tenants: it's meant to clear out Demo and Real schools created while building/trialling the
-   * platform too. That's real destructive power, so it goes through the same email+phone OTP gate
-   * as every other platform-wide config change (see SettingsOtpService) rather than reusing the
-   * lighter Test-only delete authorization. Optionally keeps one named school (e.g. a dedicated
-   * ongoing test account) — every other tenant is deleted. */
+   * platform too. Also deactivates every other admin/staff account and clears Hamzone CRM data —
+   * see confirmSystemReset() for exactly what that covers and why account removal is a deactivation
+   * (deletedAt), not a hard delete. That's real destructive power, so it goes through the same
+   * email+phone OTP gate as every other platform-wide config change (see SettingsOtpService) rather
+   * than reusing the lighter Test-only delete authorization. Optionally keeps one named school (e.g.
+   * a dedicated ongoing test account) — every other tenant is deleted. */
   async requestSystemReset(userId: string, keepTenantId?: string) {
     let keptTenantName: string | undefined;
     if (keepTenantId) {
@@ -474,15 +476,53 @@ export class TenantsService {
       if (!kept) throw new NotFoundException('The school chosen to keep was not found');
       keptTenantName = kept.name;
     }
-    const affectedCount = await this.platformPrisma.tenant.count({
-      where: keepTenantId ? { id: { not: keepTenantId } } : {},
-    });
+    const [affectedCount, adminCount, crmCount] = await Promise.all([
+      this.platformPrisma.tenant.count({ where: keepTenantId ? { id: { not: keepTenantId } } : {} }),
+      this.platformPrisma.platformUser.count({ where: { id: { not: userId }, deletedAt: null } }),
+      Promise.all([
+        this.platformPrisma.hamzoneClient.count(),
+        this.platformPrisma.hamzoneMarketingLead.count(),
+        this.platformPrisma.hamzoneInvoice.count(),
+        this.platformPrisma.hamzoneTrainingRecord.count(),
+        this.platformPrisma.hamzoneDocument.count(),
+      ]).then((counts) => counts.reduce((a, b) => a + b, 0)),
+    ]);
     const result = await this.settingsOtp.request(userId, 'SYSTEM_RESET', { keepTenantId, affectedCount });
-    return { ...result, affectedCount, keptTenantName };
+    return { ...result, affectedCount, keptTenantName, adminCount, crmCount };
+  }
+
+  /** Deliberately deactivates (deletedAt) rather than hard-deletes other admin/staff accounts —
+   * PlatformUser is referenced by ~30 other tables (trainer profiles, staff tasks, recruitment,
+   * meetings, outreach, training centers/programs...), almost none set up with cascading deletes.
+   * Hard-deleting a TRAINER account, for instance, would force-cascade into deleting their whole
+   * profile/registers/reports — well beyond what a restart is meant to touch. Deactivation achieves
+   * the real goal (they can't log in, the system looks fresh) without any of that cascade risk, and
+   * stays reversible via the existing reactivate action if it turns out to be a mistake. */
+  private async deactivateOtherAdmins(keepUserId: string) {
+    const result = await this.platformPrisma.platformUser.updateMany({
+      where: { id: { not: keepUserId }, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    return result.count;
+  }
+
+  /** Clears Hamzone Technologies' own company CRM — clients, their notes/invoices, standalone
+   * training records, marketing leads, and shared documents. Deletion order respects the required
+   * (non-cascading) foreign keys pointing at HamzoneClient: notes and invoices first, then the
+   * client rows themselves. Deliberately leaves HamzoneApiKey alone (a credential, not "people
+   * data") and PlatformFinanceEntry alone (the separate platform finance ledger, not selected for
+   * this wipe). */
+  private async wipeHamzoneCrm() {
+    await this.platformPrisma.hamzoneClientNote.deleteMany();
+    await this.platformPrisma.hamzoneInvoice.deleteMany();
+    await this.platformPrisma.hamzoneTrainingRecord.deleteMany();
+    await this.platformPrisma.hamzoneClient.deleteMany();
+    await this.platformPrisma.hamzoneMarketingLead.deleteMany();
+    await this.platformPrisma.hamzoneDocument.deleteMany();
   }
 
   async confirmSystemReset(requestId: string, code: string) {
-    const { scope, changes } = await this.settingsOtp.verifyAndConsume(requestId, code);
+    const { scope, requestedById, changes } = await this.settingsOtp.verifyAndConsume(requestId, code);
     if (scope !== 'SYSTEM_RESET') throw new BadRequestException('This code is not for a system reset');
     const { keepTenantId } = changes as { keepTenantId?: string };
 
@@ -492,6 +532,10 @@ export class TenantsService {
     for (const tenant of tenants) {
       await this.purgeTenant(tenant);
     }
-    return { deletedCount: tenants.length };
+
+    await this.wipeHamzoneCrm();
+    const deactivatedAdminCount = await this.deactivateOtherAdmins(requestedById);
+
+    return { deletedCount: tenants.length, deactivatedAdminCount };
   }
 }
