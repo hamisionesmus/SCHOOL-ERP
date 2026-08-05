@@ -95,9 +95,12 @@ services:
         condition: service_started
     # Nest bootstrap (module init, Prisma connect) takes a few seconds after the process starts —
     # `/api/docs` is a cheap, always-registered, always-200 route once the app is actually serving
-    # requests. start_period gives it room on a slow cold boot without failing the check early; once
-    # healthy, `web`/`caddy` below (and `docker compose up --wait` in the deploy workflow) can tell
-    # the difference between "container started" and "actually ready to take traffic."
+    # requests. Purely informational (visible in `docker ps`/`docker inspect`) — nothing below is
+    # gated on this passing. It USED to gate web/caddy via `condition: service_healthy`, but on this
+    # box's single CPU core, api's health check can lose the race against web's concurrent `next
+    # build` and never pass within the check window — Compose then refuses to start web/caddy at
+    # all, taking the whole site down even though api itself was fine. A slow/flaky health check
+    # must never be able to do that, so web/caddy below only wait for api to *start*, not be *healthy*.
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/docs"]
       interval: 5s
@@ -113,8 +116,7 @@ services:
     restart: unless-stopped
     mem_limit: 384m
     depends_on:
-      api:
-        condition: service_healthy
+      - api
 
   caddy:
     image: caddy:2-alpine
@@ -128,10 +130,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      api:
-        condition: service_healthy
-      web:
-        condition: service_started
+      - api
+      - web
 
 volumes:
   postgres_data:
