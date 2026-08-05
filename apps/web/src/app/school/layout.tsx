@@ -60,13 +60,22 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
     >
       <Sidebar user={user} onLogout={logout} sidebarColor={branding?.sidebarColor} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-6">
+        <header className="relative flex h-16 flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white/90 px-6 shadow-sm backdrop-blur-sm">
+          <div
+            className="absolute inset-x-0 top-0 h-[3px]"
+            style={{ background: `linear-gradient(90deg, ${branding?.primaryColor ?? '#0f172a'}, transparent 140%)` }}
+            aria-hidden
+          />
           {branding?.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={`${API_ORIGIN}${branding.logoUrl}`} alt="" className="h-8 w-8 rounded object-cover" />
+            <img
+              src={`${API_ORIGIN}${branding.logoUrl}`}
+              alt=""
+              className="h-9 w-9 rounded-lg object-cover shadow-sm ring-1 ring-slate-200"
+            />
           ) : (
             <div
-              className="flex h-8 w-8 items-center justify-center rounded text-xs font-bold text-white"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-xs font-bold text-white shadow-sm"
               style={{ backgroundColor: branding?.primaryColor ?? '#0f172a' }}
             >
               {(branding?.name ?? user.tenantSlug ?? 'S').slice(0, 1).toUpperCase()}

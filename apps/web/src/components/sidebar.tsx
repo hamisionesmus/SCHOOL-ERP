@@ -116,6 +116,11 @@ const NAV_GROUPS: NavGroup[] = [
 
 const COLLAPSE_STORAGE_KEY = 'school-erp:sidebar-collapsed';
 
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
+}
+
 export function Sidebar({
   user,
   onLogout,
@@ -144,6 +149,7 @@ export function Sidebar({
       '--sb-hover-bg': mix(bg, fg, 0.08),
       '--sb-active-bg': mix(bg, fg, 0.16),
       '--sb-border': mix(bg, fg, 0.15),
+      '--sb-ring': mix(bg, fg, 0.3),
     } as React.CSSProperties;
   }, [sidebarColor]);
 
@@ -186,24 +192,32 @@ export function Sidebar({
       <aside
         style={theme}
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-64 flex-shrink-0 flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] transition-all duration-200 lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-64 flex-shrink-0 flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] shadow-[2px_0_16px_-8px_rgba(0,0,0,0.12)] transition-all duration-200 lg:static lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
           collapsed ? 'lg:w-[68px]' : 'lg:w-64',
         )}
       >
-        <div className="flex items-center justify-between px-5 py-5">
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-[var(--sb-fg)]">{user.tenantSlug}</p>
-              <p className="truncate text-xs text-[var(--sb-fg-muted)]">{user.roles?.join(', ')}</p>
-            </div>
-          )}
+        <div className="flex items-center justify-between gap-2 px-4 py-5">
+          <div className={cn('flex min-w-0 items-center gap-2.5', collapsed && 'lg:justify-center')}>
+            <span
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-xs font-bold shadow-sm"
+              style={{ backgroundColor: 'var(--sb-fg)', color: 'var(--sb-bg)' }}
+            >
+              {(user.tenantSlug ?? '?').slice(0, 1).toUpperCase()}
+            </span>
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-[var(--sb-fg)]">{user.tenantSlug}</p>
+                <p className="truncate text-xs text-[var(--sb-fg-muted)]">{user.roles?.join(', ')}</p>
+              </div>
+            )}
+          </div>
           <button onClick={() => setMobileOpen(false)} className="text-[var(--sb-fg)] lg:hidden" aria-label="Close menu">
             <X size={18} />
           </button>
           <button
             onClick={toggleCollapsed}
-            className="hidden rounded-md p-1.5 text-[var(--sb-fg-muted)] hover:bg-[var(--sb-hover-bg)] hover:text-[var(--sb-fg)] lg:block"
+            className="hidden rounded-md p-1.5 text-[var(--sb-fg-muted)] transition-colors hover:bg-[var(--sb-hover-bg)] hover:text-[var(--sb-fg)] lg:block"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
@@ -222,7 +236,7 @@ export function Sidebar({
                 value={navQuery}
                 onChange={(e) => setNavQuery(e.target.value)}
                 placeholder="Search..."
-                className="w-full rounded-md border border-[var(--sb-border)] bg-transparent py-1.5 pl-8 pr-2 text-xs text-[var(--sb-fg)] placeholder:text-[var(--sb-fg-muted)] focus:outline-none"
+                className="w-full rounded-lg border border-[var(--sb-border)] bg-[var(--sb-hover-bg)] py-1.5 pl-8 pr-2 text-xs text-[var(--sb-fg)] placeholder:text-[var(--sb-fg-muted)] transition-shadow focus:outline-none focus:ring-2 focus:ring-[var(--sb-ring)]"
               />
             </div>
           </div>
@@ -250,14 +264,21 @@ export function Sidebar({
                       onClick={() => setMobileOpen(false)}
                       title={collapsed ? item.label : undefined}
                       className={cn(
-                        'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
+                        'group flex items-center gap-2.5 rounded-xl px-2 py-1.5 text-sm font-medium transition-all duration-150',
                         collapsed && 'lg:justify-center',
                         active
-                          ? 'bg-[var(--sb-active-bg)] text-[var(--sb-fg)]'
-                          : 'text-[var(--sb-fg-muted)] hover:bg-[var(--sb-hover-bg)] hover:text-[var(--sb-fg)]',
+                          ? 'bg-[var(--sb-active-bg)] text-[var(--sb-fg)] shadow-sm'
+                          : 'text-[var(--sb-fg-muted)] hover:translate-x-0.5 hover:bg-[var(--sb-hover-bg)] hover:text-[var(--sb-fg)]',
                       )}
                     >
-                      <Icon size={16} className="flex-shrink-0" />
+                      <span
+                        className={cn(
+                          'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg transition-colors',
+                          active && 'bg-[var(--sb-bg)]',
+                        )}
+                      >
+                        <Icon size={16} className="flex-shrink-0" />
+                      </span>
                       <span className={collapsed ? 'lg:hidden' : undefined}>{item.label}</span>
                     </Link>
                   );
@@ -269,16 +290,24 @@ export function Sidebar({
 
         <div className="border-t border-[var(--sb-border)] p-3">
           {!collapsed && (
-            <div className="mb-2 px-2">
-              <p className="truncate text-sm font-medium text-[var(--sb-fg)]">{user.fullName}</p>
-              <p className="truncate text-xs text-[var(--sb-fg-muted)]">{user.email}</p>
+            <div className="mb-2 flex items-center gap-2.5 rounded-xl px-1.5 py-1.5">
+              <span
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                style={{ backgroundColor: 'var(--sb-active-bg)', color: 'var(--sb-fg)' }}
+              >
+                {initials(user.fullName ?? user.email ?? '?')}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-[var(--sb-fg)]">{user.fullName}</p>
+                <p className="truncate text-xs text-[var(--sb-fg-muted)]">{user.email}</p>
+              </div>
             </div>
           )}
           <button
             onClick={onLogout}
             title={collapsed ? 'Log out' : undefined}
             className={cn(
-              'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-[var(--sb-fg-muted)] hover:bg-[var(--sb-hover-bg)] hover:text-red-600',
+              'flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-[var(--sb-fg-muted)] transition-colors hover:bg-[var(--sb-hover-bg)] hover:text-red-500',
               collapsed && 'lg:justify-center',
             )}
           >

@@ -44,7 +44,7 @@ export function StatCard({
   return (
     <div
       className={cn(
-        'group relative overflow-hidden rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md animate-float-up',
+        'group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/60 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-200/70 animate-float-up',
         className,
       )}
     >
@@ -52,17 +52,21 @@ export function StatCard({
         className={cn('absolute inset-x-0 top-0 h-1 bg-gradient-to-r opacity-80', gradient)}
         aria-hidden
       />
-      <div className="flex items-start justify-between">
+      <div
+        className={cn('pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br opacity-[0.07] blur-xl', gradient)}
+        aria-hidden
+      />
+      <div className="relative flex items-start justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-          <p className="mt-1.5 text-2xl font-semibold text-slate-900">
+          <p className="mt-1.5 text-[1.7rem] font-semibold leading-none tracking-tight text-slate-900">
             {prefix}
             {displayValue}
             {suffix}
           </p>
-          {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
+          {hint && <p className="mt-2 text-xs text-slate-400">{hint}</p>}
         </div>
-        <div className={cn('rounded-lg p-2.5', iconBg)}>
+        <div className={cn('flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full transition-transform group-hover:scale-105', iconBg)}>
           <Icon size={18} className={iconColor} />
         </div>
       </div>
