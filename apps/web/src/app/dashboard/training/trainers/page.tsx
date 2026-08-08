@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Plus } from 'lucide-react';
+import { Download, Eye, Plus } from 'lucide-react';
 import { apiFetch, API_ORIGIN } from '@/lib/api';
 import { getAccessToken } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
@@ -88,9 +89,12 @@ function AddTrainerDialog({ centers, onCreated }: { centers: Center[]; onCreated
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="my-8 w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
-        <h3 className="mb-4 text-lg font-semibold text-slate-900">Add Trainer</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex-shrink-0 border-b border-slate-200 px-6 py-4">
+          <h3 className="text-lg font-semibold text-slate-900">Add Trainer</h3>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="space-y-3">
           <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" />
           <div className="grid grid-cols-2 gap-3">
@@ -115,13 +119,16 @@ function AddTrainerDialog({ centers, onCreated }: { centers: Center[]; onCreated
           </select>
           <Input type="number" value={monthlySalaryKes} onChange={(e) => setMonthlySalaryKes(e.target.value)} placeholder="Monthly salary (KES, optional)" />
         </div>
-        <div className="mt-6 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button className="flex-1" disabled={!fullName.trim() || !email.trim() || !phone.trim() || create.isPending} onClick={() => create.mutate()}>
-            {create.isPending ? 'Adding...' : 'Add Trainer'}
-          </Button>
+        </div>
+        <div className="flex-shrink-0 border-t border-slate-200 px-6 py-4">
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="flex-1" disabled={!fullName.trim() || !email.trim() || !phone.trim() || create.isPending} onClick={() => create.mutate()}>
+              {create.isPending ? 'Adding...' : 'Add Trainer'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -171,6 +178,11 @@ function EditTrainerRow({ trainer, centers }: { trainer: TrainerProfile; centers
         </td>
         <td className="py-2 text-right">
           <div className="flex justify-end gap-1.5">
+            <Link href={`/dashboard/training/trainers/${trainer.id}`}>
+              <Button size="sm" variant="outline">
+                <Eye size={13} />
+              </Button>
+            </Link>
             <Button size="sm" variant="outline" onClick={() => downloadContract(trainer.id, trainer.user.fullName)}>
               <Download size={13} />
             </Button>

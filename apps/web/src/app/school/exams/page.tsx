@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { ExcelImportExportBar } from '@/components/ui/excel-import-export-bar';
 import { useDraftState } from '@/hooks/use-draft-state';
 
 interface Subject {
@@ -480,6 +481,15 @@ export default function ExamsPage() {
                             >
                               Submit for approval
                             </Button>
+                          </div>
+                          <div className="mt-3">
+                            <ExcelImportExportBar
+                              exportUrl={`/exam-subjects/${es.id}/marks/export`}
+                              templateUrl={`/exam-subjects/${es.id}/marks/import-template`}
+                              importUrl={`/exam-subjects/${es.id}/marks/import`}
+                              entityLabel="marks"
+                              onImported={() => queryClient.invalidateQueries({ queryKey: ['exam-subjects', selectedExamId] })}
+                            />
                           </div>
                         </>
                       )}

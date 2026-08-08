@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
@@ -10,6 +12,8 @@ import { GenerateInvoicesDto } from './dto/generate-invoices.dto';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { InitiateMpesaDto } from './dto/initiate-mpesa.dto';
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 @ApiTags('finance')
 @ApiBearerAuth()
@@ -44,6 +48,52 @@ export class FinanceController {
   @Get('invoices')
   listInvoices(@CurrentUser() user: JwtUserPayload) {
     return this.financeService.listInvoices(user);
+  }
+
+  @Get('invoices/export')
+  @RequirePermission('FINANCE:EDIT')
+  async exportInvoicesExcel(@CurrentUser() user: JwtUserPayload) {
+    const buffer = await this.financeService.exportInvoicesExcel(user);
+    return new StreamableFile(buffer, { type: XLSX_TYPE, disposition: 'attachment; filename="invoices-export.xlsx"' });
+  }
+
+  @Get('invoices/import-template')
+  @RequirePermission('FINANCE:EDIT')
+  async importInvoicesTemplate() {
+    const buffer = await this.financeService.importInvoicesTemplateExcel();
+    return new StreamableFile(buffer, { type: XLSX_TYPE, disposition: 'attachment; filename="invoices-import-template.xlsx"' });
+  }
+
+  @Post('invoices/import')
+  @RequirePermission('FINANCE:EDIT')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async importInvoicesExcel(@CurrentUser() user: JwtUserPayload, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file provided');
+    return this.financeService.importInvoicesFromExcel(user, file.buffer);
+  }
+
+  @Get('payments/export')
+  @RequirePermission('FINANCE:EDIT')
+  async exportPaymentsExcel(@CurrentUser() user: JwtUserPayload) {
+    const buffer = await this.financeService.exportPaymentsExcel(user);
+    return new StreamableFile(buffer, { type: XLSX_TYPE, disposition: 'attachment; filename="payments-export.xlsx"' });
+  }
+
+  @Get('payments/import-template')
+  @RequirePermission('FINANCE:EDIT')
+  async importPaymentsTemplate() {
+    const buffer = await this.financeService.importPaymentsTemplateExcel();
+    return new StreamableFile(buffer, { type: XLSX_TYPE, disposition: 'attachment; filename="payments-import-template.xlsx"' });
+  }
+
+  @Post('payments/import')
+  @RequirePermission('FINANCE:RECEIVE_PAYMENT')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async importPaymentsExcel(@CurrentUser() user: JwtUserPayload, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file provided');
+    return this.financeService.importPaymentsFromExcel(user, file.buffer);
   }
 
   @Get('invoices/:id')

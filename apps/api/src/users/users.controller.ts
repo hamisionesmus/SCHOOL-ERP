@@ -1,13 +1,15 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import * as bcrypt from 'bcryptjs';
+import { BadRequestException, Body, Controller, Get, Post, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
 import { CurrentUser, JwtUserPayload } from '../common/decorators/current-user.decorator';
-import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
-import { UserDirectoryService } from '../common/user-directory/user-directory.service';
+import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -15,41 +17,35 @@ import { CreateUserDto } from './dto/create-user.dto';
 @RequirePermission('TENANT:MANAGE_USERS')
 @Controller('users')
 export class UsersController {
-  constructor(
-    private readonly tenantPrisma: TenantPrismaService,
-    private readonly userDirectory: UserDirectoryService,
-  ) {}
+  constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  async list(@CurrentUser() user: JwtUserPayload) {
-    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
-    return db.user.findMany({
-      where: { deletedAt: null },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        isActive: true,
-        createdAt: true,
-        userRoles: { include: { role: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  list(@CurrentUser() user: JwtUserPayload) {
+    return this.usersService.list(user);
+  }
+
+  @Get('export')
+  async exportExcel(@CurrentUser() user: JwtUserPayload) {
+    const buffer = await this.usersService.exportExcel(user);
+    return new StreamableFile(buffer, { type: XLSX_TYPE, disposition: 'attachment; filename="staff-export.xlsx"' });
+  }
+
+  @Get('import-template')
+  async importTemplate() {
+    const buffer = await this.usersService.importTemplateExcel();
+    return new StreamableFile(buffer, { type: XLSX_TYPE, disposition: 'attachment; filename="staff-import-template.xlsx"' });
+  }
+
+  @Post('import')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async importExcel(@CurrentUser() user: JwtUserPayload, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file provided');
+    return this.usersService.importFromExcel(user, file.buffer);
   }
 
   @Post()
   async create(@CurrentUser() user: JwtUserPayload, @Body() dto: CreateUserDto) {
-    await this.userDirectory.reserveForSchema(dto.email, user.tenantSchema!);
-    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
-    const passwordHash = await bcrypt.hash(dto.password, 12);
-    return db.user.create({
-      data: {
-        email: dto.email,
-        fullName: dto.fullName,
-        passwordHash,
-        userRoles: { create: dto.roleIds.map((roleId) => ({ roleId })) },
-      },
-      include: { userRoles: { include: { role: true } } },
-    });
+    return this.usersService.create(user, dto);
   }
 }

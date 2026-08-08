@@ -13,6 +13,7 @@ import { SkeletonTable } from '@/components/ui/skeleton';
 import { MapPicker } from '@/components/ui/map-picker';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { Pagination } from '@/components/ui/pagination';
+import { ExcelImportExportBar } from '@/components/ui/excel-import-export-bar';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { useDraftState } from '@/hooks/use-draft-state';
 
@@ -312,13 +313,24 @@ export default function StudentsPage() {
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <CardTitle>Students</CardTitle>
-          {canCreate && (
-            <Button size="sm" onClick={() => setShowForm((v) => !v)}>
-              {showForm ? 'Cancel' : '+ Add student'}
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {canEdit && (
+              <ExcelImportExportBar
+                exportUrl="/students/export"
+                templateUrl="/students/import-template"
+                importUrl="/students/import"
+                entityLabel="students"
+                onImported={() => queryClient.invalidateQueries({ queryKey: ['students'] })}
+              />
+            )}
+            {canCreate && (
+              <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+                {showForm ? 'Cancel' : '+ Add student'}
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {showForm && (

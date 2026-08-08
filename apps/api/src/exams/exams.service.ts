@@ -7,6 +7,18 @@ import { CreateExamSubjectDto } from './dto/create-exam-subject.dto';
 import { EnterMarksDto } from './dto/enter-marks.dto';
 import { RejectExamSubjectDto } from './dto/reject-exam-subject.dto';
 import { renderReportCardPdf } from './report-card-pdf.util';
+import { buildWorkbook, ExcelColumn } from '../common/excel/excel-builder.util';
+import { parseWorkbook, RowError } from '../common/excel/excel-parser.util';
+import { MARKS_IMPORT_INSTRUCTIONS } from './marks-import-instructions';
+
+const RUBRIC_LEVELS = ['EE', 'ME', 'AE', 'BE'];
+
+interface MarkExportRow {
+  student: { admissionNumber: string };
+  score: number | null;
+  rubricLevel: string | null;
+  comment: string | null;
+}
 
 @Injectable()
 export class ExamsService {
@@ -131,6 +143,132 @@ export class ExamsService {
     }
 
     return db.mark.findMany({ where: { examSubjectId }, include: { student: true } });
+  }
+
+  // ---- Excel import/export — scoped to one exam subject, see docs/IMPORT_EXPORT.md ----
+
+  private markColumns(): ExcelColumn<MarkExportRow>[] {
+    return [
+      { header: 'Admission Number', key: 'admissionNumber', required: true, getValue: (r) => r.student.admissionNumber },
+      { header: 'Score', key: 'score', getValue: (r) => r.score },
+      { header: 'Rubric Level', key: 'rubricLevel', dropdown: RUBRIC_LEVELS, getValue: (r) => r.rubricLevel },
+      { header: 'Comment', key: 'comment', getValue: (r) => r.comment },
+    ];
+  }
+
+  async exportMarksExcel(user: JwtUserPayload, examSubjectId: string): Promise<Buffer> {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const examSubject = await db.examSubject.findUnique({ where: { id: examSubjectId } });
+    if (!examSubject) throw new NotFoundException('Exam subject not found');
+    const marks = await db.mark.findMany({ where: { examSubjectId }, include: { student: true } });
+    return buildWorkbook({ sheetName: 'Marks', columns: this.markColumns(), rows: marks });
+  }
+
+  async importMarksTemplateExcel(): Promise<Buffer> {
+    return buildWorkbook({
+      sheetName: 'Marks',
+      columns: this.markColumns(),
+      rows: [],
+      instructions: MARKS_IMPORT_INSTRUCTIONS,
+    });
+  }
+
+  async importMarksFromExcel(user: JwtUserPayload, examSubjectId: string, buffer: Buffer) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const examSubject = await db.examSubject.findUnique({ where: { id: examSubjectId } });
+    if (!examSubject) throw new NotFoundException('Exam subject not found');
+    if (examSubject.status !== 'DRAFT') {
+      throw new BadRequestException('Marks are locked. Ask a School Administrator to reopen this exam subject.');
+    }
+    await this.assertCanEnterMarks(user, examSubject);
+
+    const columns = this.markColumns();
+    const { rows, headerErrors } = await parseWorkbook(buffer, columns.map((c) => ({ header: c.header, key: c.key })));
+    if (headerErrors.length > 0) return { created: 0, updated: 0, errors: headerErrors };
+
+    const errors: RowError[] = [];
+    const seenAdmissionNumbers = new Map<string, number[]>();
+    for (const row of rows) {
+      const key = String(row.data.admissionNumber ?? '').trim();
+      if (!key) continue;
+      seenAdmissionNumbers.set(key, [...(seenAdmissionNumbers.get(key) ?? []), row.rowNumber]);
+    }
+    for (const [key, rowNumbers] of seenAdmissionNumbers) {
+      if (rowNumbers.length > 1) {
+        for (const rn of rowNumbers) {
+          errors.push({ row: rn, field: 'admissionNumber', message: `Admission number ${key} appears on rows ${rowNumbers.join(', ')} — fix duplicates before importing.` });
+        }
+      }
+    }
+
+    type Planned = { row: number; studentId: string; score: number | null; rubricLevel: string | null; comment: string | null };
+    const planned: Planned[] = [];
+
+    for (const row of rows) {
+      const admissionNumber = String(row.data.admissionNumber ?? '').trim();
+      if ((seenAdmissionNumbers.get(admissionNumber)?.length ?? 0) > 1) continue;
+
+      if (!admissionNumber) {
+        errors.push({ row: row.rowNumber, field: 'admissionNumber', message: 'Admission Number is required.' });
+        continue;
+      }
+      const student = await db.student.findUnique({ where: { admissionNumber } });
+      if (!student) {
+        errors.push({ row: row.rowNumber, field: 'admissionNumber', message: `No student with admission number "${admissionNumber}".` });
+        continue;
+      }
+
+      let score: number | null = null;
+      let rubricLevel: string | null = null;
+
+      if (examSubject.scoringMode === 'NUMERIC') {
+        const scoreRaw = row.data.score;
+        if (scoreRaw === null || scoreRaw === undefined || scoreRaw === '') {
+          errors.push({ row: row.rowNumber, field: 'score', message: 'Score is required for this NUMERIC-scored subject.' });
+        } else {
+          const parsed = Number(scoreRaw);
+          if (!Number.isInteger(parsed) || parsed < 0 || parsed > examSubject.maxScore) {
+            errors.push({ row: row.rowNumber, field: 'score', message: `Score must be a whole number between 0 and ${examSubject.maxScore}, got "${scoreRaw}".` });
+          } else {
+            score = parsed;
+          }
+        }
+      } else {
+        const rubricRaw = String(row.data.rubricLevel ?? '').trim().toUpperCase();
+        if (!rubricRaw) {
+          errors.push({ row: row.rowNumber, field: 'rubricLevel', message: 'Rubric Level is required for this RUBRIC-scored subject.' });
+        } else if (!RUBRIC_LEVELS.includes(rubricRaw)) {
+          errors.push({ row: row.rowNumber, field: 'rubricLevel', message: `Rubric Level must be one of ${RUBRIC_LEVELS.join(', ')}, got "${rubricRaw}".` });
+        } else {
+          rubricLevel = rubricRaw;
+        }
+      }
+
+      const comment = row.data.comment ? String(row.data.comment) : null;
+
+      if ((examSubject.scoringMode === 'NUMERIC' && score !== null) || (examSubject.scoringMode === 'RUBRIC' && rubricLevel !== null)) {
+        planned.push({ row: row.rowNumber, studentId: student.id, score, rubricLevel, comment });
+      }
+    }
+
+    if (errors.length > 0) return { created: 0, updated: 0, errors };
+
+    let created = 0;
+    let updated = 0;
+    await db.$transaction(async (tx) => {
+      for (const p of planned) {
+        const existed = await tx.mark.findUnique({ where: { examSubjectId_studentId: { examSubjectId, studentId: p.studentId } } });
+        await tx.mark.upsert({
+          where: { examSubjectId_studentId: { examSubjectId, studentId: p.studentId } },
+          update: { score: p.score, rubricLevel: p.rubricLevel as never, comment: p.comment, enteredByUserId: user.sub },
+          create: { examSubjectId, studentId: p.studentId, score: p.score, rubricLevel: p.rubricLevel as never, comment: p.comment, enteredByUserId: user.sub },
+        });
+        if (existed) updated++;
+        else created++;
+      }
+    });
+
+    return { created, updated, errors: [] };
   }
 
   async submit(user: JwtUserPayload, examSubjectId: string) {

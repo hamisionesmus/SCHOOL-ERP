@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
@@ -19,6 +21,26 @@ export class StudentsController {
   @Get()
   list(@CurrentUser() user: JwtUserPayload) {
     return this.studentsService.list(user);
+  }
+
+  @Get('export')
+  @RequirePermission('STUDENT:EDIT')
+  async exportExcel(@CurrentUser() user: JwtUserPayload) {
+    const buffer = await this.studentsService.exportExcel(user);
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: 'attachment; filename="students-export.xlsx"',
+    });
+  }
+
+  @Get('import-template')
+  @RequirePermission('STUDENT:EDIT')
+  async importTemplate(@CurrentUser() user: JwtUserPayload) {
+    const buffer = await this.studentsService.importTemplateExcel(user);
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: 'attachment; filename="students-import-template.xlsx"',
+    });
   }
 
   @Get(':id')
@@ -46,5 +68,14 @@ export class StudentsController {
     @Body() dto: AddGuardianDto,
   ) {
     return this.studentsService.addGuardian(user, id, dto);
+  }
+
+  @Post('import')
+  @RequirePermission('STUDENT:EDIT')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async importExcel(@CurrentUser() user: JwtUserPayload, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file provided');
+    return this.studentsService.importFromExcel(user, file.buffer);
   }
 }

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pagination } from '@/components/ui/pagination';
+import { ExcelImportExportBar } from '@/components/ui/excel-import-export-bar';
 import { useTableControls } from '@/hooks/use-table-controls';
 import { cn } from '@/lib/utils';
 import { useDraftState } from '@/hooks/use-draft-state';
@@ -276,8 +277,26 @@ export default function FinancePage() {
       )}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <CardTitle>Invoices</CardTitle>
+          {isStaff && (
+            <div className="flex flex-wrap items-center gap-4">
+              <ExcelImportExportBar
+                exportUrl="/finance/invoices/export"
+                templateUrl="/finance/invoices/import-template"
+                importUrl="/finance/invoices/import"
+                entityLabel="invoices"
+                onImported={invalidateInvoices}
+              />
+              <ExcelImportExportBar
+                exportUrl="/finance/payments/export"
+                templateUrl="/finance/payments/import-template"
+                importUrl="/finance/payments/import"
+                entityLabel="payments"
+                onImported={invalidateInvoices}
+              />
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (

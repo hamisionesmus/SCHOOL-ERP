@@ -20,6 +20,7 @@ import { Pagination } from '@/components/ui/pagination';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { StorageBar } from '@/components/ui/storage-bar';
 import { useTableControls } from '@/hooks/use-table-controls';
+import { useRequireAdminTier } from '@/lib/require-super-admin';
 import { CreateSchoolDialog } from './create-school-dialog';
 
 interface Tenant {
@@ -93,6 +94,7 @@ function formatMonthLabel(month: string) {
 }
 
 export default function DashboardPage() {
+  useRequireAdminTier();
   const queryClient = useQueryClient();
   // Suspend/Activate is @RequirePlatformRole('SUPER_ADMIN') server-side — hide the buttons for a
   // Sub-Admin too, rather than showing an action that will just 403 when clicked.

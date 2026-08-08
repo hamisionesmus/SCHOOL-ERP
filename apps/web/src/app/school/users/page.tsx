@@ -9,6 +9,7 @@ import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ExcelImportExportBar } from '@/components/ui/excel-import-export-bar';
 import { SkeletonTable } from '@/components/ui/skeleton';
 import { SortableTh } from '@/components/ui/sortable-th';
 import { Pagination } from '@/components/ui/pagination';
@@ -100,11 +101,20 @@ export default function UsersPage() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle>Staff</CardTitle>
-        <Button size="sm" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Cancel' : '+ Add staff'}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExcelImportExportBar
+            exportUrl="/users/export"
+            templateUrl="/users/import-template"
+            importUrl="/users/import"
+            entityLabel="staff"
+            onImported={() => queryClient.invalidateQueries({ queryKey: ['users'] })}
+          />
+          <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? 'Cancel' : '+ Add staff'}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {showForm && (

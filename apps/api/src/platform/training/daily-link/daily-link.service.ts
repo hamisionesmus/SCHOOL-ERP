@@ -7,6 +7,7 @@ import { extname, join } from 'path';
 import { mkdirSync, writeFileSync } from 'fs';
 import { PlatformPrismaService } from '../../../common/prisma/platform-prisma.service';
 import { PlatformNotifierService } from '../../messaging/platform-notifier.service';
+import { generateTraineeNumber } from '../trainees/trainee-number.util';
 import { SubmitDailyRegisterDto } from './dto/submit-daily-register.dto';
 
 interface DailyLinkTokenPayload {
@@ -180,6 +181,7 @@ export class DailyLinkService {
       if (!traineeId) {
         const created = await this.platformPrisma.hamzoneTrainee.create({
           data: {
+            traineeNumber: await generateTraineeNumber(this.platformPrisma),
             programId,
             fullName: entry.fullName,
             gender: entry.gender,

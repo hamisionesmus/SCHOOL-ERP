@@ -116,9 +116,12 @@ function CreateInvoiceDialog({ defaultClientId, onCreated }: { defaultClientId?:
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="my-8 w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
-        <h3 className="mb-4 text-lg font-semibold text-slate-900">New Invoice</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex-shrink-0 border-b border-slate-200 px-6 py-4">
+          <h3 className="text-lg font-semibold text-slate-900">New Invoice</h3>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="space-y-3">
           <SearchableSelect
             options={(clients?.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
@@ -152,24 +155,27 @@ function CreateInvoiceDialog({ defaultClientId, onCreated }: { defaultClientId?:
           )}
           <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
         </div>
-        <div className="mt-6 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            className="flex-1"
-            disabled={
-              !clientId ||
-              !description.trim() ||
-              !subtotalNum ||
-              !dueDate ||
-              (productLine === 'OTHER' && !purpose.trim()) ||
-              create.isPending
-            }
-            onClick={() => create.mutate()}
-          >
-            {create.isPending ? 'Creating...' : 'Create Invoice'}
-          </Button>
+        </div>
+        <div className="flex-shrink-0 border-t border-slate-200 px-6 py-4">
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={
+                !clientId ||
+                !description.trim() ||
+                !subtotalNum ||
+                !dueDate ||
+                (productLine === 'OTHER' && !purpose.trim()) ||
+                create.isPending
+              }
+              onClick={() => create.mutate()}
+            >
+              {create.isPending ? 'Creating...' : 'Create Invoice'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

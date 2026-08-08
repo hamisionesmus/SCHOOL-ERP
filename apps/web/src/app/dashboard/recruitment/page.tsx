@@ -92,9 +92,12 @@ function AddPositionDialog({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="my-8 w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
-        <h3 className="mb-4 text-lg font-semibold text-slate-900">New Vacancy Position</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex-shrink-0 border-b border-slate-200 px-6 py-4">
+          <h3 className="text-lg font-semibold text-slate-900">New Vacancy Position</h3>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="space-y-3">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Position title" />
           <select value={roleType} onChange={(e) => setRoleType(e.target.value as RoleType)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm">
@@ -129,17 +132,20 @@ function AddPositionDialog({ onCreated }: { onCreated: () => void }) {
             <Input type="date" value={closesAt} onChange={(e) => setClosesAt(e.target.value)} />
           </div>
         </div>
-        <div className="mt-6 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            className="flex-1"
-            disabled={!title.trim() || !description.trim() || (roleType === 'STAFF' && !roleTypeOther.trim()) || create.isPending}
-            onClick={() => create.mutate()}
-          >
-            {create.isPending ? 'Creating...' : 'Create'}
-          </Button>
+        </div>
+        <div className="flex-shrink-0 border-t border-slate-200 px-6 py-4">
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={!title.trim() || !description.trim() || (roleType === 'STAFF' && !roleTypeOther.trim()) || create.isPending}
+              onClick={() => create.mutate()}
+            >
+              {create.isPending ? 'Creating...' : 'Create'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -204,8 +210,8 @@ function ApplicationDetail({ app, onClose, onChanged }: { app: Application; onCl
   const final = app.status === 'HIRED' || app.status === 'REJECTED';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="my-8 w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{app.fullName}</h3>

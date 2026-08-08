@@ -17,11 +17,25 @@ function initials(name: string) {
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
 }
 
+const ADMIN_TIER_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN', 'ASSISTANT_SUPER_ADMIN'];
+
 // Shares the ['platform-me'] query key with /dashboard/profile — React Query dedupes the request
 // and the avatar here updates instantly once a new picture is saved there, no extra plumbing.
-export function DashboardTopbar({ fallbackName, onLogout }: { fallbackName: string; onLogout: () => void }) {
+export function DashboardTopbar({
+  fallbackName,
+  role,
+  onLogout,
+}: {
+  fallbackName: string;
+  /** GET /platform/notifications is @RequirePlatformRole() (admin-tier only) server-side — hiding
+   * the bell for TRAINER/GIG_WORKER avoids a silently-403ing request every 60s for a feed that's
+   * entirely about school activation/finance/tickets and irrelevant to their restricted world. */
+  role?: string;
+  onLogout: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const showNotificationBell = !role || ADMIN_TIER_ROLES.includes(role);
 
   const { data } = useQuery({
     queryKey: ['platform-me'],
@@ -39,7 +53,7 @@ export function DashboardTopbar({ fallbackName, onLogout }: { fallbackName: stri
 
   return (
     <header className="flex h-14 flex-shrink-0 items-center justify-end gap-1 border-b border-slate-200 bg-white px-4 lg:px-10">
-      <PlatformNotificationBell />
+      {showNotificationBell && <PlatformNotificationBell />}
       <div ref={ref} className="relative">
         <button
           onClick={() => setOpen((v) => !v)}

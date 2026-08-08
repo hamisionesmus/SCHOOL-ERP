@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, GraduationCap, ClipboardList, FileText, Download } from 'lucide-react';
+import { Building2, GraduationCap, ClipboardList, FileText, Download, Users } from 'lucide-react';
 import { apiFetch, API_ORIGIN } from '@/lib/api';
 import { getSessionUser, getAccessToken } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -34,6 +34,7 @@ const SECTIONS = [
   { href: '/dashboard/training/centers', label: 'Centers', description: 'Where training happens — location, head, student count.', icon: Building2 },
   { href: '/dashboard/training/trainers', label: 'Trainers', description: 'Assignments, salary, contracts.', icon: GraduationCap },
   { href: '/dashboard/training/programs', label: 'Programs', description: 'Cohorts with real start/end dates.', icon: ClipboardList },
+  { href: '/dashboard/training/trainees', label: 'Trainees', description: 'Full roster, attendance history, portal access.', icon: Users },
   { href: '/dashboard/training/registers', label: 'Daily Registers', description: 'Attendance + coverage, downloadable.', icon: FileText },
   { href: '/dashboard/training/reports', label: 'Progress Reports', description: 'Challenges + progress, are trainers working?', icon: FileText },
 ];

@@ -16,6 +16,8 @@
     "prisma:tenant:reseed:all": "ts-node -r tsconfig-paths/register prisma/reseed-all-tenants.ts",
     "prisma:seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
     "prisma:backfill:user-directory": "ts-node -r tsconfig-paths/register prisma/backfill-user-directory.ts",
+    "prisma:backfill:invoice-numbers": "ts-node -r tsconfig-paths/register prisma/backfill-invoice-numbers.ts",
+    "prisma:backfill:trainee-numbers": "ts-node -r tsconfig-paths/register prisma/backfill-trainee-numbers.ts",
     "backup": "ts-node -r tsconfig-paths/register prisma/backup-database.ts"
   },
   "dependencies": {
@@ -35,6 +37,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "imapflow": "^1.6.5",
     "mailparser": "^3.9.14",
     "nodemailer": "^9.0.3",

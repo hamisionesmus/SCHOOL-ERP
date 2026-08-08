@@ -15,7 +15,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <SuperAdminSidebar email={user.email} role={user.role} moduleGrants={user.moduleGrants} fallbackName={user.fullName} onLogout={logout} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <DashboardTopbar fallbackName={user.fullName} onLogout={logout} />
+        <DashboardTopbar fallbackName={user.fullName} role={user.role} onLogout={logout} />
         <main className="flex-1 overflow-y-auto px-4 py-10 lg:px-10">
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>

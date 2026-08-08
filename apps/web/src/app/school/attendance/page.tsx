@@ -7,6 +7,7 @@ import { apiFetch, ApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ExcelImportExportBar } from '@/components/ui/excel-import-export-bar';
 
 interface SchoolClass {
   id: string;
@@ -110,8 +111,17 @@ export default function AttendancePage() {
   return (
     <>
           <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <CardTitle>{canMark ? 'Mark attendance' : 'Attendance'}</CardTitle>
+          {canMark && (
+            <ExcelImportExportBar
+              exportUrl="/attendance/export"
+              templateUrl="/attendance/import-template"
+              importUrl="/attendance/import"
+              entityLabel="attendance"
+              onImported={() => queryClient.invalidateQueries({ queryKey: ['attendance'] })}
+            />
+          )}
         </CardHeader>
         <CardContent>
           <div className="mb-4 flex gap-3">

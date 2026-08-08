@@ -92,9 +92,12 @@ function AddEntryDialog({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
-      <div className="my-8 w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
-        <h3 className="mb-4 text-lg font-semibold text-slate-900">Log Outreach Entry</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex-shrink-0 border-b border-slate-200 px-6 py-4">
+          <h3 className="text-lg font-semibold text-slate-900">Log Outreach Entry</h3>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="space-y-3">
           <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Contact name" />
           <div className="grid grid-cols-2 gap-3">
@@ -122,13 +125,16 @@ function AddEntryDialog({ onCreated }: { onCreated: () => void }) {
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
           />
         </div>
-        <div className="mt-6 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button className="flex-1" disabled={!contactName.trim() || !receivedAt || create.isPending} onClick={() => create.mutate()}>
-            {create.isPending ? 'Saving...' : 'Save'}
-          </Button>
+        </div>
+        <div className="flex-shrink-0 border-t border-slate-200 px-6 py-4">
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button className="flex-1" disabled={!contactName.trim() || !receivedAt || create.isPending} onClick={() => create.mutate()}>
+              {create.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

@@ -52,3 +52,22 @@ export function useRequireFinanceAccess() {
     }
   }, [router]);
 }
+
+const ADMIN_TIER_ROLES = ['SUPER_ADMIN', 'SUB_ADMIN', 'ASSISTANT_SUPER_ADMIN'];
+
+/** Guards the Schools dashboard (`/dashboard` itself — the page every other guard above redirects
+ * *to* on failure) — a restricted role like TRAINER or GIG_WORKER has no sidebar link here, but
+ * nothing previously stopped direct navigation by URL, so the page rendered its full Schools
+ * list/"+ Create School" UI even though every underlying API call is 403'd server-side
+ * (@RequirePlatformRole() bare form only admits ADMIN_TIER_ROLES — see PermissionsGuard). Sends a
+ * restricted role to its own real home page instead of showing a dead Schools shell. */
+export function useRequireAdminTier() {
+  const router = useRouter();
+  useEffect(() => {
+    const user = getSessionUser();
+    if (user?.realm !== 'platform' || !user.role || ADMIN_TIER_ROLES.includes(user.role)) return;
+    if (user.role === 'TRAINER') router.replace('/dashboard/training');
+    else if (user.role === 'GIG_WORKER') router.replace('/dashboard/outreach');
+    else router.replace('/login');
+  }, [router]);
+}

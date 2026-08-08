@@ -1151,6 +1151,10 @@ enum HamzoneGender {
 // TraineePortalService; left null/false for trainees who never get portal access.
 model HamzoneTrainee {
   id                 String                 @id @default(uuid())
+  // Stable human-readable key the Excel import/export engine uses to match a spreadsheet row back to
+  // this trainee (create vs. update) — see trainee-number.util.ts. Nullable so existing roster rows
+  // don't block the migration; backfilled once, always set on every new trainee going forward.
+  traineeNumber      String?                @unique
   programId          String
   program            HamzoneTrainingProgram @relation(fields: [programId], references: [id])
   fullName           String

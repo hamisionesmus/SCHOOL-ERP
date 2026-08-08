@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Header, Param, Patch, Post, Query, StreamableFile, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, Get, Header, Param, Patch, Post, Query, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/require-permission.decorator';
@@ -9,6 +11,8 @@ import { CreateExamDto } from './dto/create-exam.dto';
 import { CreateExamSubjectDto } from './dto/create-exam-subject.dto';
 import { EnterMarksDto } from './dto/enter-marks.dto';
 import { RejectExamSubjectDto } from './dto/reject-exam-subject.dto';
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 @ApiTags('exams')
 @ApiBearerAuth()
@@ -71,6 +75,26 @@ export class ExamsController {
   @Post('exam-subjects/:id/marks')
   enterMarks(@CurrentUser() user: JwtUserPayload, @Param('id') id: string, @Body() dto: EnterMarksDto) {
     return this.examsService.enterMarks(user, id, dto);
+  }
+
+  @Get('exam-subjects/:id/marks/export')
+  async exportMarksExcel(@CurrentUser() user: JwtUserPayload, @Param('id') id: string) {
+    const buffer = await this.examsService.exportMarksExcel(user, id);
+    return new StreamableFile(buffer, { type: XLSX_TYPE, disposition: 'attachment; filename="marks-export.xlsx"' });
+  }
+
+  @Get('exam-subjects/:id/marks/import-template')
+  async importMarksTemplate() {
+    const buffer = await this.examsService.importMarksTemplateExcel();
+    return new StreamableFile(buffer, { type: XLSX_TYPE, disposition: 'attachment; filename="marks-import-template.xlsx"' });
+  }
+
+  @Post('exam-subjects/:id/marks/import')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async importMarksExcel(@CurrentUser() user: JwtUserPayload, @Param('id') id: string, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file provided');
+    return this.examsService.importMarksFromExcel(user, id, file.buffer);
   }
 
   @Patch('exam-subjects/:id/submit')

@@ -579,6 +579,11 @@ model FeeStructure {
 // query — see docs/ARCHITECTURE.md.
 model Invoice {
   id             String        @id @default(uuid())
+  // Stable human-readable key the Excel import/export engine uses to match a spreadsheet row back to
+  // this invoice (create vs. update) — see invoice-number.util.ts, same sequential-per-year pattern
+  // as Payment.receiptNumber. Nullable so existing rows don't block the migration; backfilled once,
+  // always set on every new invoice going forward.
+  invoiceNumber  String?       @unique
   studentId      String
   student        Student       @relation(fields: [studentId], references: [id])
   feeStructureId String?
