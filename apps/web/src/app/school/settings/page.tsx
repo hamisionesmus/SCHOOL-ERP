@@ -708,10 +708,14 @@ function WorkflowsTab() {
   const hasSynced = useRef(false);
 
   useEffect(() => {
-    if (hasSynced.current || !definition) return;
+    // isLoading (not `!definition`) is what distinguishes "query hasn't resolved yet" from "resolved
+    // with no active definition" (the normal starting state for a tenant that's never configured a
+    // chain) — a bare `!definition` check treated both the same and got stuck on "Loading..." forever
+    // whenever a tenant genuinely had none configured, which is every tenant until they save one.
+    if (hasSynced.current || isLoading) return;
     hasSynced.current = true;
     setSteps(
-      definition.steps.length > 0
+      definition && definition.steps.length > 0
         ? definition.steps
             .sort((a, b) => a.order - b.order)
             .map((s) => ({ name: s.name, approverPermissionCode: s.approverPermissionCode, slaHours: s.slaHours?.toString() ?? '' }))
