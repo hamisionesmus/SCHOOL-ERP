@@ -700,7 +700,7 @@ function WorkflowsTab() {
     queryKey: ['roles'],
     queryFn: () => apiFetch<RoleWithPermissions[]>('/roles'),
   });
-  const { data: definition, isLoading } = useQuery({
+  const { data: definition, isLoading, isError, error } = useQuery({
     queryKey: ['workflow-definition', 'LEAVE_REQUEST'],
     queryFn: () => apiFetch<WorkflowDefinitionResponse | null>('/workflows/definitions/LEAVE_REQUEST'),
   });
@@ -708,10 +708,12 @@ function WorkflowsTab() {
   const hasSynced = useRef(false);
 
   useEffect(() => {
-    // isLoading (not `!definition`) is what distinguishes "query hasn't resolved yet" from "resolved
-    // with no active definition" (the normal starting state for a tenant that's never configured a
-    // chain) — a bare `!definition` check treated both the same and got stuck on "Loading..." forever
-    // whenever a tenant genuinely had none configured, which is every tenant until they save one.
+    // isLoading must be a dependency here, not just read inside the effect: when the query settles
+    // into an error (403/500/network), `definition` stays `undefined` on both the pre- and post-fetch
+    // renders (no reference change), so an effect keyed only on [definition] never re-fires once
+    // isLoading flips to false — hasSynced never gets set, steps stays null, and the component is
+    // stuck on "Loading..." forever, surviving both a hard refresh and a fresh login since it's a
+    // deterministic per-request failure, not session state.
     if (hasSynced.current || isLoading) return;
     hasSynced.current = true;
     setSteps(
@@ -721,7 +723,7 @@ function WorkflowsTab() {
             .map((s) => ({ name: s.name, approverPermissionCode: s.approverPermissionCode, slaHours: s.slaHours?.toString() ?? '' }))
         : [],
     );
-  }, [definition]);
+  }, [definition, isLoading]);
 
   const permissionOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -753,6 +755,14 @@ function WorkflowsTab() {
   });
 
   if (isLoading || steps === null) return <p className="text-sm text-slate-500">Loading...</p>;
+  if (isError) {
+    return (
+      <p className="text-sm text-rose-600">
+        Failed to load the approval chain: {error instanceof Error ? error.message : 'Unknown error'}. Try
+        refreshing the page.
+      </p>
+    );
+  }
 
   const canSave = steps.every((s) => s.name.trim() && s.approverPermissionCode) && (steps.length === 0 || permissionOptions.length > 0);
 
