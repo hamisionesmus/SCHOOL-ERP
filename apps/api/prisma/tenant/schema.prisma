@@ -184,6 +184,8 @@ model User {
   ticketsSubmitted     Ticket[]           @relation("TicketSubmittedBy")
   ticketsHandled       Ticket[]           @relation("TicketHandledBy")
   ticketComments       TicketComment[]
+  workflowInstancesStarted WorkflowInstance[]   @relation("WorkflowInstanceStartedBy")
+  workflowStepActions      WorkflowStepAction[] @relation("WorkflowStepActionActor")
 }
 
 model Role {
@@ -790,6 +792,78 @@ model LeaveRequest {
   reviewedBy       User?       @relation("LeaveReviewedBy", fields: [reviewedByUserId], references: [id])
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+}
+
+// ---- Generic workflow/approval engine ----
+// Opt-in per (school, entityType): if no WorkflowDefinition is active for an entityType, the owning
+// module (e.g. HrService for 'LEAVE_REQUEST') behaves exactly as it did before this engine existed —
+// see HrService.setStatus() for the fallback branch. A step's approver is anyone holding the given
+// permission code (this schema has no reporting-hierarchy/org-chart concept — see docs plan for why).
+enum WorkflowInstanceStatus {
+  IN_PROGRESS
+  APPROVED
+  REJECTED
+}
+
+enum WorkflowStepActionType {
+  APPROVE
+  REJECT
+}
+
+model WorkflowDefinition {
+  id         String   @id @default(uuid())
+  entityType String // e.g. 'LEAVE_REQUEST'
+  isActive   Boolean  @default(true)
+  steps      WorkflowStepDefinition[]
+  instances  WorkflowInstance[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([entityType, isActive])
+}
+
+model WorkflowStepDefinition {
+  id                     String             @id @default(uuid())
+  workflowId             String
+  workflow               WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  order                  Int // 0-based
+  name                   String // display label, e.g. "HOD Review"
+  approverPermissionCode String // matches Permission.code / RequirePermission() convention
+  slaHours               Int? // null = no SLA/escalation reminder for this step
+
+  @@unique([workflowId, order])
+}
+
+model WorkflowInstance {
+  id               String                 @id @default(uuid())
+  entityType       String
+  entityId         String // e.g. LeaveRequest.id
+  workflowId       String
+  workflow         WorkflowDefinition     @relation(fields: [workflowId], references: [id])
+  currentStepOrder Int                    @default(0)
+  status           WorkflowInstanceStatus @default(IN_PROGRESS)
+  startedByUserId  String
+  startedBy        User                   @relation("WorkflowInstanceStartedBy", fields: [startedByUserId], references: [id])
+  currentStepDueAt DateTime?
+  lastEscalatedAt  DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  actions          WorkflowStepAction[]
+
+  @@unique([entityType, entityId])
+  @@index([status, currentStepDueAt])
+}
+
+model WorkflowStepAction {
+  id          String                 @id @default(uuid())
+  instanceId  String
+  instance    WorkflowInstance       @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  stepOrder   Int
+  actorUserId String
+  actor       User                   @relation("WorkflowStepActionActor", fields: [actorUserId], references: [id])
+  action      WorkflowStepActionType
+  comment     String?
+  actedAt     DateTime               @default(now())
 }
 
 // ---- Support tickets (any staff/parent -> School Administrator -> optional platform escalation) ----

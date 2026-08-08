@@ -45,6 +45,7 @@ import { PlatformSettingsModule } from './platform/platform-settings/platform-se
 import { SettingsOtpModule } from './platform/settings-otp/settings-otp.module';
 import { FeedbackModule } from './platform/feedback/feedback.module';
 import { RemindersModule } from './platform/reminders/reminders.module';
+import { WorkflowEscalationsModule } from './platform/workflow-escalations/workflow-escalations.module';
 import { BrandingModule } from './platform/branding/branding.module';
 import { MeModule } from './platform/me/me.module';
 import { PlatformAdminsModule } from './platform/admins/admins.module';
@@ -122,6 +123,7 @@ import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
     SettingsOtpModule,
     FeedbackModule,
     RemindersModule,
+    WorkflowEscalationsModule,
     BrandingModule,
     MeModule,
     PlatformAdminsModule,

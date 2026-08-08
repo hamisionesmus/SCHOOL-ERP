@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, apiUpload, API_ORIGIN, ApiError } from '@/lib/api';
@@ -26,6 +26,7 @@ const TABS = [
   { key: 'about', label: 'About' },
   { key: 'academic', label: 'Academic' },
   { key: 'billing', label: 'Payment & Billing' },
+  { key: 'workflows', label: 'Workflows' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -163,6 +164,7 @@ export default function SettingsPage() {
   const { loadDraft, saveDraft, clearDraft } = useDraftState<FormState>('school-settings');
 
   const canManage = user?.permissions?.includes('SETTINGS:MANAGE');
+  const canManageWorkflows = user?.permissions?.includes('TENANT:MANAGE_USERS');
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['branding'],
@@ -308,7 +310,7 @@ export default function SettingsPage() {
       )}
 
       <div className="flex gap-1 border-b border-slate-200">
-        {TABS.map((t) => (
+        {TABS.filter((t) => t.key !== 'workflows' || canManageWorkflows).map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -549,6 +551,7 @@ export default function SettingsPage() {
       )}
 
       {tab === 'billing' && <BillingCard settings={settings} />}
+      {tab === 'workflows' && canManageWorkflows && <WorkflowsTab />}
     </div>
   );
 }
@@ -667,6 +670,146 @@ function BillingCard({ settings }: { settings: SchoolSettings }) {
           />
           </>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface WorkflowStepRow {
+  name: string;
+  approverPermissionCode: string;
+  slaHours: string;
+}
+interface RoleWithPermissions {
+  id: string;
+  name: string;
+  rolePermissions: { permission: { code: string; module: string; action: string } }[];
+}
+interface WorkflowDefinitionResponse {
+  steps: { order: number; name: string; approverPermissionCode: string; slaHours: number | null }[];
+}
+
+/** Configures the (currently single) LEAVE_REQUEST approval chain — a Phase-1 pilot for the generic
+ * workflow engine (see docs plan "Generic Workflow/Approval Engine"). A step's approver is anyone
+ * holding the chosen permission code; this schema has no reporting-hierarchy/org-chart concept, so
+ * there's no "pick a role in an org chart" option — only "pick a permission." Leaving no steps
+ * configured (or never saving here) keeps Leave Requests on the original single-approver HR:EDIT path. */
+function WorkflowsTab() {
+  const queryClient = useQueryClient();
+  const { data: roles } = useQuery({
+    queryKey: ['roles'],
+    queryFn: () => apiFetch<RoleWithPermissions[]>('/roles'),
+  });
+  const { data: definition, isLoading } = useQuery({
+    queryKey: ['workflow-definition', 'LEAVE_REQUEST'],
+    queryFn: () => apiFetch<WorkflowDefinitionResponse | null>('/workflows/definitions/LEAVE_REQUEST'),
+  });
+  const [steps, setSteps] = useState<WorkflowStepRow[] | null>(null);
+  const hasSynced = useRef(false);
+
+  useEffect(() => {
+    if (hasSynced.current || !definition) return;
+    hasSynced.current = true;
+    setSteps(
+      definition.steps.length > 0
+        ? definition.steps
+            .sort((a, b) => a.order - b.order)
+            .map((s) => ({ name: s.name, approverPermissionCode: s.approverPermissionCode, slaHours: s.slaHours?.toString() ?? '' }))
+        : [],
+    );
+  }, [definition]);
+
+  const permissionOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const role of roles ?? []) {
+      for (const rp of role.rolePermissions) {
+        seen.set(rp.permission.code, `${rp.permission.code} (${rp.permission.module})`);
+      }
+    }
+    return Array.from(seen.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [roles]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      apiFetch('/workflows/definitions/LEAVE_REQUEST', {
+        method: 'PUT',
+        body: JSON.stringify({
+          steps: (steps ?? []).map((s) => ({
+            name: s.name,
+            approverPermissionCode: s.approverPermissionCode,
+            slaHours: s.slaHours ? Number(s.slaHours) : undefined,
+          })),
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflow-definition', 'LEAVE_REQUEST'] });
+      notifySuccess('Approval chain saved');
+    },
+    onError: (err) => notifyError(err, 'Failed to save approval chain'),
+  });
+
+  if (isLoading || steps === null) return <p className="text-sm text-slate-500">Loading...</p>;
+
+  const canSave = steps.every((s) => s.name.trim() && s.approverPermissionCode) && (steps.length === 0 || permissionOptions.length > 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Leave request approval chain</CardTitle>
+        <CardDescription>
+          Add one or more review steps. Anyone holding the chosen permission can act on that step. Leave this empty and any
+          holder of HR:EDIT can approve/reject directly, same as before.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {steps.length === 0 && <p className="text-sm text-slate-500">No approval chain configured — direct HR:EDIT approval applies.</p>}
+        {steps.map((step, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-3">
+            <span className="w-6 text-sm font-medium text-slate-400">{i + 1}.</span>
+            <Input
+              value={step.name}
+              onChange={(e) => setSteps(steps.map((s, j) => (j === i ? { ...s, name: e.target.value } : s)))}
+              placeholder="Step name (e.g. HOD Review)"
+              className="w-56"
+            />
+            <select
+              value={step.approverPermissionCode}
+              onChange={(e) => setSteps(steps.map((s, j) => (j === i ? { ...s, approverPermissionCode: e.target.value } : s)))}
+              className="h-10 rounded-md border border-slate-300 px-2 text-sm"
+            >
+              <option value="">Approver permission...</option>
+              {permissionOptions.map(([code, label]) => (
+                <option key={code} value={code}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <Input
+              value={step.slaHours}
+              onChange={(e) => setSteps(steps.map((s, j) => (j === i ? { ...s, slaHours: e.target.value } : s)))}
+              type="number"
+              min="1"
+              placeholder="SLA hours (optional)"
+              className="w-40"
+            />
+            <Button type="button" size="sm" variant="outline" onClick={() => setSteps(steps.filter((_, j) => j !== i))}>
+              Remove
+            </Button>
+          </div>
+        ))}
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setSteps([...steps, { name: '', approverPermissionCode: '', slaHours: '' }])}
+          >
+            + Add step
+          </Button>
+          <Button type="button" size="sm" disabled={!canSave || save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? 'Saving...' : 'Save approval chain'}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

@@ -22,6 +22,24 @@ interface UserRef {
   fullName: string;
   email: string;
 }
+interface WorkflowStep {
+  order: number;
+  name: string;
+  approverPermissionCode: string;
+}
+interface WorkflowStepAction {
+  stepOrder: number;
+  action: 'APPROVE' | 'REJECT';
+  comment: string | null;
+  actedAt: string;
+  actor: { id: string; fullName: string };
+}
+interface WorkflowInstance {
+  status: 'IN_PROGRESS' | 'APPROVED' | 'REJECTED';
+  currentStepOrder: number;
+  workflow: { steps: WorkflowStep[] };
+  actions: WorkflowStepAction[];
+}
 interface LeaveRequest {
   id: string;
   leaveType: string;
@@ -30,6 +48,7 @@ interface LeaveRequest {
   reason: string | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   requestedBy: UserRef;
+  workflowInstance: WorkflowInstance | null;
 }
 interface Payslip {
   id: string;
@@ -91,7 +110,7 @@ export default function HrPage() {
         ))}
       </div>
 
-      {tab === 'Leave' && <LeaveTab canReview={canReview} />}
+      {tab === 'Leave' && <LeaveTab canReview={canReview} permissions={user.permissions ?? []} />}
       {tab === 'Payslips' && <PayslipsTab canReview={canReview} />}
       {tab === 'Work Log' && <WorkLogTab canReview={canReview} />}
     </div>
@@ -100,7 +119,87 @@ export default function HrPage() {
 
 type LeaveDraft = { leaveType: string; startDate: string; endDate: string; reason: string };
 
-function LeaveTab({ canReview }: { canReview: boolean }) {
+/** Which permission code (if any) is required to act on this request right now. `null` when the
+ * request has closed or was never gated by a workflow step (the fallback HR:EDIT path is checked
+ * by the caller via `canReview` instead). */
+function currentStepFor(r: LeaveRequest) {
+  if (!r.workflowInstance || r.workflowInstance.status !== 'IN_PROGRESS') return null;
+  return r.workflowInstance.workflow.steps.find((s) => s.order === r.workflowInstance!.currentStepOrder) ?? null;
+}
+
+function LeaveRequestItem({
+  r,
+  canReview,
+  permissions,
+  onReview,
+  reviewPending,
+}: {
+  r: LeaveRequest;
+  canReview: boolean;
+  permissions: string[];
+  onReview: (id: string, action: 'approve' | 'reject', comment?: string) => void;
+  reviewPending: boolean;
+}) {
+  const [comment, setComment] = useState('');
+  const currentStep = currentStepFor(r);
+  const canActNow = r.workflowInstance
+    ? !!currentStep && permissions.includes(currentStep.approverPermissionCode)
+    : canReview && r.status === 'PENDING';
+
+  return (
+    <li className="rounded-lg border border-slate-200 p-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="font-medium text-slate-900">
+            {r.leaveType}
+            {canReview && <span className="text-slate-500"> — {r.requestedBy.fullName}</span>}
+          </p>
+          <p className="text-xs text-slate-500">
+            {new Date(r.startDate).toLocaleDateString()} – {new Date(r.endDate).toLocaleDateString()}
+            {r.reason && ` · ${r.reason}`}
+          </p>
+          {r.workflowInstance && (
+            <p className="mt-1 text-xs text-slate-500">
+              {r.workflowInstance.status === 'IN_PROGRESS' && currentStep
+                ? `Step ${currentStep.order + 1} of ${r.workflowInstance.workflow.steps.length} — ${currentStep.name}`
+                : `Approval chain ${r.workflowInstance.status.toLowerCase()}`}
+            </p>
+          )}
+        </div>
+        <Badge status={r.status} />
+      </div>
+
+      {r.workflowInstance && r.workflowInstance.actions.length > 0 && (
+        <ul className="mt-2 space-y-0.5 border-t border-slate-100 pt-2 text-xs text-slate-500">
+          {r.workflowInstance.actions.map((a, i) => (
+            <li key={i}>
+              {a.actor.fullName} {a.action === 'APPROVE' ? 'approved' : 'rejected'} on {new Date(a.actedAt).toLocaleDateString()}
+              {a.comment && ` — "${a.comment}"`}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {canActNow && (
+        <div className="mt-2 flex flex-col gap-2">
+          {r.workflowInstance && (
+            <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment (optional)" className="h-9 text-sm" />
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" disabled={reviewPending} onClick={() => onReview(r.id, 'approve', comment || undefined)}>
+              Approve
+            </Button>
+            <Button size="sm" variant="outline" disabled={reviewPending} onClick={() => onReview(r.id, 'reject', comment || undefined)}>
+              Reject
+            </Button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function LeaveTab({ canReview, permissions }: { canReview: boolean; permissions: string[] }) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -145,8 +244,8 @@ function LeaveTab({ canReview }: { canReview: boolean }) {
   });
 
   const review = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'approve' | 'reject' }) =>
-      apiFetch(`/hr/leave-requests/${id}/${action}`, { method: 'PATCH' }),
+    mutationFn: ({ id, action, comment }: { id: string; action: 'approve' | 'reject'; comment?: string }) =>
+      apiFetch(`/hr/leave-requests/${id}/${action}`, { method: 'PATCH', body: JSON.stringify({ comment }) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
       notifySuccess('Leave request updated');
@@ -206,31 +305,14 @@ function LeaveTab({ canReview }: { canReview: boolean }) {
           <>
           <ul className="flex flex-col gap-3">
             {table.pageItems.map((r) => (
-              <li key={r.id} className="rounded-lg border border-slate-200 p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-slate-900">
-                      {r.leaveType}
-                      {canReview && <span className="text-slate-500"> — {r.requestedBy.fullName}</span>}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(r.startDate).toLocaleDateString()} – {new Date(r.endDate).toLocaleDateString()}
-                      {r.reason && ` · ${r.reason}`}
-                    </p>
-                  </div>
-                  <Badge status={r.status} />
-                </div>
-                {canReview && r.status === 'PENDING' && (
-                  <div className="mt-2 flex gap-2">
-                    <Button size="sm" onClick={() => review.mutate({ id: r.id, action: 'approve' })}>
-                      Approve
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => review.mutate({ id: r.id, action: 'reject' })}>
-                      Reject
-                    </Button>
-                  </div>
-                )}
-              </li>
+              <LeaveRequestItem
+                key={r.id}
+                r={r}
+                canReview={canReview}
+                permissions={permissions}
+                reviewPending={review.isPending}
+                onReview={(id, action, comment) => review.mutate({ id, action, comment })}
+              />
             ))}
           </ul>
           <Pagination
