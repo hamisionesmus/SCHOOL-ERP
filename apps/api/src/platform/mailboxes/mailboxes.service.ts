@@ -181,6 +181,15 @@ export class MailboxesService {
       auth: { user: mailbox.username, pass: mailbox.password },
       logger: false,
     });
+    // ImapFlow is an EventEmitter — a socket-level error (e.g. a timeout that fires outside an
+    // awaited call, on the keepalive/idle path) emits 'error' independently of the promise chain
+    // below. With no listener, Node's default behavior for an unhandled EventEmitter 'error' event
+    // is to throw and crash the whole process — this is what was previously taking down the entire
+    // API container (and every other in-flight request with it) every ~2 minutes whenever one
+    // mailbox's connection hiccuped, not just this one poll.
+    client.on('error', (err) => {
+      this.logger.error(`IMAP client error for ${mailbox.address}: ${err instanceof Error ? err.message : String(err)}`);
+    });
 
     try {
       await client.connect();
