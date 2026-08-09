@@ -39,6 +39,24 @@ interface TripRegistration {
   student: Student;
   payments?: TripPayment[];
 }
+interface WorkflowStep {
+  order: number;
+  name: string;
+  approverPermissionCode: string;
+}
+interface WorkflowStepAction {
+  stepOrder: number;
+  action: 'APPROVE' | 'REJECT';
+  comment: string | null;
+  actedAt: string;
+  actor: { id: string; fullName: string };
+}
+interface WorkflowInstance {
+  status: 'IN_PROGRESS' | 'APPROVED' | 'REJECTED';
+  currentStepOrder: number;
+  workflow: { steps: WorkflowStep[] };
+  actions: WorkflowStepAction[];
+}
 interface Trip {
   id: string;
   title: string;
@@ -51,6 +69,14 @@ interface Trip {
   approvedBy: UserRef | null;
   rejectionReason: string | null;
   registrations?: TripRegistration[];
+  workflowInstance: WorkflowInstance | null;
+}
+
+/** Which permission code (if any) is required to act on this trip right now. `null` when the
+ * approval chain has closed or was never gated by a workflow step. Mirrors HrPage's currentStepFor(). */
+function currentStepFor(trip: Trip) {
+  if (!trip.workflowInstance || trip.workflowInstance.status !== 'IN_PROGRESS') return null;
+  return trip.workflowInstance.workflow.steps.find((s) => s.order === trip.workflowInstance!.currentStepOrder) ?? null;
 }
 
 function CountdownBadge({ tripDate }: { tripDate: string }) {
@@ -300,24 +326,44 @@ export default function TripsPage() {
                       {trip.approvedBy && ` · Approved by ${trip.approvedBy.fullName}`}
                       {trip.rejectionReason && ` · Rejected: ${trip.rejectionReason}`}
                     </p>
-
-                    {canManage && trip.status === 'PROPOSED' && (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => setReviewTarget({ id: trip.id, title: trip.title, action: 'approve' })}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setReviewTarget({ id: trip.id, title: trip.title, action: 'reject' })}
-                        >
-                          Reject
-                        </Button>
-                      </div>
+                    {trip.workflowInstance && (
+                      <p className="mb-2 text-xs text-slate-500">
+                        {trip.workflowInstance.status === 'IN_PROGRESS' && currentStepFor(trip)
+                          ? `Step ${currentStepFor(trip)!.order + 1} of ${trip.workflowInstance.workflow.steps.length} — ${currentStepFor(trip)!.name}`
+                          : `Approval chain ${trip.workflowInstance.status.toLowerCase()}`}
+                      </p>
                     )}
+                    {trip.workflowInstance && trip.workflowInstance.actions.length > 0 && (
+                      <ul className="mb-2 space-y-0.5 text-xs text-slate-400">
+                        {trip.workflowInstance.actions.map((a, i) => (
+                          <li key={i}>
+                            {a.actor.fullName} {a.action === 'APPROVE' ? 'approved' : 'rejected'} on {new Date(a.actedAt).toLocaleDateString()}
+                            {a.comment && ` — "${a.comment}"`}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {trip.status === 'PROPOSED' &&
+                      (trip.workflowInstance
+                        ? currentStepFor(trip) && perms.includes(currentStepFor(trip)!.approverPermissionCode)
+                        : canManage) && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => setReviewTarget({ id: trip.id, title: trip.title, action: 'approve' })}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setReviewTarget({ id: trip.id, title: trip.title, action: 'reject' })}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      )}
 
                     {canRegister && trip.status === 'APPROVED' && (
                       <div className="mt-2 border-t border-slate-100 pt-3">

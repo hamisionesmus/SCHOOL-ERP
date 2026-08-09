@@ -1,23 +1,63 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
 import { CommunicationsService } from '../communications/communications.service';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { generateTripReceiptNumber } from './trip-receipt-number.util';
+import { WorkflowEngineService } from '../workflows/workflow-engine.service';
+import { WorkflowRegistryService } from '../workflows/workflow-registry.service';
+import type { PrismaClient } from '../../generated/tenant-client';
 import { ProposeTripDto } from './dto/propose-trip.dto';
-import { RejectTripDto } from './dto/reject-trip.dto';
+import { ReviewTripDto } from './dto/review-trip.dto';
 import { RegisterTripDto } from './dto/register-trip.dto';
 import { PayTripDto } from './dto/pay-trip.dto';
 
+const TRIP_PROPOSAL_ENTITY_TYPE = 'TRIP_PROPOSAL';
+
 @Injectable()
-export class TripsService {
+export class TripsService implements OnModuleInit {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly communications: CommunicationsService,
+    private readonly workflowEngine: WorkflowEngineService,
+    private readonly workflowRegistry: WorkflowRegistryService,
   ) {}
+
+  /** Plugs Trip into the generic workflow engine — the only place TripsService and the engine touch
+   * each other. TripStatus already matches the workflow's own APPROVED/REJECTED values exactly (no
+   * domain-status mapping needed, unlike Admissions), so this just sets status + approvedByUserId and
+   * — since "approved" is also the moment guardians need to hear about it, workflow-gated or not —
+   * fires the same guardian broadcast the old direct approve() used to send inline. */
+  onModuleInit() {
+    this.workflowRegistry.registerHandler(TRIP_PROPOSAL_ENTITY_TYPE, async (entityId, finalStatus, actorUserId, tenantSchema) => {
+      const db = this.tenantPrisma.forSchema(tenantSchema);
+      if (finalStatus === 'APPROVED') {
+        const trip = await db.trip.update({ where: { id: entityId }, data: { status: 'APPROVED', approvedByUserId: actorUserId } });
+        await this.notifyGuardiansOfApproval(db, tenantSchema, trip);
+      } else {
+        await db.trip.update({ where: { id: entityId }, data: { status: 'REJECTED' } });
+      }
+    });
+  }
+
+  private async notifyGuardiansOfApproval(db: PrismaClient, tenantSchema: string, trip: { title: string; destination: string; tripDate: Date; costPerStudent: number }) {
+    const guardians = await db.guardianLink.findMany({
+      where: { isPrimaryContact: true },
+      distinct: ['guardianUserId'],
+    });
+    await Promise.all(
+      guardians.map((g) =>
+        this.communications.sendToUserId(
+          tenantSchema,
+          g.guardianUserId,
+          `New trip approved: "${trip.title}" to ${trip.destination} on ${trip.tripDate.toDateString()}. Cost: KES ${trip.costPerStudent}/student. Register on the parent portal.`,
+        ),
+      ),
+    );
+  }
 
   async propose(user: JwtUserPayload, dto: ProposeTripDto) {
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
-    return db.trip.create({
+    const trip = await db.trip.create({
       data: {
         title: dto.title,
         description: dto.description,
@@ -28,6 +68,11 @@ export class TripsService {
       },
       include: { proposedBy: { select: { id: true, fullName: true } } },
     });
+    // Returns null when no active WorkflowDefinition exists for 'TRIP_PROPOSAL' — this school hasn't
+    // configured an approval chain, so the trip just stays PROPOSED for direct TRANSPORT:MANAGE
+    // review, exactly as before this engine existed.
+    await this.workflowEngine.startInstance({ db, entityType: TRIP_PROPOSAL_ENTITY_TYPE, entityId: trip.id, user });
+    return trip;
   }
 
   /** Everyone can see APPROVED trips (that's the whole point — parents browse and register); a
@@ -41,55 +86,68 @@ export class TripsService {
       registrations: true,
     } as const;
 
-    if (perms.includes('TRANSPORT:MANAGE')) {
-      return db.trip.findMany({ include, orderBy: { createdAt: 'desc' } });
-    }
-    return db.trip.findMany({
-      where: { OR: [{ status: 'APPROVED' }, { proposedByUserId: user.sub }] },
-      include,
-      orderBy: { createdAt: 'desc' },
+    const trips = perms.includes('TRANSPORT:MANAGE')
+      ? await db.trip.findMany({ include, orderBy: { createdAt: 'desc' } })
+      : await db.trip.findMany({
+          where: { OR: [{ status: 'APPROVED' }, { proposedByUserId: user.sub }] },
+          include,
+          orderBy: { createdAt: 'desc' },
+        });
+    if (trips.length === 0) return trips;
+
+    // WorkflowInstance isn't a Prisma relation of Trip (the engine is entity-agnostic — see
+    // WorkflowEngineService) so it's fetched separately and attached in application code.
+    const instances = await db.workflowInstance.findMany({
+      where: { entityType: TRIP_PROPOSAL_ENTITY_TYPE, entityId: { in: trips.map((t) => t.id) } },
+      include: {
+        workflow: { include: { steps: { orderBy: { order: 'asc' } } } },
+        actions: { orderBy: { actedAt: 'asc' }, include: { actor: { select: { id: true, fullName: true } } } },
+      },
     });
+    const instanceByEntityId = new Map(instances.map((i) => [i.entityId, i]));
+    return trips.map((t) => ({ ...t, workflowInstance: instanceByEntityId.get(t.id) ?? null }));
   }
 
-  async approve(user: JwtUserPayload, tripId: string) {
+  private async setDecision(user: JwtUserPayload, tripId: string, action: 'APPROVE' | 'REJECT', comment?: string) {
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
     const trip = await db.trip.findUnique({ where: { id: tripId } });
     if (!trip) throw new NotFoundException('Trip not found');
-    if (trip.status !== 'PROPOSED') throw new BadRequestException('Only proposed trips can be approved');
 
-    const updated = await db.trip.update({
-      where: { id: tripId },
-      data: { status: 'APPROVED', approvedByUserId: user.sub },
+    const instance = await db.workflowInstance.findUnique({
+      where: { entityType_entityId: { entityType: TRIP_PROPOSAL_ENTITY_TYPE, entityId: tripId } },
     });
+    if (instance) {
+      // WorkflowEngineService.recordAction() does its own precise permission check (holder of the
+      // *current step's* permission code) and, on a terminal decision, calls the handler registered
+      // in onModuleInit() above — which is what actually updates this Trip row and, on approval,
+      // sends the guardian broadcast.
+      await this.workflowEngine.recordAction(db, instance.id, user, action, comment);
+      return db.trip.findUnique({ where: { id: tripId } });
+    }
 
-    // Broadcast to every primary guardian in the school — the trip is now open for registration.
-    const guardians = await db.guardianLink.findMany({
-      where: { isPrimaryContact: true },
-      distinct: ['guardianUserId'],
-    });
-    await Promise.all(
-      guardians.map((g) =>
-        this.communications.sendToUserId(
-          user.tenantSchema!,
-          g.guardianUserId,
-          `New trip approved: "${trip.title}" to ${trip.destination} on ${trip.tripDate.toDateString()}. Cost: KES ${trip.costPerStudent}/student. Register on the parent portal.`,
-        ),
-      ),
-    );
-
+    // Fallback path — no workflow configured for this tenant, behaves exactly as before this engine
+    // existed. The controller no longer gates these routes with @RequirePermission, so the check
+    // moves here (same "authorization moved into the service" pattern already used by HrService).
+    if (!(user.permissions ?? []).includes('TRANSPORT:MANAGE')) {
+      throw new ForbiddenException('No permission to review trip proposals');
+    }
+    if (trip.status !== 'PROPOSED') {
+      throw new BadRequestException(`Only proposed trips can be ${action === 'APPROVE' ? 'approved' : 'rejected'}`);
+    }
+    if (action === 'REJECT') {
+      return db.trip.update({ where: { id: tripId }, data: { status: 'REJECTED', rejectionReason: comment ?? null } });
+    }
+    const updated = await db.trip.update({ where: { id: tripId }, data: { status: 'APPROVED', approvedByUserId: user.sub } });
+    await this.notifyGuardiansOfApproval(db, user.tenantSchema!, updated);
     return updated;
   }
 
-  async reject(user: JwtUserPayload, tripId: string, dto: RejectTripDto) {
-    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
-    const trip = await db.trip.findUnique({ where: { id: tripId } });
-    if (!trip) throw new NotFoundException('Trip not found');
-    if (trip.status !== 'PROPOSED') throw new BadRequestException('Only proposed trips can be rejected');
+  approve(user: JwtUserPayload, tripId: string, comment?: string) {
+    return this.setDecision(user, tripId, 'APPROVE', comment);
+  }
 
-    return db.trip.update({
-      where: { id: tripId },
-      data: { status: 'REJECTED', rejectionReason: dto.reason ?? null },
-    });
+  reject(user: JwtUserPayload, tripId: string, dto: ReviewTripDto) {
+    return this.setDecision(user, tripId, 'REJECT', dto.comment);
   }
 
   private async assertGuardianOrStaff(user: JwtUserPayload, studentId: string) {

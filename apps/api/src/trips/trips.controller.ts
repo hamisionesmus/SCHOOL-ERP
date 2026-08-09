@@ -6,7 +6,7 @@ import { RequirePermission } from '../common/decorators/require-permission.decor
 import { CurrentUser, JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { TripsService } from './trips.service';
 import { ProposeTripDto } from './dto/propose-trip.dto';
-import { RejectTripDto } from './dto/reject-trip.dto';
+import { ReviewTripDto } from './dto/review-trip.dto';
 import { RegisterTripDto } from './dto/register-trip.dto';
 import { PayTripDto } from './dto/pay-trip.dto';
 
@@ -28,15 +28,17 @@ export class TripsController {
     return this.tripsService.propose(user, dto);
   }
 
+  // No @RequirePermission here — TripsService's approve/reject perform the correct check themselves,
+  // either "holds the current workflow step's permission" (when a WorkflowDefinition is active for
+  // 'TRIP_PROPOSAL') or "holds TRANSPORT:MANAGE" (the fallback, unconfigured-tenant path) — a flat
+  // guard can't express the former. Same pattern already used by HrController/AdmissionsController.
   @Patch(':id/approve')
-  @RequirePermission('TRANSPORT:MANAGE')
-  approve(@CurrentUser() user: JwtUserPayload, @Param('id') id: string) {
-    return this.tripsService.approve(user, id);
+  approve(@CurrentUser() user: JwtUserPayload, @Param('id') id: string, @Body() dto: ReviewTripDto) {
+    return this.tripsService.approve(user, id, dto.comment);
   }
 
   @Patch(':id/reject')
-  @RequirePermission('TRANSPORT:MANAGE')
-  reject(@CurrentUser() user: JwtUserPayload, @Param('id') id: string, @Body() dto: RejectTripDto) {
+  reject(@CurrentUser() user: JwtUserPayload, @Param('id') id: string, @Body() dto: ReviewTripDto) {
     return this.tripsService.reject(user, id, dto);
   }
 
