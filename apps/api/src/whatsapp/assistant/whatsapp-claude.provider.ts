@@ -13,6 +13,11 @@ const NOT_CONFIGURED_MESSAGE =
   "The AI assistant isn't set up yet — ask your school's Super Admin to add an Anthropic API key in Platform Settings. " +
   'In the meantime you can text:\n\nLEAVE <type> <start YYYY-MM-DD> <end YYYY-MM-DD> [reason]';
 
+const UNREGISTERED_FALLBACK_MESSAGE =
+  "Hi! I couldn't find an account linked to this WhatsApp number, so I can't pull up any personal information yet. " +
+  "Ask your school administrator to add this number to your profile — once that's done, I can help with things like your fee balance, " +
+  "attendance, exam results, homework, or leave requests. What are you trying to do? I can point you in the right direction.";
+
 const TOOLS = [
   {
     name: 'get_fee_balance',
@@ -154,6 +159,48 @@ export class WhatsAppClaudeProvider {
     }
 
     return "That's taking a bit too long to figure out — please try rephrasing your question, or use the web portal.";
+  }
+
+  /** For a sender whose phone number doesn't match any User in any tenant — no identity, so no
+   * tools are bound at all (nothing to scope them to, and binding tools we'd then have to refuse to
+   * call would just confuse the model). Single-turn, no tool-use loop needed. Keeps the interaction
+   * warm and conversational instead of a flat rejection, while never claiming access to anyone's
+   * actual data. */
+  async answerUnregistered(question: string): Promise<string> {
+    const settings = await this.platformSettings.get();
+    const apiKey = settings.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+    if (!settings.aiAssistantEnabled || !apiKey) return UNREGISTERED_FALLBACK_MESSAGE;
+
+    const model = settings.anthropicModel || DEFAULT_MODEL;
+    const systemPrompt =
+      "You are a friendly WhatsApp assistant for a school-management platform. The person messaging you is not yet linked to any " +
+      'school account, so you have no access to any personal data (fees, attendance, exam results, homework, leave) and must never ' +
+      "claim otherwise or make anything up. Warmly greet them, ask what they're trying to do, and explain that a school administrator " +
+      'needs to add this WhatsApp number to their profile before you can help with anything personal — once that\'s done, you can help ' +
+      'with fee balances, attendance, exam results, homework, and leave requests. You may answer general, non-personal questions about ' +
+      'how the system works. Keep replies short and warm (a few sentences, plain text, no markdown).';
+
+    try {
+      const res = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': ANTHROPIC_VERSION },
+        body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system: systemPrompt, messages: [{ role: 'user', content: question }] }),
+      });
+      const response = (await res.json()) as AnthropicResponse;
+      if (!res.ok) {
+        this.logger.error(`Anthropic API error (unregistered): ${JSON.stringify(response)}`);
+        return UNREGISTERED_FALLBACK_MESSAGE;
+      }
+      const text = response.content
+        .filter((b) => b.type === 'text' && b.text)
+        .map((b) => b.text)
+        .join('\n')
+        .trim();
+      return text || UNREGISTERED_FALLBACK_MESSAGE;
+    } catch (err) {
+      this.logger.error(`Anthropic API call failed (unregistered): ${err instanceof Error ? err.message : String(err)}`);
+      return UNREGISTERED_FALLBACK_MESSAGE;
+    }
   }
 
   private async runTool(user: JwtUserPayload, name: ToolName, args: Record<string, string>): Promise<unknown> {

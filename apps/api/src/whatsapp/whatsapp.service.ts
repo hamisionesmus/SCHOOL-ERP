@@ -171,7 +171,15 @@ export class WhatsAppService implements OnModuleInit {
       .catch((err) => this.logger.error(`Failed to log inbound WhatsApp message: ${err instanceof Error ? err.message : String(err)}`));
 
     if (!resolved || !identity) {
-      await this.sendText(waId, "We couldn't find an account registered with this WhatsApp number. Please ask your school administrator to add your phone number to your profile.");
+      // No tools bound for an unidentified sender (nothing to scope them to) — still a real,
+      // conversational reply via Claude rather than a flat rejection, see answerUnregistered().
+      try {
+        const reply = await this.assistant.answerUnregistered(text);
+        await this.sendText(waId, reply);
+      } catch (err) {
+        this.logger.error(`AI assistant failed for unregistered sender: ${err instanceof Error ? err.message : String(err)}`);
+        await this.sendText(waId, "We couldn't find an account registered with this WhatsApp number. Please ask your school administrator to add your phone number to your profile.");
+      }
       return;
     }
 
