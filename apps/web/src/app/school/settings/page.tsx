@@ -700,12 +700,29 @@ function WorkflowsTab() {
     queryKey: ['roles'],
     queryFn: () => apiFetch<RoleWithPermissions[]>('/roles'),
   });
-  const { data: definition, isLoading, isError, error } = useQuery({
+  const { data: definition, isLoading, isError, error, fetchStatus, status } = useQuery({
     queryKey: ['workflow-definition', 'LEAVE_REQUEST'],
     queryFn: () => apiFetch<WorkflowDefinitionResponse | null>('/workflows/definitions/LEAVE_REQUEST'),
   });
   const [steps, setSteps] = useState<WorkflowStepRow[] | null>(null);
   const hasSynced = useRef(false);
+
+  // TEMPORARY diagnostic: tracking down a "stuck Loading forever" report that persists in
+  // incognito, so it isn't cache/session related. Remove once root cause is found.
+  useEffect(() => {
+    console.log('[WorkflowsTab] MOUNTED');
+    return () => console.log('[WorkflowsTab] UNMOUNTED');
+  }, []);
+  console.log('[WorkflowsTab] render', {
+    isLoading,
+    isError,
+    status,
+    fetchStatus,
+    definition,
+    steps,
+    hasSynced: hasSynced.current,
+    t: new Date().toISOString(),
+  });
 
   useEffect(() => {
     // isLoading must be a dependency here, not just read inside the effect: when the query settles
