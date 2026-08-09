@@ -31,6 +31,7 @@ import {
   ChevronsRight,
   LifeBuoy,
   Search,
+  KeyRound,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { SessionUser } from '@/lib/auth';
@@ -110,7 +111,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'Support',
-    items: [{ href: '/school/tickets', label: 'Tickets', icon: LifeBuoy }],
+    items: [
+      { href: '/school/tickets', label: 'Tickets', icon: LifeBuoy },
+      { href: '/school/profile', label: 'My Profile', icon: KeyRound },
+    ],
   },
 ];
 

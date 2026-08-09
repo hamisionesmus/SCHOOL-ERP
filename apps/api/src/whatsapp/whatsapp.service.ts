@@ -6,6 +6,7 @@ import { HrService } from '../hr/hr.service';
 import { WHATSAPP_PROVIDER, WhatsAppProvider } from './whatsapp-provider.interface';
 import { WhatsAppBaileysService } from './baileys/whatsapp-baileys.service';
 import { WhatsAppClaudeProvider } from './assistant/whatsapp-claude.provider';
+import { WhatsAppPinService } from './pin/whatsapp-pin.service';
 
 interface ResolvedSender {
   tenantId: string;
@@ -47,6 +48,7 @@ export class WhatsAppService implements OnModuleInit {
     private readonly hrService: HrService,
     private readonly baileys: WhatsAppBaileysService,
     private readonly assistant: WhatsAppClaudeProvider,
+    private readonly pinService: WhatsAppPinService,
   ) {}
 
   /** Inbound messages arriving over the QR-linked device (Baileys) reach this exact same
@@ -150,6 +152,11 @@ export class WhatsAppService implements OnModuleInit {
 
     const resolved = await this.resolveUserByPhone(normalized);
 
+    // Check whether this message is expected to be a PIN attempt BEFORE logging it, so a raw PIN
+    // digit string never ends up sitting in the Super-Admin-visible message log.
+    const identity = resolved ? { tenantSchema: resolved.tenantSchema, userId: resolved.user.id } : null;
+    const awaitingPin = identity ? await this.pinService.isAwaitingPin(identity) : false;
+
     await this.platformPrisma.platformWhatsAppMessage
       .create({
         data: {
@@ -157,14 +164,21 @@ export class WhatsAppService implements OnModuleInit {
           waId: normalized,
           tenantId: resolved?.tenantId,
           resolvedUserId: resolved?.user.id,
-          body: text,
+          body: awaitingPin ? '[PIN attempt]' : text,
           messageId,
         },
       })
       .catch((err) => this.logger.error(`Failed to log inbound WhatsApp message: ${err instanceof Error ? err.message : String(err)}`));
 
-    if (!resolved) {
+    if (!resolved || !identity) {
       await this.sendText(waId, "We couldn't find an account registered with this WhatsApp number. Please ask your school administrator to add your phone number to your profile.");
+      return;
+    }
+
+    const replyContext = { tenantId: resolved.tenantId, resolvedUserId: resolved.user.id };
+    if (awaitingPin) {
+      const result = await this.pinService.verifyAttempt(identity, text);
+      await this.sendText(waId, result.message, replyContext);
       return;
     }
 
@@ -175,6 +189,27 @@ export class WhatsAppService implements OnModuleInit {
     const parts = text.trim().split(/\s+/);
     const command = parts[0]?.toUpperCase();
     const replyContext = { tenantId: resolved.tenantId, resolvedUserId: resolved.user.id };
+    const identity = { tenantSchema: resolved.tenantSchema, userId: resolved.user.id };
+
+    const gate = await this.pinService.checkGate(identity);
+    if (gate.status === 'LOCKED') {
+      const minutes = gate.lockedUntil ? Math.max(1, Math.ceil((gate.lockedUntil.getTime() - Date.now()) / 60000)) : undefined;
+      await this.sendText(waId, `Too many incorrect PIN attempts. Please try again${minutes ? ` in about ${minutes} minute(s)` : ' shortly'}.`, replyContext);
+      return;
+    }
+    if (gate.status === 'NO_PIN_SET') {
+      await this.sendText(
+        waId,
+        "For your security, set up a WhatsApp PIN first — log into the web portal, open My Profile, and set one there. Come back once it's set and I'll help.",
+        replyContext,
+      );
+      return;
+    }
+    if (gate.status === 'NEEDS_CHALLENGE') {
+      await this.pinService.startChallenge(identity);
+      await this.sendText(waId, 'For your security, please reply with your WhatsApp PIN to continue.', replyContext);
+      return;
+    }
 
     if (command === 'LEAVE') {
       await this.handleLeaveCommand(waId, parts.slice(1), resolved);

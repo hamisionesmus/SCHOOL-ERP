@@ -147,6 +147,19 @@ model User {
   fullName         String
   twoFactorEnabled Boolean   @default(false)
   twoFactorSecret  String?
+  // Extra gate the WhatsApp bot (Baileys/Cloud API, same either way) requires before sharing
+  // anything via WhatsAppAssistantToolsService or accepting a LEAVE submission — separate from the
+  // login password so losing an unlocked phone doesn't also expose fee/attendance/exam data. Set via
+  // the self-service ProfileController (POST /profile/whatsapp-pin, current-password-gated). Null =
+  // not set up, meaning the bot won't answer anything for this user until they set one.
+  whatsappPinHash           String?
+  whatsappPinVerifiedAt     DateTime?
+  // Stamped when the bot has just asked "please reply with your PIN" — the next inbound message
+  // within a short window is treated as a PIN attempt (and never logged in plaintext) rather than
+  // routed as a normal command/question. See WhatsAppPinService.
+  whatsappPinChallengeAt    DateTime?
+  whatsappPinFailedAttempts Int       @default(0)
+  whatsappPinLockedUntil    DateTime?
   isActive         Boolean   @default(true)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

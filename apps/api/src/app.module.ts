@@ -67,6 +67,7 @@ import { RecruitmentModule } from './platform/recruitment/recruitment.module';
 import { StaffTasksModule } from './platform/staff-tasks/staff-tasks.module';
 import { TraineePortalModule } from './platform/trainee-portal/trainee-portal.module';
 import { ExternalContactsModule } from './platform/external-contacts/external-contacts.module';
+import { ProfileModule } from './profile/profile.module';
 import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
 
 @Module({
@@ -146,6 +147,7 @@ import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
     StaffTasksModule,
     TraineePortalModule,
     ExternalContactsModule,
+    ProfileModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -556,6 +556,12 @@ model PlatformSettings {
   aiAssistantEnabled Boolean @default(true)
   anthropicApiKey    String?
   anthropicModel     String?
+  // Tunables for the WhatsApp PIN gate (see User.whatsappPinHash in the tenant schema /
+  // WhatsAppPinService) — platform-wide, not per-school, same reasoning as the reminder-window
+  // fields above: one operational policy, not something each school configures separately.
+  whatsappPinSessionHours   Int @default(24)
+  whatsappPinMaxAttempts    Int @default(5)
+  whatsappPinLockoutMinutes Int @default(30)
   // Platform-wide branding shown on the public login page only — never per-school (each school's
   // own branding is on Tenant.logoUrl/primaryColor etc., untouched by this).
   systemName          String?

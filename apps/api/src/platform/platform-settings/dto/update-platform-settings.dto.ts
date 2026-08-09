@@ -148,6 +148,25 @@ export class UpdatePlatformSettingsDto {
   @IsString()
   anthropicModel?: string;
 
+  // WhatsApp PIN gate tunables — see PlatformSettings' doc comment + WhatsAppPinService.
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  whatsappPinSessionHours?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  whatsappPinMaxAttempts?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  whatsappPinLockoutMinutes?: number;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()

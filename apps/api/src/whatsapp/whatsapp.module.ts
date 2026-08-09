@@ -15,6 +15,7 @@ import { WhatsAppBaileysService } from './baileys/whatsapp-baileys.service';
 import { WhatsAppBaileysController } from './baileys/whatsapp-baileys.controller';
 import { WhatsAppAssistantToolsService } from './assistant/whatsapp-assistant-tools.service';
 import { WhatsAppClaudeProvider } from './assistant/whatsapp-claude.provider';
+import { WhatsAppPinService } from './pin/whatsapp-pin.service';
 
 @Module({
   imports: [PlatformSettingsModule, HrModule, FinanceModule, AttendanceModule, ExamsModule, HomeworkModule],
@@ -26,6 +27,7 @@ import { WhatsAppClaudeProvider } from './assistant/whatsapp-claude.provider';
     WhatsAppRouterProvider,
     WhatsAppAssistantToolsService,
     WhatsAppClaudeProvider,
+    WhatsAppPinService,
     { provide: WHATSAPP_PROVIDER, useExisting: WhatsAppRouterProvider },
   ],
   exports: [WhatsAppService],

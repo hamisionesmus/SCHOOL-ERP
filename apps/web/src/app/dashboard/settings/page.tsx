@@ -58,6 +58,9 @@ interface PlatformSettings {
   aiAssistantEnabled: boolean;
   anthropicApiKey: SecretField;
   anthropicModel: string | null;
+  whatsappPinSessionHours: number;
+  whatsappPinMaxAttempts: number;
+  whatsappPinLockoutMinutes: number;
   whatsappEnabled: boolean;
   whatsappAccessToken: SecretField;
   whatsappPhoneNumberId: string | null;
@@ -617,6 +620,9 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
     whatsappProvider: 'BAILEYS',
     aiAssistantEnabled: true,
     anthropicModel: '',
+    whatsappPinSessionHours: 24,
+    whatsappPinMaxAttempts: 5,
+    whatsappPinLockoutMinutes: 30,
     whatsappEnabled: true,
     whatsappPhoneNumberId: '',
     whatsappBusinessAccountId: '',
@@ -651,6 +657,9 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
         whatsappProvider: data.whatsappProvider || 'BAILEYS',
         aiAssistantEnabled: data.aiAssistantEnabled,
         anthropicModel: data.anthropicModel ?? '',
+        whatsappPinSessionHours: data.whatsappPinSessionHours ?? 24,
+        whatsappPinMaxAttempts: data.whatsappPinMaxAttempts ?? 5,
+        whatsappPinLockoutMinutes: data.whatsappPinLockoutMinutes ?? 30,
         whatsappEnabled: data.whatsappEnabled,
         whatsappPhoneNumberId: data.whatsappPhoneNumberId ?? '',
         whatsappBusinessAccountId: data.whatsappBusinessAccountId ?? '',
@@ -670,7 +679,7 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
 
   const requestSave = useMutation({
     mutationFn: () => {
-      const payload: Record<string, string | boolean> = { ...form };
+      const payload: Record<string, string | boolean | number> = { ...form };
       if (!payload.mpesaEnv) delete payload.mpesaEnv;
       for (const [key, value] of Object.entries(secrets)) {
         if (value) payload[key] = value;
@@ -859,6 +868,41 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
                     value={form.anthropicModel}
                     onChange={(e) => setForm((f) => ({ ...f, anthropicModel: e.target.value }))}
                   />
+                </div>
+              </div>
+              <div className="mt-1 border-t border-slate-100 pt-3">
+                <p className="text-xs font-medium text-slate-600">WhatsApp PIN gate</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  A user sets a PIN via My Profile on the web app; the bot won&apos;t share anything sensitive until they set one and verify it.
+                </p>
+                <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-slate-700">Session length (hours)</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={form.whatsappPinSessionHours}
+                      onChange={(e) => setForm((f) => ({ ...f, whatsappPinSessionHours: Number(e.target.value) }))}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-slate-700">Max attempts</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={form.whatsappPinMaxAttempts}
+                      onChange={(e) => setForm((f) => ({ ...f, whatsappPinMaxAttempts: Number(e.target.value) }))}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-slate-700">Lockout (minutes)</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={form.whatsappPinLockoutMinutes}
+                      onChange={(e) => setForm((f) => ({ ...f, whatsappPinLockoutMinutes: Number(e.target.value) }))}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
