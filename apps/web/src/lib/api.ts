@@ -11,7 +11,24 @@ export class ApiError extends Error {
   }
 }
 
-async function refreshAccessToken(): Promise<boolean> {
+// Refresh tokens are single-use and rotated server-side (the old one is revoked the instant it's
+// redeemed — see AuthService.refresh). A page that fires several queries at once (e.g. Settings:
+// /settings, /roles, /workflows/definitions/..., /notifications) can get several 401s in the same
+// tick once the access token expires; without de-duping, each would independently POST the same
+// stored refresh token, only the first would succeed, and the others would 401 on an already-revoked
+// token and call clearSession() -- wiping out the valid tokens the winner just stored a moment
+// earlier. Sharing one in-flight promise means concurrent 401s all await the same real refresh.
+let refreshPromise: Promise<boolean> | null = null;
+
+function refreshAccessToken(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = doRefresh().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
+async function doRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
   const res = await fetch(`${API_URL}/auth/refresh`, {
