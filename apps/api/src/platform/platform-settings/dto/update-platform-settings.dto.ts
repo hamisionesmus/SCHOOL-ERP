@@ -124,7 +124,14 @@ export class UpdatePlatformSettingsDto {
   @IsString()
   advantaSenderId?: string;
 
-  // WhatsApp Business Cloud API (Meta) — see PlatformSettings' own doc comment in schema.prisma.
+  // WhatsApp — see PlatformSettings' own doc comment in schema.prisma. whatsappProvider picks which
+  // connection method WhatsAppRouterProvider actually sends through; the rest of these fields are
+  // specific to the Meta Cloud API path only.
+  @ApiPropertyOptional({ enum: ['BAILEYS', 'CLOUD_API'] })
+  @IsOptional()
+  @IsString()
+  whatsappProvider?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()

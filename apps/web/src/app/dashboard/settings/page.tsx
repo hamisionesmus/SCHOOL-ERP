@@ -54,6 +54,7 @@ interface PlatformSettings {
   advantaApiKey: SecretField;
   advantaPartnerId: string | null;
   advantaSenderId: string | null;
+  whatsappProvider: string;
   whatsappEnabled: boolean;
   whatsappAccessToken: SecretField;
   whatsappPhoneNumberId: string | null;
@@ -610,6 +611,7 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
     resendFromAddress: '',
     advantaPartnerId: '',
     advantaSenderId: '',
+    whatsappProvider: 'BAILEYS',
     whatsappEnabled: true,
     whatsappPhoneNumberId: '',
     whatsappBusinessAccountId: '',
@@ -640,6 +642,7 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
         resendFromAddress: data.resendFromAddress ?? '',
         advantaPartnerId: data.advantaPartnerId ?? '',
         advantaSenderId: data.advantaSenderId ?? '',
+        whatsappProvider: data.whatsappProvider || 'BAILEYS',
         whatsappEnabled: data.whatsappEnabled,
         whatsappPhoneNumberId: data.whatsappPhoneNumberId ?? '',
         whatsappBusinessAccountId: data.whatsappBusinessAccountId ?? '',
@@ -787,61 +790,91 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">WhatsApp Business Cloud API</CardTitle>
+          <CardTitle className="text-base">WhatsApp</CardTitle>
           <CardDescription>
             One shared business number services every school — a teacher texting a leave request gets
             routed to that same LeaveRequest workflow, regardless of whether they used the web app or
-            WhatsApp. Configure this in the Meta for Developers dashboard against the webhook URL and
-            verify token below.
+            WhatsApp. Two ways to connect a real number, pick one.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <Toggle
-            label="WhatsApp enabled"
-            description="Turn off to stop sending/receiving WhatsApp messages platform-wide without clearing credentials."
-            checked={!!form.whatsappEnabled}
-            onChange={(v) => setForm((f) => ({ ...f, whatsappEnabled: v }))}
-          />
+        <CardContent className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <SecretInput
-              label="Access token"
-              field={data?.whatsappAccessToken}
-              value={secrets.whatsappAccessToken}
-              onChange={(v) => setSecrets((s) => ({ ...s, whatsappAccessToken: v }))}
-            />
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-slate-700">Phone number ID</label>
-              <Input
-                value={form.whatsappPhoneNumberId}
-                onChange={(e) => setForm((f) => ({ ...f, whatsappPhoneNumberId: e.target.value }))}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-slate-700">WhatsApp Business Account ID</label>
-              <Input
-                value={form.whatsappBusinessAccountId}
-                onChange={(e) => setForm((f) => ({ ...f, whatsappBusinessAccountId: e.target.value }))}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-slate-700">Webhook verify token</label>
-              <Input
-                placeholder="Any string you choose — paste the same value into Meta's dashboard"
-                value={form.whatsappVerifyToken}
-                onChange={(e) => setForm((f) => ({ ...f, whatsappVerifyToken: e.target.value }))}
-              />
-            </div>
-            <SecretInput
-              label="App secret"
-              field={data?.whatsappAppSecret}
-              value={secrets.whatsappAppSecret}
-              onChange={(v) => setSecrets((s) => ({ ...s, whatsappAppSecret: v }))}
-            />
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, whatsappProvider: 'BAILEYS' }))}
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors',
+                form.whatsappProvider === 'BAILEYS' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:border-slate-300',
+              )}
+            >
+              <p className="text-sm font-semibold text-slate-800">QR Code — instant setup</p>
+              <p className="mt-0.5 text-xs text-slate-500">Scan with your phone&apos;s WhatsApp, like WhatsApp Web. No Meta approval needed. Unofficial — small risk of the number being flagged by Meta for automated use.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, whatsappProvider: 'CLOUD_API' }))}
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors',
+                form.whatsappProvider === 'CLOUD_API' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:border-slate-300',
+              )}
+            >
+              <p className="text-sm font-semibold text-slate-800">Meta Cloud API — official</p>
+              <p className="mt-0.5 text-xs text-slate-500">Never gets banned, backed by Meta directly. Needs a Meta Business Account and app setup below, can take a few days to verify.</p>
+            </button>
           </div>
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-            <p className="text-xs font-medium text-slate-700">Webhook URL — paste into Meta&apos;s App Dashboard</p>
-            <p className="mt-0.5 select-all font-mono text-xs text-slate-600">{API_ORIGIN}/public/whatsapp/webhook</p>
-          </div>
+
+          {form.whatsappProvider === 'BAILEYS' ? (
+            <WhatsAppQrConnect />
+          ) : (
+            <div className="flex flex-col gap-3 border-t border-slate-200 pt-3">
+              <Toggle
+                label="WhatsApp enabled"
+                description="Turn off to stop sending/receiving via the Cloud API without clearing credentials."
+                checked={!!form.whatsappEnabled}
+                onChange={(v) => setForm((f) => ({ ...f, whatsappEnabled: v }))}
+              />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <SecretInput
+                  label="Access token"
+                  field={data?.whatsappAccessToken}
+                  value={secrets.whatsappAccessToken}
+                  onChange={(v) => setSecrets((s) => ({ ...s, whatsappAccessToken: v }))}
+                />
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Phone number ID</label>
+                  <Input
+                    value={form.whatsappPhoneNumberId}
+                    onChange={(e) => setForm((f) => ({ ...f, whatsappPhoneNumberId: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">WhatsApp Business Account ID</label>
+                  <Input
+                    value={form.whatsappBusinessAccountId}
+                    onChange={(e) => setForm((f) => ({ ...f, whatsappBusinessAccountId: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Webhook verify token</label>
+                  <Input
+                    placeholder="Any string you choose — paste the same value into Meta's dashboard"
+                    value={form.whatsappVerifyToken}
+                    onChange={(e) => setForm((f) => ({ ...f, whatsappVerifyToken: e.target.value }))}
+                  />
+                </div>
+                <SecretInput
+                  label="App secret"
+                  field={data?.whatsappAppSecret}
+                  value={secrets.whatsappAppSecret}
+                  onChange={(v) => setSecrets((s) => ({ ...s, whatsappAppSecret: v }))}
+                />
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs font-medium text-slate-700">Webhook URL — paste into Meta&apos;s App Dashboard</p>
+                <p className="mt-0.5 select-all font-mono text-xs text-slate-600">{API_ORIGIN}/public/whatsapp/webhook</p>
+              </div>
+            </div>
+          )}
           <WhatsAppMessageLog />
         </CardContent>
       </Card>
@@ -850,6 +883,100 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
         <Button onClick={() => requestSave.mutate()} disabled={requestSave.isPending}>
           {requestSave.isPending ? 'Sending code...' : 'Save API & payment config'}
         </Button>
+      </div>
+    </div>
+  );
+}
+
+interface BaileysStatus {
+  status: 'DISCONNECTED' | 'CONNECTING' | 'QR_PENDING' | 'CONNECTED' | 'ERROR';
+  qrDataUrl: string | null;
+  connectedPhone: string | null;
+  lastConnectedAt: string | null;
+  lastError: string | null;
+}
+
+const STATUS_LABEL: Record<BaileysStatus['status'], string> = {
+  DISCONNECTED: 'Not connected',
+  CONNECTING: 'Connecting…',
+  QR_PENDING: 'Scan this QR code',
+  CONNECTED: 'Connected',
+  ERROR: 'Connection error',
+};
+
+const STATUS_DOT: Record<BaileysStatus['status'], string> = {
+  DISCONNECTED: 'bg-slate-300',
+  CONNECTING: 'bg-amber-400 animate-pulse',
+  QR_PENDING: 'bg-amber-400 animate-pulse',
+  CONNECTED: 'bg-emerald-500',
+  ERROR: 'bg-rose-500',
+};
+
+/** Live QR-scan pairing widget — polls fast while a connection attempt is in flight (the QR image
+ * itself rotates roughly every 20-60s until scanned, so a live-updating image matters), slow once
+ * connected just to notice if the phone unlinks itself. */
+function WhatsAppQrConnect() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['whatsapp-baileys-status'],
+    queryFn: () => apiFetch<BaileysStatus>('/platform/whatsapp/baileys/status'),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'CONNECTED' || status === 'DISCONNECTED' ? 20000 : 2500;
+    },
+  });
+
+  const connect = useMutation({
+    mutationFn: () => apiFetch<BaileysStatus>('/platform/whatsapp/baileys/connect', { method: 'POST' }),
+    onSuccess: (result) => queryClient.setQueryData(['whatsapp-baileys-status'], result),
+    onError: (err) => notifyError(err, 'Failed to start connection'),
+  });
+
+  const disconnect = useMutation({
+    mutationFn: () => apiFetch<BaileysStatus>('/platform/whatsapp/baileys/logout', { method: 'POST' }),
+    onSuccess: (result) => {
+      queryClient.setQueryData(['whatsapp-baileys-status'], result);
+      notifySuccess('Disconnected from WhatsApp');
+    },
+    onError: (err) => notifyError(err, 'Failed to disconnect'),
+  });
+
+  const status = data?.status ?? 'DISCONNECTED';
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-slate-200 pt-3">
+      <div className="flex items-center gap-2">
+        <span className={cn('h-2.5 w-2.5 rounded-full', STATUS_DOT[status])} />
+        <p className="text-sm font-medium text-slate-800">
+          {STATUS_LABEL[status]}
+          {status === 'CONNECTED' && data?.connectedPhone ? ` as +${data.connectedPhone}` : ''}
+        </p>
+      </div>
+
+      {status === 'ERROR' && data?.lastError && <p className="text-xs text-rose-600">{data.lastError}</p>}
+      {status === 'DISCONNECTED' && data?.lastError && <p className="text-xs text-slate-500">{data.lastError}</p>}
+
+      {status === 'QR_PENDING' && data?.qrDataUrl && (
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-slate-200 bg-white p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={data.qrDataUrl} alt="WhatsApp QR code" className="h-56 w-56" />
+          <p className="text-xs text-slate-500">Open WhatsApp on your phone → Settings → Linked Devices → Link a Device</p>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        {status === 'CONNECTED' ? (
+          <Button variant="outline" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>
+            {disconnect.isPending ? 'Disconnecting...' : 'Disconnect'}
+          </Button>
+        ) : (
+          <Button
+            onClick={() => connect.mutate()}
+            disabled={connect.isPending || isLoading || status === 'CONNECTING' || status === 'QR_PENDING'}
+          >
+            {connect.isPending ? 'Starting...' : status === 'QR_PENDING' || status === 'CONNECTING' ? 'Waiting for scan...' : 'Connect'}
+          </Button>
+        )}
       </div>
     </div>
   );

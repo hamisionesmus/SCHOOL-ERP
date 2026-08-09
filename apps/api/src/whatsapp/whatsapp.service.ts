@@ -1,9 +1,10 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PlatformPrismaService } from '../common/prisma/platform-prisma.service';
 import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { HrService } from '../hr/hr.service';
 import { WHATSAPP_PROVIDER, WhatsAppProvider } from './whatsapp-provider.interface';
+import { WhatsAppBaileysService } from './baileys/whatsapp-baileys.service';
 
 interface ResolvedSender {
   tenantId: string;
@@ -35,7 +36,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * layer is a distinct, larger future phase, not attempted here.
  */
 @Injectable()
-export class WhatsAppService {
+export class WhatsAppService implements OnModuleInit {
   private readonly logger = new Logger('WhatsApp');
 
   constructor(
@@ -43,7 +44,22 @@ export class WhatsAppService {
     private readonly tenantPrisma: TenantPrismaService,
     @Inject(WHATSAPP_PROVIDER) private readonly provider: WhatsAppProvider,
     private readonly hrService: HrService,
+    private readonly baileys: WhatsAppBaileysService,
   ) {}
+
+  /** Inbound messages arriving over the QR-linked device (Baileys) reach this exact same
+   * handleInboundMessage() the Meta Cloud API webhook already calls — one shared command router
+   * regardless of which connection method is actually active. Subscribed here rather than the
+   * Baileys service calling this directly, to avoid a circular constructor-injection dependency
+   * (WhatsAppBaileysService is itself a candidate for the WHATSAPP_PROVIDER token this class also
+   * depends on). */
+  onModuleInit() {
+    this.baileys.events.on('message', ({ waId, text, messageId }: { waId: string; text: string; messageId: string }) => {
+      this.handleInboundMessage(waId, text, messageId).catch((err) =>
+        this.logger.error(`Failed to handle inbound Baileys message: ${err instanceof Error ? err.message : String(err)}`),
+      );
+    });
+  }
 
   /** Super-Admin-facing message log — most recent first, same `take: 100` convention as
    * CommunicationsService.listMessages(). Includes the resolved school's name where known, since a

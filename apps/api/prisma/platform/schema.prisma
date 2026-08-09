@@ -234,6 +234,32 @@ model PlatformWhatsAppMessage {
   @@index([createdAt])
 }
 
+// Baileys' AuthenticationState is a `creds` object plus a large, dynamically-growing set of signal
+// protocol keys (pre-keys, sessions, sender keys, app-state-sync keys) — this generic keyId→data
+// store adapts Baileys' own reference filesystem implementation (useMultiFileAuthState) onto
+// Postgres instead, so the linked-device session survives container rebuilds/redeploys without
+// needing a mounted volume. See whatsapp-baileys-auth-state.ts.
+model PlatformWhatsAppAuthKey {
+  keyId     String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+// Singleton row (fixed id) tracking the one shared Baileys "linked device" connection's live state —
+// there is exactly one platform WhatsApp business number, not one per tenant, same as
+// PlatformWhatsAppMessage's design. qrDataUrl is ephemeral (Baileys rotates it every ~20-60s until
+// scanned) and only meaningful while status is QR_PENDING.
+model PlatformWhatsAppSession {
+  id                 String    @id @default("default")
+  status             String    @default("DISCONNECTED")
+  qrDataUrl          String?
+  connectedPhone     String?
+  lastConnectedAt    DateTime?
+  lastDisconnectedAt DateTime?
+  lastError          String?
+  updatedAt          DateTime  @updatedAt
+}
+
 // Global email → school lookup, kept in sync whenever a tenant-side User is created (see
 // UserDirectoryService). Lets login resolve which school an email belongs to without the user
 // having to type a school slug — see AuthService.login(). Enforces email uniqueness across the
@@ -512,6 +538,10 @@ model PlatformSettings {
   // the value Meta's webhook-setup handshake must echo back (not a secret in the same sense as the
   // others, but still DB-backed for the same OTP-gated-change reasoning). whatsappAppSecret signs the
   // X-Hub-Signature-256 header Meta sends on every webhook call, used to verify the request is real.
+  // 'BAILEYS' (default — QR-scan a real WhatsApp number, no Meta approval needed, see
+  // WhatsAppBaileysService) or 'CLOUD_API' (Meta's official Business Cloud API, above). Read at
+  // send-time by WhatsAppRouterProvider — switching this doesn't require a redeploy.
+  whatsappProvider          String  @default("BAILEYS")
   whatsappEnabled           Boolean @default(true)
   whatsappAccessToken       String?
   whatsappPhoneNumberId     String?
