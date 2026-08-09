@@ -9,5 +9,6 @@ import { WorkflowsModule } from '../workflows/workflows.module';
   imports: [WorkflowsModule],
   controllers: [HrController, HrPayslipsController, HrWorkLogsController],
   providers: [HrService],
+  exports: [HrService],
 })
 export class HrModule {}

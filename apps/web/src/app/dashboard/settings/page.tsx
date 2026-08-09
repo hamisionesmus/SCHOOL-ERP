@@ -54,6 +54,12 @@ interface PlatformSettings {
   advantaApiKey: SecretField;
   advantaPartnerId: string | null;
   advantaSenderId: string | null;
+  whatsappEnabled: boolean;
+  whatsappAccessToken: SecretField;
+  whatsappPhoneNumberId: string | null;
+  whatsappBusinessAccountId: string | null;
+  whatsappVerifyToken: string | null;
+  whatsappAppSecret: SecretField;
   systemName: string | null;
   loginTagline: string | null;
   loginSubtitle: string | null;
@@ -604,12 +610,18 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
     resendFromAddress: '',
     advantaPartnerId: '',
     advantaSenderId: '',
+    whatsappEnabled: true,
+    whatsappPhoneNumberId: '',
+    whatsappBusinessAccountId: '',
+    whatsappVerifyToken: '',
   });
   const [secrets, setSecrets] = useState({
     mpesaConsumerSecret: '',
     mpesaPasskey: '',
     resendApiKey: '',
     advantaApiKey: '',
+    whatsappAccessToken: '',
+    whatsappAppSecret: '',
   });
   const hasSynced = useRef(false);
   // Secrets are deliberately excluded from draft persistence — they never come from the server
@@ -628,10 +640,14 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
         resendFromAddress: data.resendFromAddress ?? '',
         advantaPartnerId: data.advantaPartnerId ?? '',
         advantaSenderId: data.advantaSenderId ?? '',
+        whatsappEnabled: data.whatsappEnabled,
+        whatsappPhoneNumberId: data.whatsappPhoneNumberId ?? '',
+        whatsappBusinessAccountId: data.whatsappBusinessAccountId ?? '',
+        whatsappVerifyToken: data.whatsappVerifyToken ?? '',
       };
       const draft = loadDraft();
       setForm(draft ? { ...fromServer, ...draft } : fromServer);
-      setSecrets({ mpesaConsumerSecret: '', mpesaPasskey: '', resendApiKey: '', advantaApiKey: '' });
+      setSecrets({ mpesaConsumerSecret: '', mpesaPasskey: '', resendApiKey: '', advantaApiKey: '', whatsappAccessToken: '', whatsappAppSecret: '' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
@@ -643,7 +659,7 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
 
   const requestSave = useMutation({
     mutationFn: () => {
-      const payload: Record<string, string> = { ...form };
+      const payload: Record<string, string | boolean> = { ...form };
       if (!payload.mpesaEnv) delete payload.mpesaEnv;
       for (const [key, value] of Object.entries(secrets)) {
         if (value) payload[key] = value;
@@ -769,11 +785,121 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">WhatsApp Business Cloud API</CardTitle>
+          <CardDescription>
+            One shared business number services every school — a teacher texting a leave request gets
+            routed to that same LeaveRequest workflow, regardless of whether they used the web app or
+            WhatsApp. Configure this in the Meta for Developers dashboard against the webhook URL and
+            verify token below.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <Toggle
+            label="WhatsApp enabled"
+            description="Turn off to stop sending/receiving WhatsApp messages platform-wide without clearing credentials."
+            checked={!!form.whatsappEnabled}
+            onChange={(v) => setForm((f) => ({ ...f, whatsappEnabled: v }))}
+          />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <SecretInput
+              label="Access token"
+              field={data?.whatsappAccessToken}
+              value={secrets.whatsappAccessToken}
+              onChange={(v) => setSecrets((s) => ({ ...s, whatsappAccessToken: v }))}
+            />
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-slate-700">Phone number ID</label>
+              <Input
+                value={form.whatsappPhoneNumberId}
+                onChange={(e) => setForm((f) => ({ ...f, whatsappPhoneNumberId: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-slate-700">WhatsApp Business Account ID</label>
+              <Input
+                value={form.whatsappBusinessAccountId}
+                onChange={(e) => setForm((f) => ({ ...f, whatsappBusinessAccountId: e.target.value }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-slate-700">Webhook verify token</label>
+              <Input
+                placeholder="Any string you choose — paste the same value into Meta's dashboard"
+                value={form.whatsappVerifyToken}
+                onChange={(e) => setForm((f) => ({ ...f, whatsappVerifyToken: e.target.value }))}
+              />
+            </div>
+            <SecretInput
+              label="App secret"
+              field={data?.whatsappAppSecret}
+              value={secrets.whatsappAppSecret}
+              onChange={(v) => setSecrets((s) => ({ ...s, whatsappAppSecret: v }))}
+            />
+          </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+            <p className="text-xs font-medium text-slate-700">Webhook URL — paste into Meta&apos;s App Dashboard</p>
+            <p className="mt-0.5 select-all font-mono text-xs text-slate-600">{API_ORIGIN}/public/whatsapp/webhook</p>
+          </div>
+          <WhatsAppMessageLog />
+        </CardContent>
+      </Card>
+
       <div>
         <Button onClick={() => requestSave.mutate()} disabled={requestSave.isPending}>
           {requestSave.isPending ? 'Sending code...' : 'Save API & payment config'}
         </Button>
       </div>
+    </div>
+  );
+}
+
+interface WhatsAppMessage {
+  id: string;
+  direction: 'IN' | 'OUT';
+  waId: string;
+  schoolName: string | null;
+  body: string;
+  status: string | null;
+  createdAt: string;
+}
+
+/** Recent traffic through the shared WhatsApp business number — mostly a debugging/visibility aid
+ * (confirm real messages are actually arriving/sending) rather than a full inbox, since WhatsApp
+ * itself is where a school's own back-and-forth actually lives. */
+function WhatsAppMessageLog() {
+  const { data: messages, isLoading } = useQuery({
+    queryKey: ['whatsapp-messages'],
+    queryFn: () => apiFetch<WhatsAppMessage[]>('/platform/whatsapp/messages'),
+  });
+
+  return (
+    <div className="rounded-md border border-slate-200">
+      <p className="border-b border-slate-200 px-3 py-2 text-xs font-medium text-slate-700">Recent messages</p>
+      {isLoading ? (
+        <div className="p-3">
+          <Skeleton className="h-16 w-full" />
+        </div>
+      ) : !messages || messages.length === 0 ? (
+        <p className="px-3 py-4 text-sm text-slate-500">No WhatsApp messages yet.</p>
+      ) : (
+        <ul className="max-h-72 divide-y divide-slate-100 overflow-y-auto">
+          {messages.map((m) => (
+            <li key={m.id} className="flex flex-col gap-0.5 px-3 py-2 text-sm">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>
+                  {m.direction === 'IN' ? '←' : '→'} {m.waId}
+                  {m.schoolName && ` · ${m.schoolName}`}
+                </span>
+                <span>{new Date(m.createdAt).toLocaleString()}</span>
+              </div>
+              <p className="text-slate-700">{m.body}</p>
+              {m.status && <span className="text-xs text-slate-400">{m.status}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

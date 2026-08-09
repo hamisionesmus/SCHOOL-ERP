@@ -8,7 +8,12 @@ import { join } from 'node:path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody: true additionally exposes req.rawBody (a Buffer) on every request, alongside the normal
+  // parsed req.body — needed to verify the WhatsApp webhook's X-Hub-Signature-256 HMAC, which must be
+  // computed over the exact raw bytes Meta sent, not a re-serialized JSON object (see
+  // WhatsAppController). Nest's own built-in option for this, doesn't change body handling anywhere
+  // else.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   const config = app.get(ConfigService);
 
   app.enableCors({ origin: true, credentials: true });

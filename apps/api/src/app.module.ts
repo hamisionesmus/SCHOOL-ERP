@@ -62,6 +62,7 @@ import { CrmModule } from './platform/crm/crm.module';
 import { TrainingModule } from './platform/training/training.module';
 import { HamzoneMeetingsModule } from './platform/meetings/meetings.module';
 import { HamzoneOutreachModule } from './platform/outreach/outreach.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { RecruitmentModule } from './platform/recruitment/recruitment.module';
 import { StaffTasksModule } from './platform/staff-tasks/staff-tasks.module';
 import { TraineePortalModule } from './platform/trainee-portal/trainee-portal.module';
@@ -135,6 +136,7 @@ import { tenantOrIpTracker } from './common/guards/tenant-throttle-tracker';
     SystemHealthModule,
     MailboxesModule,
     PresenceModule,
+    WhatsAppModule,
     CampaignsModule,
     CrmModule,
     TrainingModule,

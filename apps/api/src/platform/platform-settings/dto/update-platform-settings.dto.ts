@@ -124,6 +124,37 @@ export class UpdatePlatformSettingsDto {
   @IsString()
   advantaSenderId?: string;
 
+  // WhatsApp Business Cloud API (Meta) — see PlatformSettings' own doc comment in schema.prisma.
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  whatsappEnabled?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  whatsappAccessToken?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  whatsappPhoneNumberId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  whatsappBusinessAccountId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  whatsappVerifyToken?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  whatsappAppSecret?: string;
+
   // Platform-wide login-page branding — never per-school.
   @ApiPropertyOptional()
   @IsOptional()

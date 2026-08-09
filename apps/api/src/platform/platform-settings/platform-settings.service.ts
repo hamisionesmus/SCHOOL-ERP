@@ -11,7 +11,7 @@ const DEFAULT_LOGIN_SUBTITLE = 'Kenyan CBC · PP1 — Grade 9';
  * preview of the last few characters, same principle as passwords never being displayed again (see
  * BillingService.resetSchoolAdminPassword's doc comment). Everything else on PlatformSettings is
  * either not exploitable alone (shortcode, partner id, sender id, callback URL) or already public. */
-const SECRET_FIELDS = ['mpesaConsumerSecret', 'mpesaPasskey', 'resendApiKey', 'advantaApiKey'] as const;
+const SECRET_FIELDS = ['mpesaConsumerSecret', 'mpesaPasskey', 'resendApiKey', 'advantaApiKey', 'whatsappAccessToken', 'whatsappAppSecret'] as const;
 
 function maskSecret(value: string | null): { set: boolean; preview: string | null } {
   if (!value) return { set: false, preview: null };

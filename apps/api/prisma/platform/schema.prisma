@@ -204,6 +204,34 @@ model Tenant {
   ticketEscalations PlatformTicketEscalation[]
   campaignRecipients CampaignRecipient[]
   hamzoneClients     HamzoneClient[]
+  whatsappMessages   PlatformWhatsAppMessage[]
+}
+
+enum WhatsAppDirection {
+  IN
+  OUT
+}
+
+// Every WhatsApp message, both directions, logged platform-side (a webhook arrives before any
+// tenant is known — see WhatsAppService.resolveUserByPhone). tenantId/resolvedUserId are only set
+// once the sender's phone has been matched to a real User in some tenant schema; unmatched inbound
+// messages (unknown number) are still logged with both left null, so a Super Admin can see traffic
+// that never resolved to anyone. messageId is WhatsApp's own wamid — used to dedupe inbound webhook
+// retries, which Meta's platform can send more than once for the same message.
+model PlatformWhatsAppMessage {
+  id             String            @id @default(uuid())
+  direction      WhatsAppDirection
+  waId           String
+  tenantId       String?
+  tenant         Tenant?           @relation(fields: [tenantId], references: [id])
+  resolvedUserId String?
+  body           String
+  messageId      String?           @unique
+  status         String?
+  createdAt      DateTime          @default(now())
+
+  @@index([waId])
+  @@index([createdAt])
 }
 
 // Global email → school lookup, kept in sync whenever a tenant-side User is created (see
@@ -478,6 +506,18 @@ model PlatformSettings {
   advantaApiKey       String?
   advantaPartnerId    String?
   advantaSenderId     String?
+  // WhatsApp Business Cloud API (Meta) — one shared platform business number services every school's
+  // users; inbound messages are routed to the right tenant by matching the sender's phone against
+  // User.phone across tenant schemas (see WhatsAppService.resolveUserByPhone). whatsappVerifyToken is
+  // the value Meta's webhook-setup handshake must echo back (not a secret in the same sense as the
+  // others, but still DB-backed for the same OTP-gated-change reasoning). whatsappAppSecret signs the
+  // X-Hub-Signature-256 header Meta sends on every webhook call, used to verify the request is real.
+  whatsappEnabled           Boolean @default(true)
+  whatsappAccessToken       String?
+  whatsappPhoneNumberId     String?
+  whatsappBusinessAccountId String?
+  whatsappVerifyToken       String?
+  whatsappAppSecret         String?
   // Platform-wide branding shown on the public login page only — never per-school (each school's
   // own branding is on Tenant.logoUrl/primaryColor etc., untouched by this).
   systemName          String?
