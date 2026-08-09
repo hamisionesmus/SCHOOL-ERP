@@ -173,6 +173,7 @@ model User {
   sickSheetsIssued    SickSheet[]   @relation("SickSheetIssuedBy")
   schoolEventsCreated SchoolEvent[] @relation("SchoolEventCreatedBy")
   leaveRequestsReviewed LeaveRequest[]   @relation("LeaveReviewedBy")
+  applicationsReviewed Application[]     @relation("ApplicationReviewedBy")
   tripsProposed       Trip[]             @relation("TripProposedBy")
   tripsApproved        Trip[]             @relation("TripApprovedBy")
   tripPaymentsReceived TripPayment[]      @relation("TripPaymentReceivedBy")
@@ -475,6 +476,8 @@ model Application {
   notes             String?
   admittedStudentId String?           @unique
   admittedStudent   Student?          @relation(fields: [admittedStudentId], references: [id])
+  reviewedByUserId  String?
+  reviewedBy        User?             @relation("ApplicationReviewedBy", fields: [reviewedByUserId], references: [id])
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 }

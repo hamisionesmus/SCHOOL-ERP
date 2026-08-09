@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
+import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,24 @@ interface GradeLevel {
   code: string;
   name: string;
 }
+interface WorkflowStep {
+  order: number;
+  name: string;
+  approverPermissionCode: string;
+}
+interface WorkflowStepAction {
+  stepOrder: number;
+  action: 'APPROVE' | 'REJECT';
+  comment: string | null;
+  actedAt: string;
+  actor: { id: string; fullName: string };
+}
+interface WorkflowInstance {
+  status: 'IN_PROGRESS' | 'APPROVED' | 'REJECTED';
+  currentStepOrder: number;
+  workflow: { steps: WorkflowStep[] };
+  actions: WorkflowStepAction[];
+}
 interface Application {
   id: string;
   firstName: string;
@@ -27,9 +46,17 @@ interface Application {
   guardianName: string;
   guardianEmail: string;
   createdAt: string;
+  workflowInstance: WorkflowInstance | null;
 }
 
 const STATUS_OPTIONS = ['APPLIED', 'INTERVIEW', 'OFFERED', 'REJECTED', 'WAITLISTED'] as const;
+
+/** Which permission code (if any) is required to act on this application right now. `null` when the
+ * approval chain has closed or was never gated by a workflow step. Mirrors HrPage's currentStepFor(). */
+function currentStepFor(a: Application) {
+  if (!a.workflowInstance || a.workflowInstance.status !== 'IN_PROGRESS') return null;
+  return a.workflowInstance.workflow.steps.find((s) => s.order === a.workflowInstance!.currentStepOrder) ?? null;
+}
 
 type ApplicationDraft = {
   firstName: string;
@@ -123,6 +150,16 @@ export default function AdmissionsPage() {
     },
   });
 
+  const review = useMutation({
+    mutationFn: ({ id, action, comment }: { id: string; action: 'approve' | 'reject'; comment?: string }) =>
+      apiFetch(`/admissions/applications/${id}/${action}`, { method: 'PATCH', body: JSON.stringify({ comment }) }),
+    onSuccess: () => {
+      invalidate();
+      notifySuccess('Application updated');
+    },
+    onError: (err) => notifyError(err, 'Failed to update application'),
+  });
+
   const table = useTableControls(applications ?? [], { pageSize: 8 });
 
   if (!user) return null;
@@ -201,39 +238,16 @@ export default function AdmissionsPage() {
               </thead>
               <tbody>
                 {table.pageItems.map((a) => (
-                  <tr key={a.id} className="border-b border-slate-100">
-                    <td className="py-2 font-medium text-slate-900">
-                      {a.firstName} {a.lastName}
-                    </td>
-                    <td className="py-2 text-slate-500">{a.gradeLevel?.name}</td>
-                    <td className="py-2 text-slate-500">{a.guardianName}</td>
-                    <td className="py-2">
-                      <Badge status={a.status} />
-                    </td>
-                    <td className="py-2 text-right">
-                      {a.status === 'ADMITTED' ? null : (
-                        <div className="flex justify-end gap-2">
-                          <select
-                            defaultValue=""
-                            onChange={(e) => {
-                              if (e.target.value) updateStatus.mutate({ id: a.id, status: e.target.value });
-                            }}
-                            className="h-8 rounded-md border border-slate-300 px-2 text-xs"
-                          >
-                            <option value="">Change status...</option>
-                            {STATUS_OPTIONS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                          <Button size="sm" onClick={() => admit.mutate(a.id)} disabled={admit.isPending}>
-                            Admit
-                          </Button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
+                  <ApplicationRow
+                    key={a.id}
+                    a={a}
+                    permissions={user.permissions ?? []}
+                    onUpdateStatus={(status) => updateStatus.mutate({ id: a.id, status })}
+                    onAdmit={() => admit.mutate(a.id)}
+                    admitPending={admit.isPending}
+                    onReview={(action, comment) => review.mutate({ id: a.id, action, comment })}
+                    reviewPending={review.isPending}
+                  />
                 ))}
               </tbody>
             </table>
@@ -249,5 +263,93 @@ export default function AdmissionsPage() {
         </CardContent>
       </Card>
     </>
+  );
+}
+
+function ApplicationRow({
+  a,
+  permissions,
+  onUpdateStatus,
+  onAdmit,
+  admitPending,
+  onReview,
+  reviewPending,
+}: {
+  a: Application;
+  permissions: string[];
+  onUpdateStatus: (status: string) => void;
+  onAdmit: () => void;
+  admitPending: boolean;
+  onReview: (action: 'approve' | 'reject', comment?: string) => void;
+  reviewPending: boolean;
+}) {
+  const [comment, setComment] = useState('');
+  const currentStep = currentStepFor(a);
+  const workflowPending = a.workflowInstance?.status === 'IN_PROGRESS';
+  const canActNow = workflowPending && !!currentStep && permissions.includes(currentStep.approverPermissionCode);
+
+  return (
+    <tr className="border-b border-slate-100 align-top">
+      <td className="py-2 font-medium text-slate-900">
+        {a.firstName} {a.lastName}
+      </td>
+      <td className="py-2 text-slate-500">{a.gradeLevel?.name}</td>
+      <td className="py-2 text-slate-500">{a.guardianName}</td>
+      <td className="py-2">
+        <Badge status={a.status} />
+        {a.workflowInstance && (
+          <p className="mt-1 text-xs text-slate-500">
+            {a.workflowInstance.status === 'IN_PROGRESS' && currentStep
+              ? `Step ${currentStep.order + 1} of ${a.workflowInstance.workflow.steps.length} — ${currentStep.name}`
+              : `Approval chain ${a.workflowInstance.status.toLowerCase()}`}
+          </p>
+        )}
+        {a.workflowInstance && a.workflowInstance.actions.length > 0 && (
+          <ul className="mt-1 space-y-0.5 text-xs text-slate-400">
+            {a.workflowInstance.actions.map((act, i) => (
+              <li key={i}>
+                {act.actor.fullName} {act.action === 'APPROVE' ? 'approved' : 'rejected'} on {new Date(act.actedAt).toLocaleDateString()}
+                {act.comment && ` — "${act.comment}"`}
+              </li>
+            ))}
+          </ul>
+        )}
+      </td>
+      <td className="py-2 text-right">
+        {a.status === 'ADMITTED' ? null : canActNow ? (
+          <div className="flex flex-col items-end gap-2">
+            <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comment (optional)" className="h-8 w-40 text-xs" />
+            <div className="flex gap-2">
+              <Button size="sm" disabled={reviewPending} onClick={() => onReview('approve', comment || undefined)}>
+                Approve
+              </Button>
+              <Button size="sm" variant="outline" disabled={reviewPending} onClick={() => onReview('reject', comment || undefined)}>
+                Reject
+              </Button>
+            </div>
+          </div>
+        ) : workflowPending ? null : (
+          <div className="flex justify-end gap-2">
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) onUpdateStatus(e.target.value);
+              }}
+              className="h-8 rounded-md border border-slate-300 px-2 text-xs"
+            >
+              <option value="">Change status...</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <Button size="sm" onClick={onAdmit} disabled={admitPending}>
+              Admit
+            </Button>
+          </div>
+        )}
+      </td>
+    </tr>
   );
 }

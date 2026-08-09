@@ -689,20 +689,68 @@ interface WorkflowDefinitionResponse {
   steps: { order: number; name: string; approverPermissionCode: string; slaHours: number | null }[];
 }
 
-/** Configures the (currently single) LEAVE_REQUEST approval chain — a Phase-1 pilot for the generic
- * workflow engine (see docs plan "Generic Workflow/Approval Engine"). A step's approver is anyone
- * holding the chosen permission code; this schema has no reporting-hierarchy/org-chart concept, so
- * there's no "pick a role in an org chart" option — only "pick a permission." Leaving no steps
- * configured (or never saving here) keeps Leave Requests on the original single-approver HR:EDIT path. */
+interface WorkflowEntityConfig {
+  entityType: string;
+  navLabel: string;
+  cardTitle: string;
+  /** The permission code that gates approve/reject when no chain is configured — shown in the
+   * empty-state copy so it stays accurate per department instead of hardcoding "HR:EDIT". */
+  fallbackPermission: string;
+}
+const WORKFLOW_ENTITIES: readonly WorkflowEntityConfig[] = [
+  { entityType: 'LEAVE_REQUEST', navLabel: 'Leave Requests', cardTitle: 'Leave request approval chain', fallbackPermission: 'HR:EDIT' },
+  { entityType: 'ADMISSION_APPLICATION', navLabel: 'Admissions', cardTitle: 'Admission application approval chain', fallbackPermission: 'ADMISSION:MANAGE' },
+];
+
+/** Container for the workflow engine's per-department settings — each configured entity type (see
+ * WORKFLOW_ENTITIES) gets its own step-chain editor, reusing the identical WorkflowEntityTab
+ * component. This is what makes "plug a new department into the engine" cheap: the engine itself and
+ * this settings UI both stay entity-agnostic, so wiring in a third department later needs only a new
+ * WORKFLOW_ENTITIES entry, not new UI code. */
 function WorkflowsTab() {
+  const [entityType, setEntityType] = useState<string>(WORKFLOW_ENTITIES[0].entityType);
+  const active = WORKFLOW_ENTITIES.find((e) => e.entityType === entityType) ?? WORKFLOW_ENTITIES[0];
+
+  return (
+    <div className="flex flex-col gap-3">
+      {WORKFLOW_ENTITIES.length > 1 && (
+        <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1 self-start">
+          {WORKFLOW_ENTITIES.map((e) => (
+            <button
+              key={e.entityType}
+              type="button"
+              onClick={() => setEntityType(e.entityType)}
+              className={cn(
+                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                entityType === e.entityType ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100',
+              )}
+            >
+              {e.navLabel}
+            </button>
+          ))}
+        </div>
+      )}
+      <WorkflowEntityTab key={active.entityType} config={active} />
+    </div>
+  );
+}
+
+/** Configures a single entity type's approval chain — a Phase-1 pilot for the generic workflow
+ * engine (see docs plan "Generic Workflow/Approval Engine"), now reused across every plugged-in
+ * department (see WORKFLOW_ENTITIES). A step's approver is anyone holding the chosen permission
+ * code; this schema has no reporting-hierarchy/org-chart concept, so there's no "pick a role in an
+ * org chart" option — only "pick a permission." Leaving no steps configured (or never saving here)
+ * keeps that department on its original single-approver fallback path. */
+function WorkflowEntityTab({ config }: { config: WorkflowEntityConfig }) {
+  const { entityType, cardTitle, fallbackPermission } = config;
   const queryClient = useQueryClient();
   const { data: roles } = useQuery({
     queryKey: ['roles'],
     queryFn: () => apiFetch<RoleWithPermissions[]>('/roles'),
   });
   const { data: definition, isLoading, isError, error, fetchStatus, status } = useQuery({
-    queryKey: ['workflow-definition', 'LEAVE_REQUEST'],
-    queryFn: () => apiFetch<WorkflowDefinitionResponse | null>('/workflows/definitions/LEAVE_REQUEST'),
+    queryKey: ['workflow-definition', entityType],
+    queryFn: () => apiFetch<WorkflowDefinitionResponse | null>(`/workflows/definitions/${entityType}`),
   });
   const [steps, setSteps] = useState<WorkflowStepRow[] | null>(null);
   const hasSynced = useRef(false);
@@ -710,10 +758,10 @@ function WorkflowsTab() {
   // TEMPORARY diagnostic: tracking down a "stuck Loading forever" report that persists in
   // incognito, so it isn't cache/session related. Remove once root cause is found.
   useEffect(() => {
-    console.log('[WorkflowsTab] MOUNTED');
-    return () => console.log('[WorkflowsTab] UNMOUNTED');
-  }, []);
-  console.log('[WorkflowsTab] render', {
+    console.log(`[WorkflowEntityTab:${entityType}] MOUNTED`);
+    return () => console.log(`[WorkflowEntityTab:${entityType}] UNMOUNTED`);
+  }, [entityType]);
+  console.log(`[WorkflowEntityTab:${entityType}] render`, {
     isLoading,
     isError,
     status,
@@ -754,7 +802,7 @@ function WorkflowsTab() {
 
   const save = useMutation({
     mutationFn: () =>
-      apiFetch('/workflows/definitions/LEAVE_REQUEST', {
+      apiFetch(`/workflows/definitions/${entityType}`, {
         method: 'PUT',
         body: JSON.stringify({
           steps: (steps ?? []).map((s) => ({
@@ -765,7 +813,7 @@ function WorkflowsTab() {
         }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflow-definition', 'LEAVE_REQUEST'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow-definition', entityType] });
       notifySuccess('Approval chain saved');
     },
     onError: (err) => notifyError(err, 'Failed to save approval chain'),
@@ -786,14 +834,14 @@ function WorkflowsTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Leave request approval chain</CardTitle>
+        <CardTitle>{cardTitle}</CardTitle>
         <CardDescription>
           Add one or more review steps. Anyone holding the chosen permission can act on that step. Leave this empty and any
-          holder of HR:EDIT can approve/reject directly, same as before.
+          holder of {fallbackPermission} can approve/reject directly, same as before.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {steps.length === 0 && <p className="text-sm text-slate-500">No approval chain configured — direct HR:EDIT approval applies.</p>}
+        {steps.length === 0 && <p className="text-sm text-slate-500">No approval chain configured — direct {fallbackPermission} approval applies.</p>}
         {steps.map((step, i) => (
           <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-3">
             <span className="w-6 text-sm font-medium text-slate-400">{i + 1}.</span>
