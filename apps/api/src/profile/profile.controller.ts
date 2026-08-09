@@ -6,6 +6,7 @@ import { CurrentUser, JwtUserPayload } from '../common/decorators/current-user.d
 import { ProfileService } from './profile.service';
 import { SetWhatsAppPinDto } from './dto/set-whatsapp-pin.dto';
 import { ClearWhatsAppPinDto } from './dto/clear-whatsapp-pin.dto';
+import { SetPhoneDto } from './dto/set-phone.dto';
 
 /** Any logged-in tenant user (parent/staff/teacher/admin) manages their own account here — no
  * `@RequirePermission`, same "just needs to be a valid tenant JWT" gate as HrController's leave
@@ -16,6 +17,16 @@ import { ClearWhatsAppPinDto } from './dto/clear-whatsapp-pin.dto';
 @Controller('profile')
 export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}
+
+  @Get()
+  getProfile(@CurrentUser() user: JwtUserPayload) {
+    return this.profileService.getProfile(user);
+  }
+
+  @Post('phone')
+  setPhone(@CurrentUser() user: JwtUserPayload, @Body() dto: SetPhoneDto) {
+    return this.profileService.setPhone(user, dto.currentPassword, dto.phone);
+  }
 
   @Get('whatsapp-pin')
   getStatus(@CurrentUser() user: JwtUserPayload) {

@@ -11,6 +11,27 @@ import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 export class ProfileService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
 
+  async getProfile(user: JwtUserPayload) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const row = await db.user.findUnique({ where: { id: user.sub }, select: { fullName: true, email: true, phone: true } });
+    if (!row) throw new UnauthorizedException();
+    return row;
+  }
+
+  /** The WhatsApp bot identifies a sender by matching the phone they're texting from against this
+   * field — see WhatsAppService.resolveUserByPhone(). Current-password-gated for the same reason as
+   * the PIN below: this is account data that controls what the bot will recognize as "you". */
+  async setPhone(user: JwtUserPayload, currentPassword: string, phone: string) {
+    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
+    const row = await db.user.findUnique({ where: { id: user.sub } });
+    if (!row) throw new UnauthorizedException();
+    if (!(await bcrypt.compare(currentPassword, row.passwordHash))) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    await db.user.update({ where: { id: user.sub }, data: { phone } });
+    return { success: true };
+  }
+
   async getWhatsAppPinStatus(user: JwtUserPayload) {
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
     const row = await db.user.findUnique({ where: { id: user.sub }, select: { whatsappPinHash: true } });
