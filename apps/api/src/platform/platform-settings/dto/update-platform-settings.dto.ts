@@ -132,6 +132,22 @@ export class UpdatePlatformSettingsDto {
   @IsString()
   whatsappProvider?: string;
 
+  // Claude-powered free-text WhatsApp assistant — see PlatformSettings' own doc comment.
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  aiAssistantEnabled?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  anthropicApiKey?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  anthropicModel?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()

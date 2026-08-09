@@ -7,5 +7,6 @@ import { CommunicationsModule } from '../communications/communications.module';
   imports: [CommunicationsModule],
   controllers: [FinanceController],
   providers: [FinanceService],
+  exports: [FinanceService],
 })
 export class FinanceModule {}

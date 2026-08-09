@@ -55,6 +55,9 @@ interface PlatformSettings {
   advantaPartnerId: string | null;
   advantaSenderId: string | null;
   whatsappProvider: string;
+  aiAssistantEnabled: boolean;
+  anthropicApiKey: SecretField;
+  anthropicModel: string | null;
   whatsappEnabled: boolean;
   whatsappAccessToken: SecretField;
   whatsappPhoneNumberId: string | null;
@@ -612,6 +615,8 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
     advantaPartnerId: '',
     advantaSenderId: '',
     whatsappProvider: 'BAILEYS',
+    aiAssistantEnabled: true,
+    anthropicModel: '',
     whatsappEnabled: true,
     whatsappPhoneNumberId: '',
     whatsappBusinessAccountId: '',
@@ -622,6 +627,7 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
     mpesaPasskey: '',
     resendApiKey: '',
     advantaApiKey: '',
+    anthropicApiKey: '',
     whatsappAccessToken: '',
     whatsappAppSecret: '',
   });
@@ -643,6 +649,8 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
         advantaPartnerId: data.advantaPartnerId ?? '',
         advantaSenderId: data.advantaSenderId ?? '',
         whatsappProvider: data.whatsappProvider || 'BAILEYS',
+        aiAssistantEnabled: data.aiAssistantEnabled,
+        anthropicModel: data.anthropicModel ?? '',
         whatsappEnabled: data.whatsappEnabled,
         whatsappPhoneNumberId: data.whatsappPhoneNumberId ?? '',
         whatsappBusinessAccountId: data.whatsappBusinessAccountId ?? '',
@@ -650,7 +658,7 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
       };
       const draft = loadDraft();
       setForm(draft ? { ...fromServer, ...draft } : fromServer);
-      setSecrets({ mpesaConsumerSecret: '', mpesaPasskey: '', resendApiKey: '', advantaApiKey: '', whatsappAccessToken: '', whatsappAppSecret: '' });
+      setSecrets({ mpesaConsumerSecret: '', mpesaPasskey: '', resendApiKey: '', advantaApiKey: '', anthropicApiKey: '', whatsappAccessToken: '', whatsappAppSecret: '' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
@@ -821,6 +829,39 @@ function ApiConfigTab({ data, onRequested }: { data?: PlatformSettings; onReques
               <p className="text-sm font-semibold text-slate-800">Meta Cloud API — official</p>
               <p className="mt-0.5 text-xs text-slate-500">Never gets banned, backed by Meta directly. Needs a Meta Business Account and app setup below, can take a few days to verify.</p>
             </button>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 p-3">
+            <p className="text-sm font-semibold text-slate-800">AI Assistant</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Answers free-text questions on WhatsApp — &quot;what&apos;s my fee balance&quot;, &quot;was my child at school today&quot; — using Claude, scoped
+              only to the sender&apos;s own linked children/records. Requires an Anthropic API key (create one at{' '}
+              <span className="select-all font-mono">console.anthropic.com</span>). Applies regardless of which connection method above is active.
+            </p>
+            <div className="mt-3 flex flex-col gap-3">
+              <Toggle
+                label="AI Assistant enabled"
+                description="Turn off to fall back to the plain LEAVE-command help text for anything the bot doesn't recognize."
+                checked={!!form.aiAssistantEnabled}
+                onChange={(v) => setForm((f) => ({ ...f, aiAssistantEnabled: v }))}
+              />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <SecretInput
+                  label="Anthropic API key"
+                  field={data?.anthropicApiKey}
+                  value={secrets.anthropicApiKey}
+                  onChange={(v) => setSecrets((s) => ({ ...s, anthropicApiKey: v }))}
+                />
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-slate-700">Model</label>
+                  <Input
+                    placeholder="claude-sonnet-5"
+                    value={form.anthropicModel}
+                    onChange={(e) => setForm((f) => ({ ...f, anthropicModel: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           {form.whatsappProvider === 'BAILEYS' ? (

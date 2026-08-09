@@ -5,11 +5,12 @@ import { JwtUserPayload } from '../common/decorators/current-user.decorator';
 import { HrService } from '../hr/hr.service';
 import { WHATSAPP_PROVIDER, WhatsAppProvider } from './whatsapp-provider.interface';
 import { WhatsAppBaileysService } from './baileys/whatsapp-baileys.service';
+import { WhatsAppClaudeProvider } from './assistant/whatsapp-claude.provider';
 
 interface ResolvedSender {
   tenantId: string;
   tenantSchema: string;
-  user: { id: string; fullName: string; email: string };
+  user: { id: string; fullName: string; email: string; roles: string[]; permissions: string[] };
 }
 
 function normalizeKenyanPhone(input: string): string {
@@ -23,17 +24,17 @@ function normalizeKenyanPhone(input: string): string {
 const HELP_TEXT =
   'Hi! You can submit a leave request by texting:\n\n' +
   'LEAVE <type> <start YYYY-MM-DD> <end YYYY-MM-DD> [reason]\n\n' +
-  'Example:\nLEAVE Annual 2026-09-01 2026-09-05 Family trip';
+  'Example:\nLEAVE Annual 2026-09-01 2026-09-05 Family trip\n\n' +
+  "Or just ask me a question in your own words — e.g. \"what's my fee balance\" or \"was my child at school today\".";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * WhatsApp is just another interface into the same P2Less backend — a message received here calls
- * the exact same service methods (HrService.createLeaveRequest(), same workflow engine, same
- * database) that the web app's HTTP controllers call, not a parallel implementation. Phase 1 is
- * intentionally scoped to real send/receive infrastructure plus one deterministic, structured command
- * (LEAVE ...) proving that principle end-to-end; free-text natural-language parsing via an AI/NLU
- * layer is a distinct, larger future phase, not attempted here.
+ * WhatsApp is just another interface into the same P2Less backend. LEAVE stays a deterministic,
+ * structured command (calls HrService.createLeaveRequest() directly, same workflow engine, same
+ * database as the web app); everything else free-text is handed to WhatsAppClaudeProvider, which can
+ * only answer via a fixed set of read-only, sender-scoped tools (see
+ * WhatsAppAssistantToolsService) — it never gets raw database access.
  */
 @Injectable()
 export class WhatsAppService implements OnModuleInit {
@@ -45,6 +46,7 @@ export class WhatsAppService implements OnModuleInit {
     @Inject(WHATSAPP_PROVIDER) private readonly provider: WhatsAppProvider,
     private readonly hrService: HrService,
     private readonly baileys: WhatsAppBaileysService,
+    private readonly assistant: WhatsAppClaudeProvider,
   ) {}
 
   /** Inbound messages arriving over the QR-linked device (Baileys) reach this exact same
@@ -118,7 +120,20 @@ export class WhatsAppService implements OnModuleInit {
       });
       const match = candidates.find((c) => c.phone && normalizeKenyanPhone(c.phone) === normalized);
       if (match) {
-        return { tenantId: tenant.id, tenantSchema: tenant.schemaName, user: { id: match.id, fullName: match.fullName, email: match.email } };
+        // Flatten roles/permissions the same way AuthService does at login — the AI assistant's tool
+        // calls (Finance/Attendance/Exams/Homework services) all branch on user.permissions, so a
+        // WhatsApp-resolved sender needs the same shape a real JWT would carry, not just an id.
+        const userRoles = await db.userRole.findMany({
+          where: { userId: match.id },
+          include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
+        });
+        const roles = userRoles.map((ur) => ur.role.name);
+        const permissions = [...new Set(userRoles.flatMap((ur) => ur.role.rolePermissions.map((rp) => rp.permission.code)))];
+        return {
+          tenantId: tenant.id,
+          tenantSchema: tenant.schemaName,
+          user: { id: match.id, fullName: match.fullName, email: match.email, roles, permissions },
+        };
       }
     }
     return null;
@@ -159,13 +174,33 @@ export class WhatsAppService implements OnModuleInit {
   private async routeCommand(waId: string, text: string, resolved: ResolvedSender) {
     const parts = text.trim().split(/\s+/);
     const command = parts[0]?.toUpperCase();
+    const replyContext = { tenantId: resolved.tenantId, resolvedUserId: resolved.user.id };
 
     if (command === 'LEAVE') {
       await this.handleLeaveCommand(waId, parts.slice(1), resolved);
       return;
     }
 
-    await this.sendText(waId, HELP_TEXT, { tenantId: resolved.tenantId, resolvedUserId: resolved.user.id });
+    // Everything else goes to the AI assistant — it decides for itself whether the message is
+    // answerable via one of its read-only tools (fees/attendance/exams/homework/leave) or is out of
+    // scope, and replies accordingly (falls back to HELP_TEXT-style guidance when unconfigured).
+    const user: JwtUserPayload = {
+      sub: resolved.user.id,
+      realm: 'tenant',
+      fullName: resolved.user.fullName,
+      email: resolved.user.email,
+      tenantSchema: resolved.tenantSchema,
+      roles: resolved.user.roles,
+      permissions: resolved.user.permissions,
+    };
+    const tenant = await this.platformPrisma.tenant.findUnique({ where: { id: resolved.tenantId }, select: { name: true } });
+    try {
+      const reply = await this.assistant.answer(user, tenant?.name ?? 'your school', text);
+      await this.sendText(waId, reply, replyContext);
+    } catch (err) {
+      this.logger.error(`AI assistant failed for ${resolved.user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      await this.sendText(waId, "Sorry, I couldn't process that.\n\n" + HELP_TEXT, replyContext);
+    }
   }
 
   private async handleLeaveCommand(waId: string, args: string[], resolved: ResolvedSender) {
@@ -187,6 +222,8 @@ export class WhatsAppService implements OnModuleInit {
       fullName: resolved.user.fullName,
       email: resolved.user.email,
       tenantSchema: resolved.tenantSchema,
+      roles: resolved.user.roles,
+      permissions: resolved.user.permissions,
     };
 
     try {

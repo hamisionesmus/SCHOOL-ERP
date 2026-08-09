@@ -548,6 +548,14 @@ model PlatformSettings {
   whatsappBusinessAccountId String?
   whatsappVerifyToken       String?
   whatsappAppSecret         String?
+  // Free-text WhatsApp questions ("what's my fee balance") are answered by Claude via tool-use —
+  // Claude never sees the database directly, it can only invoke a fixed set of read-only,
+  // sender-scoped functions (see WhatsAppAssistantToolsService). Resolves dbValue ?? envValue
+  // (ANTHROPIC_API_KEY) at call time like every other credential on this model; when neither is set,
+  // the assistant degrades to a static help message instead of attempting a call.
+  aiAssistantEnabled Boolean @default(true)
+  anthropicApiKey    String?
+  anthropicModel     String?
   // Platform-wide branding shown on the public login page only — never per-school (each school's
   // own branding is on Tenant.logoUrl/primaryColor etc., untouched by this).
   systemName          String?
