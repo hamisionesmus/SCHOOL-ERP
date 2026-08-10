@@ -69,4 +69,33 @@ export class HamzoneLeadsService {
       data: { ...dto, followUpAt: dto.followUpAt ? new Date(dto.followUpAt) : undefined },
     });
   }
+
+  /** Turns a qualified lead into a real HamzoneClient in one step, pre-filled from what was already
+   * captured — replaces the previous "manually re-type everything into Add Client" flow. Keeps the
+   * historical link both ways (lead.convertedToClientId, client.convertedFromLead) so the funnel from
+   * first contact to paying client stays traceable instead of looking like two unrelated records. */
+  async convert(id: string, userId: string) {
+    const lead = await this.platformPrisma.hamzoneMarketingLead.findUnique({ where: { id } });
+    if (!lead) throw new NotFoundException('Lead not found');
+    if (lead.status === 'CONVERTED') throw new BadRequestException('This lead has already been converted');
+
+    return this.platformPrisma.$transaction(async (tx) => {
+      const client = await tx.hamzoneClient.create({
+        data: {
+          name: lead.clientName,
+          contactName: lead.clientName,
+          email: lead.contactEmail,
+          phone: lead.contactPhone,
+          productLines: [lead.interest],
+          productLinesOther: lead.interestOther,
+          createdByUserId: userId,
+        },
+      });
+      await tx.hamzoneMarketingLead.update({
+        where: { id },
+        data: { status: 'CONVERTED', convertedToClientId: client.id },
+      });
+      return client;
+    });
+  }
 }

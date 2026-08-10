@@ -24,8 +24,14 @@ export class HamzoneInvoicesService {
     @Inject(SMS_PROVIDER) private readonly smsProvider: SmsProvider,
   ) {}
 
-  async list(page = 1, pageSize = 30, clientId?: string) {
-    const where = clientId ? { clientId } : {};
+  async list(page = 1, pageSize = 30, clientId?: string, overdue?: boolean) {
+    // HamzoneInvoiceStatus.OVERDUE is never actually set by any write path — computed live here
+    // instead of trusting the stored enum, same reasoning as the platform notification bell's
+    // "crm-invoices-overdue" item.
+    const where = {
+      ...(clientId ? { clientId } : {}),
+      ...(overdue ? { status: 'PENDING' as const, dueDate: { lt: new Date() } } : {}),
+    };
     const [data, total] = await Promise.all([
       this.platformPrisma.hamzoneInvoice.findMany({
         where,

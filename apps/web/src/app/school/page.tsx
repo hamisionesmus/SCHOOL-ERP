@@ -15,6 +15,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import Link from 'next/link';
 import {
   Users,
   Wallet,
@@ -28,6 +29,8 @@ import {
   PieChart as PieChartIcon,
   Sparkles,
   Compass,
+  ListChecks,
+  ChevronRight,
 } from 'lucide-react';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, API_ORIGIN } from '@/lib/api';
@@ -99,6 +102,21 @@ interface DashboardSummary {
   own?: OwnStats;
 }
 
+interface NotificationItem {
+  id: string;
+  message: string;
+  href: string;
+  tone: 'info' | 'warning' | 'danger';
+  read: boolean;
+}
+
+const TONE_STYLE: Record<NotificationItem['tone'], { dot: string; ring: string }> = {
+  danger: { dot: 'bg-rose-500', ring: 'hover:border-rose-200 hover:bg-rose-50/50' },
+  warning: { dot: 'bg-amber-500', ring: 'hover:border-amber-200 hover:bg-amber-50/50' },
+  info: { dot: 'bg-blue-500', ring: 'hover:border-blue-200 hover:bg-blue-50/50' },
+};
+const TONE_ORDER: Record<NotificationItem['tone'], number> = { danger: 0, warning: 1, info: 2 };
+
 function kes(n: number) {
   return `KES ${n.toLocaleString()}`;
 }
@@ -119,6 +137,15 @@ export default function DashboardPage() {
     queryFn: () => apiFetch<SchoolBranding>('/settings'),
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
+  });
+
+  // Shares the ['notifications'] query key with the notification bell — same computed feed,
+  // rendered here as actionable cards instead of a dropdown list.
+  const { data: notifications } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => apiFetch<NotificationItem[]>('/notifications'),
+    enabled: !!user,
+    refetchInterval: 60_000,
   });
 
   if (!user) return null;
@@ -156,6 +183,8 @@ export default function DashboardPage() {
         </p>
       </header>
 
+      <NeedsAttentionPanel items={notifications} />
+
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -190,6 +219,38 @@ function SectionTitle({ icon: Icon, children }: { icon: React.ElementType; child
       <Icon size={15} className="text-slate-400" />
       {children}
     </CardTitle>
+  );
+}
+
+function NeedsAttentionPanel({ items }: { items: NotificationItem[] | undefined }) {
+  const pending = (items ?? [])
+    .filter((i) => !i.read)
+    .sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone]);
+
+  if (pending.length === 0) return null;
+
+  return (
+    <section className="animate-float-up">
+      <div className="mb-2 flex items-center gap-2">
+        <ListChecks size={15} className="text-slate-400" />
+        <h2 className="text-sm font-semibold text-slate-700">Needs Your Attention</h2>
+      </div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+        {pending.map((item) => (
+          <Link
+            key={item.id}
+            href={item.href}
+            className={`group flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm transition-colors ${TONE_STYLE[item.tone].ring}`}
+          >
+            <span className="flex items-center gap-2.5">
+              <span className={`h-2 w-2 flex-shrink-0 rounded-full ${TONE_STYLE[item.tone].dot}`} />
+              <span className="text-slate-700">{item.message}</span>
+            </span>
+            <ChevronRight size={15} className="flex-shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-500" />
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 

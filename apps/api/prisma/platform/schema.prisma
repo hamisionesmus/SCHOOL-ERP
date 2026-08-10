@@ -863,6 +863,18 @@ enum HamzoneLeadStatus {
   LOST
 }
 
+// A human-set pipeline stage on an already-converted client — deliberately manual (not auto-computed
+// from behavior) so a team member's own read of a relationship is never silently overwritten by a
+// "cold client"/"invoice overdue" signal, which surfaces as a separate notification instead. See
+// PlatformNotificationsService's crm-* items.
+enum HamzoneClientStage {
+  ONBOARDING
+  ACTIVE
+  AT_RISK
+  DORMANT
+  CHURNED
+}
+
 enum HamzoneLeadSource {
   ADMIN
   PUBLIC_API
@@ -899,6 +911,10 @@ model HamzoneClient {
   nextPaymentDueAt DateTime?
   tenantId         String?
   tenant           Tenant?               @relation(fields: [tenantId], references: [id])
+  // Manual pipeline stage — see HamzoneClientStage's own doc comment for why this is never
+  // auto-computed. Defaults to ONBOARDING since every client starts either freshly converted from a
+  // lead or freshly created directly.
+  stage            HamzoneClientStage    @default(ONBOARDING)
   createdByUserId  String
   createdBy        PlatformUser          @relation(fields: [createdByUserId], references: [id])
   createdAt        DateTime              @default(now())
@@ -907,6 +923,8 @@ model HamzoneClient {
   notes            HamzoneClientNote[]
   invoices         HamzoneInvoice[]
   trainingRecords  HamzoneTrainingRecord[]
+  tasks            HamzoneStaffTask[]
+  convertedFromLead HamzoneMarketingLead?
 }
 
 // Call/meeting log — conversations, promises, and agreements made with a client, so nothing
@@ -1002,9 +1020,20 @@ model HamzoneMarketingLead {
   location          String?
   notes             String?
   followUpAt        DateTime?
+  // Dedupe flag for the daily follow-up-reminder cron — same "*ReminderSentAt timestamp, checked
+  // null + stamped on send" shape as Tenant.demoReminderSentAt/renewalReminderSentAt in
+  // RemindersService, just scoped to a lead instead of a tenant.
+  followUpReminderSentAt DateTime?
   status            HamzoneLeadStatus  @default(NEW)
+  // Set by POST /platform/crm/leads/:id/convert alongside status: CONVERTED — @unique makes this a
+  // true 1:1 (a lead converts into at most one client, a client is the product of at most one lead),
+  // so HamzoneClient's back-relation can be a plain optional object instead of an array.
+  convertedToClientId String?          @unique
+  convertedToClient   HamzoneClient?   @relation(fields: [convertedToClientId], references: [id])
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+
+  tasks             HamzoneStaffTask[]
 }
 
 // Shareable company documents (posters, certificates, brochures) — stored via the existing
@@ -1736,6 +1765,10 @@ enum HamzoneStaffTaskStatus {
 // A concrete assignment for hired staff ("software engineers... which repo, which task") — deliberately
 // simple (no sprints/boards) since this is meant to give a new hire somewhere to start, not replace a
 // real project-management tool.
+// General staff task assignment (assignee/due date/status) — originally built for hired-staff
+// onboarding (RecruitmentService.hire() still seeds one initial task that way), broadened here with
+// two optional CRM links so a follow-up task can be attached to a client or a still-unconverted lead.
+// Both stay null for the original onboarding-task use case.
 model HamzoneStaffTask {
   id               String                 @id @default(uuid())
   assignedToUserId String
@@ -1747,6 +1780,10 @@ model HamzoneStaffTask {
   status           HamzoneStaffTaskStatus @default(TODO)
   assignedByUserId String
   assignedBy       PlatformUser           @relation("StaffTaskAssignedBy", fields: [assignedByUserId], references: [id])
+  hamzoneClientId  String?
+  hamzoneClient    HamzoneClient?         @relation(fields: [hamzoneClientId], references: [id], onDelete: SetNull)
+  hamzoneLeadId    String?
+  hamzoneLead      HamzoneMarketingLead?  @relation(fields: [hamzoneLeadId], references: [id], onDelete: SetNull)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 

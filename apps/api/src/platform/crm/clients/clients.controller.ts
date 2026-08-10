@@ -19,8 +19,13 @@ export class HamzoneClientsController {
   constructor(private readonly clients: HamzoneClientsService) {}
 
   @Get()
-  list(@Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('q') q?: string) {
-    return this.clients.list(page ? Number(page) : undefined, pageSize ? Number(pageSize) : undefined, q);
+  list(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('q') q?: string,
+    @Query('stage') stage?: string,
+  ) {
+    return this.clients.list(page ? Number(page) : undefined, pageSize ? Number(pageSize) : undefined, q, stage);
   }
 
   @Get(':id')

@@ -129,6 +129,52 @@ export class PlatformNotificationsService {
       }),
     );
 
+    tasks.push(
+      this.platformPrisma.hamzoneMarketingLead
+        .count({ where: { followUpAt: { lte: new Date() }, status: { notIn: ['CONVERTED', 'LOST'] } } })
+        .then((n) => {
+          if (n > 0) {
+            items.push({
+              id: 'crm-leads-followup-due',
+              message: `${n} lead${n === 1 ? '' : 's'} due for follow-up`,
+              href: '/dashboard/crm/leads',
+              tone: 'warning',
+            });
+          }
+        }),
+    );
+
+    tasks.push(
+      this.platformPrisma.hamzoneStaffTask
+        .count({ where: { assignedToUserId: user.sub, status: { not: 'DONE' }, dueDate: { lte: new Date() } } })
+        .then((n) => {
+          if (n > 0) {
+            items.push({
+              id: 'crm-tasks-due-today',
+              message: `${n} task${n === 1 ? '' : 's'} due for you`,
+              href: '/dashboard/crm',
+              tone: 'warning',
+            });
+          }
+        }),
+    );
+
+    tasks.push(
+      // HamzoneInvoiceStatus.OVERDUE is never actually set by any write path — computed live here
+      // instead of trusting the stored enum value, same reasoning as the tenant-side
+      // "invoices-overdue" item in apps/api/src/notifications/notifications.service.ts.
+      this.platformPrisma.hamzoneInvoice.count({ where: { status: 'PENDING', dueDate: { lt: new Date() } } }).then((n) => {
+        if (n > 0) {
+          items.push({
+            id: 'crm-invoices-overdue',
+            message: `${n} client invoice${n === 1 ? '' : 's'} overdue`,
+            href: '/dashboard/crm/invoices',
+            tone: 'danger',
+          });
+        }
+      }),
+    );
+
     await Promise.all(tasks);
 
     const dismissals = await this.platformPrisma.platformNotificationDismissal.findMany({

@@ -50,6 +50,10 @@ const statusStyles: Record<string, string> = {
   INTERVIEW_SCHEDULED: 'bg-violet-100 text-violet-700',
   INTERVIEWED: 'bg-indigo-100 text-indigo-700',
   HIRED: 'bg-emerald-100 text-emerald-700',
+  ONBOARDING: 'bg-blue-100 text-blue-700',
+  AT_RISK: 'bg-amber-100 text-amber-700',
+  DORMANT: 'bg-slate-100 text-slate-500',
+  CHURNED: 'bg-rose-100 text-rose-700',
 };
 
 export function Badge({

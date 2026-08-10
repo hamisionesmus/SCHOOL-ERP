@@ -701,6 +701,7 @@ const WORKFLOW_ENTITIES: readonly WorkflowEntityConfig[] = [
   { entityType: 'LEAVE_REQUEST', navLabel: 'Leave Requests', cardTitle: 'Leave request approval chain', fallbackPermission: 'HR:EDIT' },
   { entityType: 'ADMISSION_APPLICATION', navLabel: 'Admissions', cardTitle: 'Admission application approval chain', fallbackPermission: 'ADMISSION:MANAGE' },
   { entityType: 'TRIP_PROPOSAL', navLabel: 'Trips', cardTitle: 'Trip proposal approval chain', fallbackPermission: 'TRANSPORT:MANAGE' },
+  { entityType: 'EXAM_MARKSHEET', navLabel: 'Exam Marks', cardTitle: 'Exam mark-sheet approval chain', fallbackPermission: 'EXAM:APPROVE' },
 ];
 
 /** Container for the workflow engine's per-department settings — each configured entity type (see

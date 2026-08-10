@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -24,6 +25,8 @@ interface Lead {
   location: string | null;
   status: string;
   source: string;
+  followUpAt: string | null;
+  convertedToClientId: string | null;
   createdAt: string;
   submittedBy: { fullName: string } | null;
 }
@@ -36,12 +39,21 @@ function SubmitLeadDialog({ onCreated }: { onCreated: () => void }) {
   const [interest, setInterest] = useState<(typeof PRODUCT_LINES)[number]>('OTHER');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
+  const [followUpAt, setFollowUpAt] = useState('');
 
   const create = useMutation({
     mutationFn: () =>
       apiFetch('/platform/crm/leads', {
         method: 'POST',
-        body: JSON.stringify({ clientName, contactPhone: contactPhone || undefined, contactEmail: contactEmail || undefined, interest, location: location || undefined, notes: notes || undefined }),
+        body: JSON.stringify({
+          clientName,
+          contactPhone: contactPhone || undefined,
+          contactEmail: contactEmail || undefined,
+          interest,
+          location: location || undefined,
+          notes: notes || undefined,
+          followUpAt: followUpAt || undefined,
+        }),
       }),
     onSuccess: () => {
       notifySuccess('Lead submitted');
@@ -51,6 +63,7 @@ function SubmitLeadDialog({ onCreated }: { onCreated: () => void }) {
       setContactEmail('');
       setLocation('');
       setNotes('');
+      setFollowUpAt('');
       onCreated();
     },
     onError: (err) => notifyError(err, 'Failed to submit lead'),
@@ -80,6 +93,10 @@ function SubmitLeadDialog({ onCreated }: { onCreated: () => void }) {
             ))}
           </select>
           <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Where you met them (optional)" />
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Follow up on (optional)</label>
+            <Input type="date" value={followUpAt} onChange={(e) => setFollowUpAt(e.target.value)} />
+          </div>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -103,6 +120,7 @@ function SubmitLeadDialog({ onCreated }: { onCreated: () => void }) {
 
 export default function CrmLeadsPage() {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [page, setPage] = useState(1);
   const pageSize = 15;
 
@@ -119,6 +137,16 @@ export default function CrmLeadsPage() {
       notifySuccess('Lead updated');
     },
     onError: (err) => notifyError(err, 'Failed to update lead'),
+  });
+
+  const convert = useMutation({
+    mutationFn: (id: string) => apiFetch<{ id: string }>(`/platform/crm/leads/${id}/convert`, { method: 'POST' }),
+    onSuccess: (client) => {
+      queryClient.invalidateQueries({ queryKey: ['crm-leads'] });
+      notifySuccess('Converted to client');
+      router.push(`/dashboard/crm/clients/${client.id}`);
+    },
+    onError: (err) => notifyError(err, 'Failed to convert lead'),
   });
 
   const leads = data?.data ?? [];
@@ -151,12 +179,15 @@ export default function CrmLeadsPage() {
                     <th className="py-2 font-medium">Prospect</th>
                     <th className="py-2 font-medium">Interest</th>
                     <th className="py-2 font-medium">Contact</th>
+                    <th className="py-2 font-medium">Follow up</th>
                     <th className="py-2 font-medium">Submitted by</th>
                     <th className="py-2" />
                   </tr>
                 </thead>
                 <tbody>
-                  {leads.map((l) => (
+                  {leads.map((l) => {
+                    const followUpPast = l.followUpAt && new Date(l.followUpAt) < new Date();
+                    return (
                     <tr key={l.id} className="border-b border-slate-100">
                       <td className="py-2 font-medium text-slate-900">
                         {l.clientName}
@@ -167,25 +198,41 @@ export default function CrmLeadsPage() {
                         {l.contactPhone ?? '—'}
                         {l.contactEmail && <div className="text-xs">{l.contactEmail}</div>}
                       </td>
+                      <td className={`py-2 ${followUpPast ? 'font-medium text-rose-600' : 'text-slate-500'}`}>
+                        {l.followUpAt ? new Date(l.followUpAt).toLocaleDateString() : '—'}
+                      </td>
                       <td className="py-2 text-slate-500">
                         {l.submittedBy?.fullName ?? <span className="italic text-slate-400">Website (public form)</span>}
                       </td>
                       <td className="py-2 text-right">
-                        <select
-                          value={l.status}
-                          onChange={(e) => updateStatus.mutate({ id: l.id, status: e.target.value })}
-                          className="rounded-md border border-slate-200 px-2 py-1 text-xs"
-                        >
-                          {STATUSES.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                        <Badge status={l.status} className="ml-2" />
+                        <div className="flex items-center justify-end gap-2">
+                          {l.status !== 'CONVERTED' && l.status !== 'LOST' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={convert.isPending}
+                              onClick={() => convert.mutate(l.id)}
+                            >
+                              Convert to Client
+                            </Button>
+                          )}
+                          <select
+                            value={l.status}
+                            onChange={(e) => updateStatus.mutate({ id: l.id, status: e.target.value })}
+                            className="rounded-md border border-slate-200 px-2 py-1 text-xs"
+                          >
+                            {STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                          <Badge status={l.status} />
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
               <Pagination page={page} pageCount={Math.max(1, Math.ceil(total / pageSize))} onPageChange={setPage} totalItems={total} pageSize={pageSize} />

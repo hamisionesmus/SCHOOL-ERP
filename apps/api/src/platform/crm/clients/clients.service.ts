@@ -12,10 +12,13 @@ import { CreateClientNoteDto } from './dto/create-client-note.dto';
 export class HamzoneClientsService {
   constructor(private readonly platformPrisma: PlatformPrismaService) {}
 
-  async list(page = 1, pageSize = 30, q?: string) {
-    const where = q
-      ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { email: { contains: q, mode: 'insensitive' as const } }, { phone: { contains: q } }] }
-      : {};
+  async list(page = 1, pageSize = 30, q?: string, stage?: string) {
+    const where = {
+      ...(q
+        ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { email: { contains: q, mode: 'insensitive' as const } }, { phone: { contains: q } }] }
+        : {}),
+      ...(stage ? { stage: stage as never } : {}),
+    };
     const [data, total] = await Promise.all([
       this.platformPrisma.hamzoneClient.findMany({
         where,

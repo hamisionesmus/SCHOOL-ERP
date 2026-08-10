@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { TenantPrismaService } from '../common/prisma/tenant-prisma.service';
 import { PlatformPrismaService } from '../common/prisma/platform-prisma.service';
 import { JwtUserPayload } from '../common/decorators/current-user.decorator';
@@ -10,8 +10,11 @@ import { renderReportCardPdf } from './report-card-pdf.util';
 import { buildWorkbook, ExcelColumn } from '../common/excel/excel-builder.util';
 import { parseWorkbook, RowError } from '../common/excel/excel-parser.util';
 import { MARKS_IMPORT_INSTRUCTIONS } from './marks-import-instructions';
+import { WorkflowEngineService } from '../workflows/workflow-engine.service';
+import { WorkflowRegistryService } from '../workflows/workflow-registry.service';
 
 const RUBRIC_LEVELS = ['EE', 'ME', 'AE', 'BE'];
+const EXAM_MARKSHEET_ENTITY_TYPE = 'EXAM_MARKSHEET';
 
 interface MarkExportRow {
   student: { admissionNumber: string };
@@ -21,11 +24,33 @@ interface MarkExportRow {
 }
 
 @Injectable()
-export class ExamsService {
+export class ExamsService implements OnModuleInit {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly platformPrisma: PlatformPrismaService,
+    private readonly workflowEngine: WorkflowEngineService,
+    private readonly workflowRegistry: WorkflowRegistryService,
   ) {}
+
+  /** Plugs ExamSubject mark-sheet review into the generic workflow engine — mirrors HrService's
+   * LEAVE_REQUEST wiring. reopen() (APPROVED -> DRAFT, see below) stays entirely outside the engine,
+   * which only models a single linear approve/reject chain with no "reopen a terminal instance"
+   * concept — a deliberate scope line, not an oversight. */
+  onModuleInit() {
+    this.workflowRegistry.registerHandler(
+      EXAM_MARKSHEET_ENTITY_TYPE,
+      async (entityId, finalStatus, _actorUserId, tenantSchema) => {
+        const db = this.tenantPrisma.forSchema(tenantSchema);
+        await db.examSubject.update({
+          where: { id: entityId },
+          data:
+            finalStatus === 'APPROVED'
+              ? { status: 'APPROVED', reviewComment: null }
+              : { status: 'DRAFT', reviewComment: 'Returned for correction' },
+        });
+      },
+    );
+  }
 
   async createExam(user: JwtUserPayload, dto: CreateExamDto) {
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
@@ -74,23 +99,38 @@ export class ExamsService {
     const where: Record<string, unknown> = {};
     if (examId) where.examId = examId;
 
+    let examSubjects;
     if (perms.includes('EXAM:MANAGE') || perms.includes('EXAM:APPROVE')) {
-      return db.examSubject.findMany({
+      examSubjects = await db.examSubject.findMany({
         where,
         include: { subject: true, schoolClass: true, exam: true },
         orderBy: { createdAt: 'desc' },
       });
+    } else {
+      const myAssignments = await db.subjectAssignment.findMany({ where: { teacherId: user.sub } });
+      const pairs = myAssignments.map((a) => ({ subjectId: a.subjectId, classId: a.classId }));
+      if (pairs.length === 0) return [];
+
+      examSubjects = await db.examSubject.findMany({
+        where: { ...where, OR: pairs.map((p) => ({ subjectId: p.subjectId, classId: p.classId })) },
+        include: { subject: true, schoolClass: true, exam: true },
+        orderBy: { createdAt: 'desc' },
+      });
     }
+    if (examSubjects.length === 0) return examSubjects;
 
-    const myAssignments = await db.subjectAssignment.findMany({ where: { teacherId: user.sub } });
-    const pairs = myAssignments.map((a) => ({ subjectId: a.subjectId, classId: a.classId }));
-    if (pairs.length === 0) return [];
-
-    return db.examSubject.findMany({
-      where: { ...where, OR: pairs.map((p) => ({ subjectId: p.subjectId, classId: p.classId })) },
-      include: { subject: true, schoolClass: true, exam: true },
-      orderBy: { createdAt: 'desc' },
+    // WorkflowInstance isn't a Prisma relation of ExamSubject (the engine is entity-agnostic — see
+    // WorkflowEngineService) so it's fetched separately and attached in application code, same as
+    // HrService.listLeaveRequests().
+    const instances = await db.workflowInstance.findMany({
+      where: { entityType: EXAM_MARKSHEET_ENTITY_TYPE, entityId: { in: examSubjects.map((e) => e.id) } },
+      include: {
+        workflow: { include: { steps: { orderBy: { order: 'asc' } } } },
+        actions: { orderBy: { actedAt: 'asc' }, include: { actor: { select: { id: true, fullName: true } } } },
+      },
     });
+    const instanceByEntityId = new Map(instances.map((i) => [i.entityId, i]));
+    return examSubjects.map((e) => ({ ...e, workflowInstance: instanceByEntityId.get(e.id) ?? null }));
   }
 
   private async assertCanEnterMarks(user: JwtUserPayload, examSubject: { subjectId: string; classId: string }) {
@@ -282,45 +322,81 @@ export class ExamsService {
     await db.auditLog.create({
       data: { actorUserId: user.sub, action: 'EXAM_MARKS_SUBMITTED', entityType: 'ExamSubject', entityId: examSubjectId },
     });
+
+    const existingInstance = await db.workflowInstance.findUnique({
+      where: { entityType_entityId: { entityType: EXAM_MARKSHEET_ENTITY_TYPE, entityId: examSubjectId } },
+    });
+    if (existingInstance) {
+      // This mark-sheet already went through one full review cycle (approved, then reopened by a
+      // School Administrator, and now resubmitted) — reactivate the same instance rather than create
+      // a second one, which the engine's @@unique([entityType, entityId]) wouldn't allow anyway.
+      await this.workflowEngine.restartInstance(db, existingInstance.id, user);
+    } else {
+      // Returns null when no active WorkflowDefinition exists for 'EXAM_MARKSHEET' — this school
+      // hasn't configured a review chain, so approve/reject falls back to the flat EXAM:APPROVE check.
+      await this.workflowEngine.startInstance({ db, entityType: EXAM_MARKSHEET_ENTITY_TYPE, entityId: examSubjectId, user });
+    }
+
     return updated;
   }
 
-  async approve(user: JwtUserPayload, examSubjectId: string) {
+  private async setMarkSheetDecision(
+    user: JwtUserPayload,
+    examSubjectId: string,
+    action: 'APPROVE' | 'REJECT',
+    comment?: string,
+  ) {
     const db = this.tenantPrisma.forSchema(user.tenantSchema!);
     const examSubject = await db.examSubject.findUnique({ where: { id: examSubjectId } });
     if (!examSubject) throw new NotFoundException('Exam subject not found');
-    if (examSubject.status !== 'SUBMITTED') throw new BadRequestException('Only submitted exam subjects can be approved');
 
-    const updated = await db.examSubject.update({
-      where: { id: examSubjectId },
-      data: { status: 'APPROVED', reviewComment: null },
+    const instance = await db.workflowInstance.findUnique({
+      where: { entityType_entityId: { entityType: EXAM_MARKSHEET_ENTITY_TYPE, entityId: examSubjectId } },
     });
-    await db.auditLog.create({
-      data: { actorUserId: user.sub, action: 'EXAM_MARKS_APPROVED', entityType: 'ExamSubject', entityId: examSubjectId },
-    });
-    return updated;
-  }
 
-  async reject(user: JwtUserPayload, examSubjectId: string, dto: RejectExamSubjectDto) {
-    const db = this.tenantPrisma.forSchema(user.tenantSchema!);
-    const examSubject = await db.examSubject.findUnique({ where: { id: examSubjectId } });
-    if (!examSubject) throw new NotFoundException('Exam subject not found');
-    if (examSubject.status !== 'SUBMITTED') throw new BadRequestException('Only submitted exam subjects can be rejected');
+    if (instance) {
+      // WorkflowEngineService.recordAction() does its own precise permission check (holder of the
+      // *current step's* permission code) and, on a terminal decision, calls the handler registered
+      // in onModuleInit() above — which is what actually updates this ExamSubject row.
+      await this.workflowEngine.recordAction(db, instance.id, user, action, comment);
+    } else {
+      // Fallback path — no workflow configured for this tenant, behaves exactly as before this engine
+      // was wired in. The controller no longer gates approve/reject with @RequirePermission, so the
+      // check moves here (same pattern already used by HR/Admissions/Trips).
+      if (!(user.permissions ?? []).includes('EXAM:APPROVE')) {
+        throw new ForbiddenException('No permission to review exam marks');
+      }
+      if (examSubject.status !== 'SUBMITTED') {
+        throw new BadRequestException(`Only submitted exam subjects can be ${action === 'APPROVE' ? 'approved' : 'rejected'}`);
+      }
+      await db.examSubject.update({
+        where: { id: examSubjectId },
+        data:
+          action === 'APPROVE'
+            ? { status: 'APPROVED', reviewComment: null }
+            : { status: 'DRAFT', reviewComment: comment ?? 'Returned for correction' },
+      });
+    }
 
-    const updated = await db.examSubject.update({
-      where: { id: examSubjectId },
-      data: { status: 'DRAFT', reviewComment: dto.comment ?? 'Returned for correction' },
-    });
     await db.auditLog.create({
       data: {
         actorUserId: user.sub,
-        action: 'EXAM_MARKS_REJECTED',
+        action: action === 'APPROVE' ? 'EXAM_MARKS_APPROVED' : 'EXAM_MARKS_REJECTED',
         entityType: 'ExamSubject',
         entityId: examSubjectId,
-        newValue: { comment: dto.comment },
+        newValue: action === 'REJECT' ? { comment } : undefined,
       },
     });
-    return updated;
+
+    return db.examSubject.findUnique({ where: { id: examSubjectId } });
+  }
+
+  approve(user: JwtUserPayload, examSubjectId: string) {
+    return this.setMarkSheetDecision(user, examSubjectId, 'APPROVE');
+  }
+
+  reject(user: JwtUserPayload, examSubjectId: string, dto: RejectExamSubjectDto) {
+    return this.setMarkSheetDecision(user, examSubjectId, 'REJECT', dto.comment);
   }
 
   async reopen(user: JwtUserPayload, examSubjectId: string) {

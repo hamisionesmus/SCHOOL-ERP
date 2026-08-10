@@ -17,8 +17,13 @@ export class HamzoneInvoicesController {
   constructor(private readonly invoices: HamzoneInvoicesService) {}
 
   @Get()
-  list(@Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('clientId') clientId?: string) {
-    return this.invoices.list(page ? Number(page) : undefined, pageSize ? Number(pageSize) : undefined, clientId);
+  list(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('clientId') clientId?: string,
+    @Query('overdue') overdue?: string,
+  ) {
+    return this.invoices.list(page ? Number(page) : undefined, pageSize ? Number(pageSize) : undefined, clientId, overdue === 'true');
   }
 
   @Get(':id')

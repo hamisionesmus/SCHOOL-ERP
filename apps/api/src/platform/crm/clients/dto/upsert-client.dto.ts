@@ -4,6 +4,7 @@ import { IsArray, IsBoolean, IsEmail, IsIn, IsISO8601, IsOptional, IsString, Min
 
 const CLIENT_TYPES = ['INDIVIDUAL', 'SCHOOL', 'BUSINESS'] as const;
 const PRODUCT_LINES = ['SCHOOL_ERP', 'DTP_TRAINING', 'CODING_ROBOTICS', 'WEBSITES', 'SACCO_SYSTEMS', 'HOSPITAL_SYSTEMS', 'OTHER'] as const;
+const CLIENT_STAGES = ['ONBOARDING', 'ACTIVE', 'AT_RISK', 'DORMANT', 'CHURNED'] as const;
 
 export class UpsertClientDto {
   @ApiProperty()
@@ -62,4 +63,9 @@ export class UpsertClientDto {
   @IsOptional()
   @IsString()
   tenantId?: string;
+
+  @ApiProperty({ enum: CLIENT_STAGES, required: false, description: 'Manual pipeline stage — never auto-computed, see HamzoneClientStage schema comment' })
+  @IsOptional()
+  @IsIn(CLIENT_STAGES)
+  stage?: (typeof CLIENT_STAGES)[number];
 }

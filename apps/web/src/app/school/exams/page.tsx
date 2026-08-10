@@ -29,6 +29,24 @@ interface Exam {
   examType: string;
   term: number;
 }
+interface WorkflowStep {
+  order: number;
+  name: string;
+  approverPermissionCode: string;
+}
+interface WorkflowStepAction {
+  stepOrder: number;
+  action: 'APPROVE' | 'REJECT';
+  comment: string | null;
+  actedAt: string;
+  actor: { id: string; fullName: string };
+}
+interface WorkflowInstance {
+  status: 'IN_PROGRESS' | 'APPROVED' | 'REJECTED';
+  currentStepOrder: number;
+  workflow: { steps: WorkflowStep[] };
+  actions: WorkflowStepAction[];
+}
 interface ExamSubject {
   id: string;
   examId: string;
@@ -38,6 +56,15 @@ interface ExamSubject {
   reviewComment: string | null;
   subject: Subject;
   schoolClass: SchoolClass;
+  workflowInstance: WorkflowInstance | null;
+}
+
+/** Which permission code (if any) is required to act on this mark-sheet right now. `null` when the
+ * review chain has closed or was never gated by a workflow step (the fallback EXAM:APPROVE path is
+ * checked by the caller via `canApprove` instead). Mirrors school/hr/page.tsx's currentStepFor(). */
+function currentStepFor(es: ExamSubject) {
+  if (!es.workflowInstance || es.workflowInstance.status !== 'IN_PROGRESS') return null;
+  return es.workflowInstance.workflow.steps.find((s) => s.order === es.workflowInstance!.currentStepOrder) ?? null;
 }
 interface Student {
   id: string;
@@ -130,6 +157,7 @@ export default function ExamsPage() {
     }
   }
   const [draftMarks, setDraftMarks] = useState<Record<string, { score?: string; rubricLevel?: string }>>({});
+  const [reviewComments, setReviewComments] = useState<Record<string, string>>({});
 
   const perms = user?.permissions ?? [];
   const canManage = perms.includes('EXAM:MANAGE');
@@ -232,12 +260,16 @@ export default function ExamsPage() {
   });
 
   const workflow = useMutation({
-    mutationFn: ({ examSubjectId, action }: { examSubjectId: string; action: string }) =>
-      apiFetch(`/exam-subjects/${examSubjectId}/${action}`, { method: 'PATCH' }),
-    onSuccess: () => {
+    mutationFn: ({ examSubjectId, action, comment }: { examSubjectId: string; action: string; comment?: string }) =>
+      apiFetch(`/exam-subjects/${examSubjectId}/${action}`, {
+        method: 'PATCH',
+        body: action === 'reject' ? JSON.stringify({ comment }) : undefined,
+      }),
+    onSuccess: (_data, variables) => {
       invalidateExamSubjects();
       // Approve/reject/reopen change which marks are visible on the report card below.
       queryClient.invalidateQueries({ queryKey: ['report-card', selectedExamId] });
+      setReviewComments((c) => ({ ...c, [variables.examSubjectId]: '' }));
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Action failed'),
   });
@@ -494,28 +526,67 @@ export default function ExamsPage() {
                         </>
                       )}
 
-                      {es.status === 'SUBMITTED' && canApprove && (
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            disabled={workflow.isPending}
-                            onClick={() => workflow.mutate({ examSubjectId: es.id, action: 'approve' })}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={workflow.isPending}
-                            onClick={() => workflow.mutate({ examSubjectId: es.id, action: 'reject' })}
-                          >
-                            Reject / return for correction
-                          </Button>
-                        </div>
-                      )}
-                      {es.status === 'SUBMITTED' && !canApprove && (
-                        <p className="text-xs text-slate-500">Waiting for School Administrator approval.</p>
-                      )}
+                      {es.status === 'SUBMITTED' && (() => {
+                        const currentStep = currentStepFor(es);
+                        const canActNow = es.workflowInstance
+                          ? !!currentStep && perms.includes(currentStep.approverPermissionCode)
+                          : canApprove;
+                        return (
+                          <div className="flex flex-col gap-2">
+                            {es.workflowInstance && (
+                              <p className="text-xs text-slate-500">
+                                {es.workflowInstance.status === 'IN_PROGRESS' && currentStep
+                                  ? `Step ${currentStep.order + 1} of ${es.workflowInstance.workflow.steps.length} — ${currentStep.name}`
+                                  : `Approval chain ${es.workflowInstance.status.toLowerCase()}`}
+                              </p>
+                            )}
+                            {es.workflowInstance && es.workflowInstance.actions.length > 0 && (
+                              <ul className="space-y-0.5 border-t border-slate-100 pt-2 text-xs text-slate-500">
+                                {es.workflowInstance.actions.map((a, i) => (
+                                  <li key={i}>
+                                    {a.actor.fullName} {a.action === 'APPROVE' ? 'approved' : 'rejected'} on{' '}
+                                    {new Date(a.actedAt).toLocaleDateString()}
+                                    {a.comment && ` — "${a.comment}"`}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {canActNow ? (
+                              <div className="flex flex-col gap-2">
+                                {es.workflowInstance && (
+                                  <Input
+                                    value={reviewComments[es.id] ?? ''}
+                                    onChange={(e) => setReviewComments((c) => ({ ...c, [es.id]: e.target.value }))}
+                                    placeholder="Comment (optional)"
+                                    className="h-9 text-sm"
+                                  />
+                                )}
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    disabled={workflow.isPending}
+                                    onClick={() => workflow.mutate({ examSubjectId: es.id, action: 'approve' })}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={workflow.isPending}
+                                    onClick={() =>
+                                      workflow.mutate({ examSubjectId: es.id, action: 'reject', comment: reviewComments[es.id] })
+                                    }
+                                  >
+                                    Reject / return for correction
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-slate-500">Waiting for approval.</p>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {es.status === 'APPROVED' && canReopen && (
                         <Button

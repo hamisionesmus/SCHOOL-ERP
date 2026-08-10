@@ -102,14 +102,15 @@ export class ExamsController {
     return this.examsService.submit(user, id);
   }
 
+  // No @RequirePermission here — ExamsService.setMarkSheetDecision() performs the correct check
+  // either way: the current workflow step's permission when a review chain is configured, or a flat
+  // EXAM:APPROVE check when it isn't. Same pattern as HR/Admissions/Trips.
   @Patch('exam-subjects/:id/approve')
-  @RequirePermission('EXAM:APPROVE')
   approve(@CurrentUser() user: JwtUserPayload, @Param('id') id: string) {
     return this.examsService.approve(user, id);
   }
 
   @Patch('exam-subjects/:id/reject')
-  @RequirePermission('EXAM:APPROVE')
   reject(@CurrentUser() user: JwtUserPayload, @Param('id') id: string, @Body() dto: RejectExamSubjectDto) {
     return this.examsService.reject(user, id, dto);
   }

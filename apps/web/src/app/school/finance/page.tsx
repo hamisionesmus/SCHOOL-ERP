@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -53,9 +53,16 @@ interface Invoice {
   amount: number;
   balance: number;
   status: 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED';
+  dueDate: string;
   student: Student;
   payments?: Payment[];
   mpesaRequests?: MpesaRequest[];
+}
+
+// Same overdue definition the "invoices-overdue" notification-bell item uses server-side
+// (apps/api/src/notifications/notifications.service.ts) — kept in sync deliberately.
+function isOverdue(inv: Invoice) {
+  return inv.status !== 'PAID' && inv.status !== 'CANCELLED' && new Date(inv.dueDate) < new Date();
 }
 
 type FeeStructureDraft = { name: string; gradeLevelId: string; academicYearId: string; term: string; amount: string };
@@ -106,6 +113,23 @@ export default function FinancePage() {
   });
 
   const invalidateInvoices = () => queryClient.invalidateQueries({ queryKey: ['invoices'] });
+
+  // Defaults to "Overdue" the first time invoices load if there's at least one — matching the same
+  // condition as the "invoices-overdue" notification-bell item, so opening Finance from that item (or
+  // just noticing the bell) lands on the relevant subset instead of the full unfiltered list. A manual
+  // switch back to "All" is never overridden afterwards.
+  const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'overdue'>('all');
+  const [invoiceFilterInitialized, setInvoiceFilterInitialized] = useState(false);
+  useEffect(() => {
+    if (!invoices || invoiceFilterInitialized) return;
+    setInvoiceFilterInitialized(true);
+    if (invoices.some(isOverdue)) setInvoiceFilter('overdue');
+  }, [invoices, invoiceFilterInitialized]);
+
+  const filteredInvoices = useMemo(() => {
+    const all = invoices ?? [];
+    return invoiceFilter === 'overdue' ? all.filter(isOverdue) : all;
+  }, [invoices, invoiceFilter]);
 
   const createFeeStructure = useMutation({
     mutationFn: () =>
@@ -175,7 +199,7 @@ export default function FinancePage() {
   });
 
   const feeStructuresTable = useTableControls(feeStructures ?? [], { pageSize: 8, initialSortKey: 'name' });
-  const invoicesTable = useTableControls(invoices ?? [], { pageSize: 6 });
+  const invoicesTable = useTableControls(filteredInvoices, { pageSize: 6 });
 
   if (!user) return null;
 
@@ -305,6 +329,26 @@ export default function FinancePage() {
             <p className="text-sm text-slate-500">No invoices yet.</p>
           ) : (
             <>
+            <div className="mb-3 flex items-center gap-1.5 text-xs">
+              {(['all', 'overdue'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setInvoiceFilter(f)}
+                  className={cn(
+                    'rounded-full border px-2.5 py-1 font-medium capitalize transition-colors',
+                    invoiceFilter === f
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-300',
+                  )}
+                >
+                  {f === 'overdue' ? `Overdue (${invoices.filter(isOverdue).length})` : 'All'}
+                </button>
+              ))}
+            </div>
+            {filteredInvoices.length === 0 ? (
+              <p className="text-sm text-slate-500">No overdue invoices — nice.</p>
+            ) : (
+            <>
             <div className="mb-3 flex items-center gap-1 text-xs text-slate-500">
               Sort by:
               {(['balance', 'amount', 'status'] as const).map((key) => (
@@ -412,6 +456,8 @@ export default function FinancePage() {
               pageSize={invoicesTable.pageSize}
               onPageChange={invoicesTable.setPage}
             />
+            </>
+            )}
             </>
           )}
         </CardContent>

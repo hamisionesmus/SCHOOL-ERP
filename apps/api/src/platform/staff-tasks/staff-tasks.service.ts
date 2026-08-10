@@ -5,10 +5,14 @@ import { UpsertStaffTaskDto } from './dto/upsert-staff-task.dto';
 const TASK_INCLUDE = {
   assignedTo: { select: { id: true, fullName: true, role: true, jobTitle: true } },
   assignedBy: { select: { id: true, fullName: true } },
+  hamzoneClient: { select: { id: true, name: true } },
+  hamzoneLead: { select: { id: true, clientName: true } },
 } as const;
 
-/** A concrete assignment for hired staff ("software engineers... which repo, which task") — see
- * HamzoneStaffTask's schema doc comment. Deliberately simple, no sprints/boards. */
+/** A staff task assignment — originally built for hired-staff onboarding ("software engineers...
+ * which repo, which task", still used that way by RecruitmentService.hire()), broadened with two
+ * optional CRM links (hamzoneClientId/hamzoneLeadId) so a follow-up can be attached to a client or
+ * lead too. Deliberately simple, no sprints/boards. */
 @Injectable()
 export class StaffTasksService {
   constructor(private readonly platformPrisma: PlatformPrismaService) {}
@@ -36,6 +40,8 @@ export class StaffTasksService {
         repoUrl: dto.repoUrl,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
         assignedByUserId,
+        hamzoneClientId: dto.hamzoneClientId,
+        hamzoneLeadId: dto.hamzoneLeadId,
       },
       include: TASK_INCLUDE,
     });

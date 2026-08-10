@@ -80,4 +80,37 @@ export class RemindersService {
 
     return { demoReminders: dueDemos.length, renewalReminders: dueRenewals.length };
   }
+
+  /** Same dedupe shape as checkDeadlines() above (a *ReminderSentAt timestamp, checked null and
+   * stamped on send), just scoped to a CRM lead instead of a tenant. Notifies whoever submitted the
+   * lead, or every Super Admin when it arrived from the public marketing-site form with no submitter
+   * behind it. */
+  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  async checkLeadFollowUps() {
+    const now = new Date();
+    const dueLeads = await this.platformPrisma.hamzoneMarketingLead.findMany({
+      where: { followUpAt: { lte: now }, followUpReminderSentAt: null, status: { notIn: ['CONVERTED', 'LOST'] } },
+      include: { submittedBy: true },
+    });
+
+    for (const lead of dueLeads) {
+      const recipients = lead.submittedBy
+        ? [{ email: lead.submittedBy.email, phone: lead.submittedBy.phone }]
+        : (await this.platformPrisma.platformUser.findMany({ where: { role: 'SUPER_ADMIN', deletedAt: null } })).map((a) => ({
+            email: a.email,
+            phone: a.phone,
+          }));
+
+      for (const r of recipients) {
+        await this.notifier.notify('LEAD_FOLLOWUP_DUE', {
+          to: { email: r.email, phone: r.phone },
+          vars: { clientName: lead.clientName, interest: lead.interest.replace(/_/g, ' '), dashboardUrl: '/dashboard/crm/leads' },
+        });
+      }
+      await this.platformPrisma.hamzoneMarketingLead.update({ where: { id: lead.id }, data: { followUpReminderSentAt: now } });
+      this.logger.log(`Sent LEAD_FOLLOWUP_DUE for lead "${lead.clientName}"`);
+    }
+
+    return { leadFollowUpReminders: dueLeads.length };
+  }
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/use-session';
 import { apiFetch, ApiError } from '@/lib/api';
@@ -37,6 +37,7 @@ export default function AttendancePage() {
   const { user } = useSession('tenant');
   const queryClient = useQueryClient();
   const [classId, setClassId] = useState<string>('');
+  const [classIdInitialized, setClassIdInitialized] = useState(false);
   const [date, setDate] = useState(today());
   const [draft, setDraft] = useState<Record<string, (typeof STATUSES)[number]>>({});
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +70,22 @@ export default function AttendancePage() {
     const visibleClassIds = new Set((students ?? []).map((s) => s.currentClassId).filter(Boolean));
     return (classes ?? []).filter((c) => visibleClassIds.has(c.id));
   }, [classes, students, user, canMark]);
+
+  // Defaults the class picker so a single-class teacher never has to select from scratch: a
+  // `?classId=` link (from the dashboard's "Needs Your Attention" panel) wins if present, otherwise
+  // auto-select when there's exactly one class to choose from. Reads window.location directly (not
+  // useSearchParams()) to avoid a Suspense-boundary requirement, matching useTabQueryState's approach.
+  // Runs once, the first time `classes` finishes loading — a manual pick afterwards is never overridden.
+  useEffect(() => {
+    if (!classes || classIdInitialized) return;
+    setClassIdInitialized(true);
+    const fromUrl = new URLSearchParams(window.location.search).get('classId');
+    if (fromUrl && myClasses.some((c) => c.id === fromUrl)) {
+      setClassId(fromUrl);
+    } else if (myClasses.length === 1) {
+      setClassId(myClasses[0].id);
+    }
+  }, [classes, classIdInitialized, myClasses]);
 
   const classStudents = (students ?? []).filter((s) => s.currentClassId === classId);
 

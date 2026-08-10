@@ -1,15 +1,105 @@
 'use client';
 
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
-import { Users2, Receipt, GraduationCap, Radar, FolderKanban, KeyRound } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Users2, Receipt, GraduationCap, Radar, FolderKanban, KeyRound, ListChecks } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { getSessionUser } from '@/lib/auth';
-import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { notifyError, notifySuccess } from '@/lib/notify';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 
 interface TrainingOverview {
   total: number;
+}
+
+interface StaffTask {
+  id: string;
+  title: string;
+  dueDate: string | null;
+  status: 'TODO' | 'IN_PROGRESS' | 'DONE';
+  hamzoneClient: { id: string; name: string } | null;
+  hamzoneLead: { id: string; clientName: string } | null;
+}
+
+const NEXT_STATUS: Record<StaffTask['status'], StaffTask['status']> = {
+  TODO: 'IN_PROGRESS',
+  IN_PROGRESS: 'DONE',
+  DONE: 'TODO',
+};
+
+function MyTasksTodayWidget() {
+  const queryClient = useQueryClient();
+
+  const { data: tasks } = useQuery({
+    queryKey: ['staff-tasks-mine'],
+    queryFn: () => apiFetch<StaffTask[]>('/platform/staff-tasks/mine'),
+  });
+
+  const setStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: StaffTask['status'] }) =>
+      apiFetch(`/platform/staff-tasks/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff-tasks-mine'] });
+      notifySuccess('Task updated');
+    },
+    onError: (err) => notifyError(err, 'Failed to update task'),
+  });
+
+  const now = new Date();
+  const dueTasks = (tasks ?? [])
+    .filter((t) => t.status !== 'DONE' && t.dueDate && new Date(t.dueDate) <= now)
+    .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime());
+
+  if (dueTasks.length === 0) return null;
+
+  return (
+    <Card className="mb-8">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ListChecks size={16} className="text-slate-400" />
+          My Tasks Today
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="flex flex-col gap-2">
+          {dueTasks.map((t) => {
+            const linked = t.hamzoneClient
+              ? { href: `/dashboard/crm/clients/${t.hamzoneClient.id}`, label: t.hamzoneClient.name }
+              : t.hamzoneLead
+                ? { href: '/dashboard/crm/leads', label: t.hamzoneLead.clientName }
+                : null;
+            const overdue = t.dueDate && new Date(t.dueDate) < now;
+            return (
+              <li key={t.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">{t.title}</p>
+                  <p className="text-xs text-slate-500">
+                    {linked && (
+                      <Link href={linked.href} className="hover:underline">
+                        {linked.label}
+                      </Link>
+                    )}
+                    {linked && ' · '}
+                    <span className={overdue ? 'font-medium text-rose-600' : ''}>
+                      Due {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '—'}
+                    </span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => setStatus.mutate({ id: t.id, status: NEXT_STATUS[t.status] })}
+                  disabled={setStatus.isPending}
+                  className="whitespace-nowrap rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:border-slate-300"
+                >
+                  {t.status.replace(/_/g, ' ')} →
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
 }
 
 const SECTIONS = [
@@ -56,6 +146,8 @@ export default function CrmOverviewPage() {
         <StatCard label="Trainees" value={training?.total ?? 0} icon={GraduationCap} accent="violet" />
         <StatCard label="New leads" value={leads?.meta.total ?? 0} icon={Radar} accent="amber" />
       </div>
+
+      <MyTasksTodayWidget />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {SECTIONS.map((s) => (

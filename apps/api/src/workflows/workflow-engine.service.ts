@@ -77,6 +77,48 @@ export class WorkflowEngineService {
     return instance;
   }
 
+  /** Reactivates an existing terminal instance for the same entity — used when an entity that already
+   * went through a full review cycle needs to go through it again (e.g. exam mark-sheets, which can be
+   * reopened and resubmitted, unlike the one-shot entities — leave requests, admissions, trips — this
+   * engine was first built for). Keeps the existing WorkflowStepAction history intact rather than
+   * deleting and recreating the instance, since `@@unique([entityType, entityId])` means there can only
+   * ever be one instance row per entity. Returns `null` under the same "no active definition" condition
+   * as `startInstance`. */
+  async restartInstance(db: PrismaClient, instanceId: string, user: JwtUserPayload) {
+    const instance = await db.workflowInstance.findUnique({ where: { id: instanceId } });
+    if (!instance) throw new NotFoundException('Workflow instance not found');
+
+    const definition = await db.workflowDefinition.findFirst({
+      where: { entityType: instance.entityType, isActive: true },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    if (!definition || definition.steps.length === 0) return null;
+
+    const firstStep = definition.steps[0];
+    const currentStepDueAt = firstStep.slaHours ? new Date(Date.now() + firstStep.slaHours * 3_600_000) : null;
+
+    const updated = await db.workflowInstance.update({
+      where: { id: instanceId },
+      data: {
+        workflowId: definition.id,
+        status: 'IN_PROGRESS',
+        currentStepOrder: firstStep.order,
+        currentStepDueAt,
+        lastEscalatedAt: null,
+      },
+    });
+
+    await this.notifyStepHolders(
+      db,
+      user.tenantSchema!,
+      firstStep.approverPermissionCode,
+      `A "${instance.entityType.replace(/_/g, ' ').toLowerCase()}" request needs your review: "${firstStep.name}".`,
+      `Approval needed — ${firstStep.name}`,
+    );
+
+    return updated;
+  }
+
   /** Verifies the actor holds the *current* step's permission (a strictly more precise check than a
    * blanket controller-level guard could express), records the action, and either advances to the
    * next step or closes the instance and calls the registered completion handler. */

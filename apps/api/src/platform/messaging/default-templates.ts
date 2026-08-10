@@ -23,7 +23,8 @@ export type MessageTemplateKey =
   | 'JOB_HIRED'
   | 'JOB_REJECTED'
   | 'DAILY_TRAINING_LINK'
-  | 'TRAINEE_PORTAL_WELCOME';
+  | 'TRAINEE_PORTAL_WELCOME'
+  | 'LEAD_FOLLOWUP_DUE';
 
 export interface MessageTemplateContent {
   subject?: string;
@@ -225,5 +226,12 @@ export const DEFAULT_TEMPLATES: Record<MessageTemplateKey, MessageTemplateConten
     emailBody:
       'Hi {{fullName}},\n\nYou now have access to your own portal for {{programTitle}} — check your attendance and see shared learning materials any time.\n\nSign in at {{loginUrl}}\nEmail: {{email}}\nTemporary password: {{tempPassword}}\n\nPlease change your password once you sign in.',
     smsBody: 'Hamzone Technologies: your training portal is ready. Sign in at {{loginUrl}} with {{email}} / {{tempPassword}}.',
+  },
+  LEAD_FOLLOWUP_DUE: {
+    variables: ['clientName', 'interest', 'dashboardUrl'],
+    subject: 'Follow-up due — {{clientName}}',
+    emailBody:
+      'The follow-up date you set for lead "{{clientName}}" ({{interest}}) has arrived. Give them a call or check in, then update their status in the CRM: {{dashboardUrl}}',
+    smsBody: 'Hamzone Technologies: follow-up due for lead "{{clientName}}" ({{interest}}) — check the CRM.',
   },
 };

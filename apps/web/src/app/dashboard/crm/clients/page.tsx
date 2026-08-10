@@ -15,11 +15,13 @@ import { Pagination } from '@/components/ui/pagination';
 
 const PRODUCT_LINES = ['SCHOOL_ERP', 'DTP_TRAINING', 'CODING_ROBOTICS', 'WEBSITES', 'SACCO_SYSTEMS', 'HOSPITAL_SYSTEMS', 'OTHER'] as const;
 const CLIENT_TYPES = ['INDIVIDUAL', 'SCHOOL', 'BUSINESS'] as const;
+const CLIENT_STAGES = ['ONBOARDING', 'ACTIVE', 'AT_RISK', 'DORMANT', 'CHURNED'] as const;
 
 interface Client {
   id: string;
   name: string;
   type: string;
+  stage: (typeof CLIENT_STAGES)[number];
   productLines: string[];
   email: string | null;
   phone: string | null;
@@ -132,11 +134,15 @@ export default function CrmClientsPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [stageFilter, setStageFilter] = useState('');
   const pageSize = 15;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['crm-clients', page, search],
-    queryFn: () => apiFetch<{ data: Client[]; meta: { total: number } }>(`/platform/crm/clients?page=${page}&pageSize=${pageSize}${search ? `&q=${encodeURIComponent(search)}` : ''}`),
+    queryKey: ['crm-clients', page, search, stageFilter],
+    queryFn: () =>
+      apiFetch<{ data: Client[]; meta: { total: number } }>(
+        `/platform/crm/clients?page=${page}&pageSize=${pageSize}${search ? `&q=${encodeURIComponent(search)}` : ''}${stageFilter ? `&stage=${stageFilter}` : ''}`,
+      ),
   });
 
   const clients = data?.data ?? [];
@@ -153,11 +159,23 @@ export default function CrmClientsPage() {
       </header>
 
       <Card>
-        <CardHeader>
-          <div className="relative max-w-sm">
+        <CardHeader className="flex flex-row flex-wrap items-center gap-3">
+          <div className="relative max-w-sm flex-1">
             <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search clients..." className="pl-8" />
           </div>
+          <select
+            value={stageFilter}
+            onChange={(e) => { setStageFilter(e.target.value); setPage(1); }}
+            className="h-10 rounded-md border border-slate-300 px-3 text-sm"
+          >
+            <option value="">All stages</option>
+            {CLIENT_STAGES.map((s) => (
+              <option key={s} value={s}>
+                {s.replace(/_/g, ' ')}
+              </option>
+            ))}
+          </select>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -171,6 +189,7 @@ export default function CrmClientsPage() {
                   <tr className="border-b border-slate-200 text-left text-slate-500">
                     <th className="py-2 font-medium">Name</th>
                     <th className="py-2 font-medium">Type</th>
+                    <th className="py-2 font-medium">Stage</th>
                     <th className="py-2 font-medium">Product Lines</th>
                     <th className="py-2 font-medium">Contact</th>
                     <th className="py-2 font-medium">Invoices</th>
@@ -187,6 +206,9 @@ export default function CrmClientsPage() {
                       </td>
                       <td className="py-2">
                         <Badge status={c.type} />
+                      </td>
+                      <td className="py-2">
+                        <Badge status={c.stage} />
                       </td>
                       <td className="py-2 text-slate-500">{c.productLines.map((l) => l.replace(/_/g, ' ')).join(', ') || '—'}</td>
                       <td className="py-2 text-slate-500">

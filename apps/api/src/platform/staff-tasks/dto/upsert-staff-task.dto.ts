@@ -32,4 +32,14 @@ export class UpsertStaffTaskDto {
   @IsOptional()
   @IsIn(STATUSES)
   status?: (typeof STATUSES)[number];
+
+  @ApiProperty({ required: false, description: 'Link this task to a CRM client — a follow-up, a promised call-back, etc.' })
+  @IsOptional()
+  @IsString()
+  hamzoneClientId?: string;
+
+  @ApiProperty({ required: false, description: 'Link this task to a not-yet-converted CRM lead' })
+  @IsOptional()
+  @IsString()
+  hamzoneLeadId?: string;
 }

@@ -29,4 +29,9 @@ export class HamzoneLeadsController {
   update(@Param('id') id: string, @Body() dto: UpsertLeadDto) {
     return this.leads.update(id, dto);
   }
+
+  @Post(':id/convert')
+  convert(@Param('id') id: string, @CurrentUser() user: JwtUserPayload) {
+    return this.leads.convert(id, user.sub);
+  }
 }

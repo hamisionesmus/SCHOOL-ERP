@@ -5,16 +5,35 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { getSessionUser } from '@/lib/auth';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SkeletonCard } from '@/components/ui/skeleton';
+
+interface ClientTask {
+  id: string;
+  title: string;
+  dueDate: string | null;
+  status: 'TODO' | 'IN_PROGRESS' | 'DONE';
+  assignedTo: { id: string; fullName: string };
+  hamzoneClient: { id: string } | null;
+}
+
+const CLIENT_STAGES = ['ONBOARDING', 'ACTIVE', 'AT_RISK', 'DORMANT', 'CHURNED'] as const;
+const NEXT_STATUS: Record<'TODO' | 'IN_PROGRESS' | 'DONE', 'TODO' | 'IN_PROGRESS' | 'DONE'> = {
+  TODO: 'IN_PROGRESS',
+  IN_PROGRESS: 'DONE',
+  DONE: 'TODO',
+};
 
 interface ClientDetail {
   id: string;
   name: string;
   type: string;
+  stage: (typeof CLIENT_STAGES)[number];
   productLines: string[];
   contactName: string | null;
   email: string | null;
@@ -34,10 +53,52 @@ export default function CrmClientDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [noteBody, setNoteBody] = useState('');
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDueDate, setTaskDueDate] = useState('');
+  const me = getSessionUser();
 
   const { data, isLoading } = useQuery({
     queryKey: ['crm-client', id],
     queryFn: () => apiFetch<ClientDetail>(`/platform/crm/clients/${id}`),
+  });
+
+  // Any admin can see this client's tasks regardless of who they're assigned to, matching CRM's
+  // "all admins are marketers here" openness elsewhere — /platform/staff-tasks (no query param) is
+  // the broader admin-tier listing, filtered client-side to this client since the endpoint has no
+  // hamzoneClientId filter of its own.
+  const { data: allTasks } = useQuery({
+    queryKey: ['staff-tasks-all'],
+    queryFn: () => apiFetch<ClientTask[]>('/platform/staff-tasks'),
+  });
+  const clientTasks = (allTasks ?? []).filter((t) => t.hamzoneClient?.id === id);
+
+  const addTask = useMutation({
+    mutationFn: () =>
+      apiFetch('/platform/staff-tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          assignedToUserId: me?.sub,
+          title: taskTitle,
+          dueDate: taskDueDate || undefined,
+          hamzoneClientId: id,
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff-tasks-all'] });
+      setTaskTitle('');
+      setTaskDueDate('');
+      notifySuccess('Task added');
+    },
+    onError: (err) => notifyError(err, 'Failed to add task'),
+  });
+
+  const setTaskStatus = useMutation({
+    mutationFn: ({ taskId, status }: { taskId: string; status: ClientTask['status'] }) =>
+      apiFetch(`/platform/staff-tasks/${taskId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff-tasks-all'] });
+    },
+    onError: (err) => notifyError(err, 'Failed to update task'),
   });
 
   const addNote = useMutation({
@@ -48,6 +109,15 @@ export default function CrmClientDetailPage() {
       notifySuccess('Note added');
     },
     onError: (err) => notifyError(err, 'Failed to add note'),
+  });
+
+  const updateStage = useMutation({
+    mutationFn: (stage: string) => apiFetch(`/platform/crm/clients/${id}`, { method: 'PATCH', body: JSON.stringify({ name: data?.name, stage }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['crm-client', id] });
+      notifySuccess('Stage updated');
+    },
+    onError: (err) => notifyError(err, 'Failed to update stage'),
   });
 
   if (isLoading || !data) return <SkeletonCard />;
@@ -61,13 +131,28 @@ export default function CrmClientDetailPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">{data.name}</h1>
-            <p className="text-sm text-slate-500">
+            <p className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
               <Badge status={data.type} /> {data.productLines.map((l) => l.replace(/_/g, ' ')).join(', ')}
             </p>
           </div>
-          <Button onClick={() => router.push(`/dashboard/crm/invoices?clientId=${id}`)} className="gap-1.5">
-            <Plus size={15} /> New Invoice
-          </Button>
+          <div className="flex items-center gap-2">
+            <select
+              value={data.stage}
+              disabled={updateStage.isPending}
+              onChange={(e) => updateStage.mutate(e.target.value)}
+              className="h-9 rounded-md border border-slate-300 px-2.5 text-sm"
+              title="Pipeline stage"
+            >
+              {CLIENT_STAGES.map((s) => (
+                <option key={s} value={s}>
+                  {s.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+            <Button onClick={() => router.push(`/dashboard/crm/invoices?clientId=${id}`)} className="gap-1.5">
+              <Plus size={15} /> New Invoice
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -121,6 +206,52 @@ export default function CrmClientDetailPage() {
                       <p className="text-xs text-slate-400">
                         {n.author.fullName} · {new Date(n.createdAt).toLocaleString()}
                       </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Tasks</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  placeholder="e.g. Call back about renewal"
+                  className="flex-1"
+                />
+                <Input type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} className="sm:w-40" />
+              </div>
+              <Button size="sm" disabled={!taskTitle.trim() || addTask.isPending} onClick={() => addTask.mutate()}>
+                {addTask.isPending ? 'Adding...' : 'Add task'}
+              </Button>
+              <div className="space-y-2 border-t border-slate-100 pt-3">
+                {clientTasks.length === 0 ? (
+                  <p className="text-xs text-slate-400">No tasks linked to this client yet.</p>
+                ) : (
+                  clientTasks.map((t) => (
+                    <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
+                      <div>
+                        <p className={t.status === 'DONE' ? 'text-slate-400 line-through' : 'text-slate-700'}>{t.title}</p>
+                        <p className="text-xs text-slate-400">
+                          {t.assignedTo.fullName}
+                          {t.dueDate && ` · Due ${new Date(t.dueDate).toLocaleDateString()}`}
+                        </p>
+                      </div>
+                      {t.assignedTo.id === me?.sub && (
+                        <button
+                          onClick={() => setTaskStatus.mutate({ taskId: t.id, status: NEXT_STATUS[t.status] })}
+                          disabled={setTaskStatus.isPending}
+                          className="whitespace-nowrap rounded-full border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600 hover:border-slate-300"
+                        >
+                          {t.status.replace(/_/g, ' ')} →
+                        </button>
+                      )}
                     </div>
                   ))
                 )}

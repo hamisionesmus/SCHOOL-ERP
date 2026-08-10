@@ -29,6 +29,79 @@ export class NotificationsService {
 
     const tasks: Promise<void>[] = [];
 
+    if (perms.includes('ATTENDANCE:MARK')) {
+      tasks.push(
+        (async () => {
+          const myClasses = await db.schoolClass.findMany({
+            where: { classTeacherId: user.sub },
+            select: { id: true, name: true },
+          });
+          if (myClasses.length === 0) return;
+          const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+          const marked = await db.attendanceRecord.findMany({
+            where: { classId: { in: myClasses.map((c) => c.id) }, date: today },
+            select: { classId: true },
+            distinct: ['classId'],
+          });
+          const markedIds = new Set(marked.map((m) => m.classId));
+          const unmarked = myClasses.filter((c) => !markedIds.has(c.id));
+          if (unmarked.length === 1) {
+            items.push({
+              id: 'attendance-not-marked',
+              message: `Attendance not yet marked today for ${unmarked[0].name}`,
+              href: `/school/attendance?classId=${unmarked[0].id}`,
+              tone: 'warning',
+            });
+          } else if (unmarked.length > 1) {
+            items.push({
+              id: 'attendance-not-marked',
+              message: `Attendance not yet marked today for ${unmarked.length} of your classes`,
+              href: '/school/attendance',
+              tone: 'warning',
+            });
+          }
+        })(),
+      );
+    }
+
+    if (perms.includes('EXAM:ENTER_MARKS')) {
+      tasks.push(
+        (async () => {
+          const assignments = await db.subjectAssignment.findMany({
+            where: { teacherId: user.sub },
+            select: { subjectId: true, classId: true },
+          });
+          if (assignments.length === 0) return;
+          const examSubjects = await db.examSubject.findMany({
+            where: {
+              status: 'DRAFT',
+              OR: assignments.map((a) => ({ subjectId: a.subjectId, classId: a.classId })),
+            },
+            select: { id: true, classId: true },
+          });
+          if (examSubjects.length === 0) return;
+          let pending = 0;
+          for (const es of examSubjects) {
+            const [studentCount, markCount] = await Promise.all([
+              db.student.count({ where: { currentClassId: es.classId, deletedAt: null } }),
+              db.mark.count({
+                where: { examSubjectId: es.id, OR: [{ score: { not: null } }, { rubricLevel: { not: null } }] },
+              }),
+            ]);
+            if (markCount < studentCount) pending++;
+          }
+          if (pending > 0) {
+            items.push({
+              id: 'exam-marks-pending',
+              message: `${pending} mark-sheet${pending === 1 ? '' : 's'} with marks still to enter`,
+              href: '/school/exams',
+              tone: 'warning',
+            });
+          }
+        })(),
+      );
+    }
+
     if (perms.includes('HR:EDIT')) {
       tasks.push(
         db.leaveRequest.count({ where: { status: 'PENDING' } }).then((n) => {

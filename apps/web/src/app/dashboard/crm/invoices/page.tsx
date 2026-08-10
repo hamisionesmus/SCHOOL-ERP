@@ -186,6 +186,7 @@ export default function CrmInvoicesPage() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [payTarget, setPayTarget] = useState<Invoice | null>(null);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
@@ -193,8 +194,11 @@ export default function CrmInvoicesPage() {
   const clientIdParam = searchParams.get('clientId') ?? undefined;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['crm-invoices', page, clientIdParam],
-    queryFn: () => apiFetch<{ data: Invoice[]; meta: { total: number } }>(`/platform/crm/invoices?page=${page}&pageSize=${pageSize}${clientIdParam ? `&clientId=${clientIdParam}` : ''}`),
+    queryKey: ['crm-invoices', page, clientIdParam, overdueOnly],
+    queryFn: () =>
+      apiFetch<{ data: Invoice[]; meta: { total: number } }>(
+        `/platform/crm/invoices?page=${page}&pageSize=${pageSize}${clientIdParam ? `&clientId=${clientIdParam}` : ''}${overdueOnly ? '&overdue=true' : ''}`,
+      ),
   });
 
   const markPaid = useMutation({
@@ -248,8 +252,16 @@ export default function CrmInvoicesPage() {
       </header>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
           <CardTitle className="text-base">All Invoices</CardTitle>
+          <button
+            onClick={() => { setOverdueOnly((v) => !v); setPage(1); }}
+            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              overdueOnly ? 'border-rose-600 bg-rose-600 text-white' : 'border-slate-200 text-slate-600 hover:border-slate-300'
+            }`}
+          >
+            Overdue only
+          </button>
         </CardHeader>
         <CardContent>
           {isLoading ? (
